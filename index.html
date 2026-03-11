@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Measurement Toolkit — SSELab</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- TOP NAV                                -->
+  <!-- ══════════════════════════════════════ -->
+  <nav class="topbar">
+    <div class="topbar-left">
+      <img src="ssel_logo.png" alt="SSELab" class="topbar-logo">
+      <div class="topbar-sep"></div>
+      <span class="topbar-title">LLM Measurement Toolkit</span>
+      <span class="topbar-badge">beta</span>
+      <div class="topbar-sep"></div>
+      <div class="topbar-tabs">
+        <button class="topbar-tab active" data-tool="pipeline" onclick="switchTool('pipeline', this)">Build &amp; Run</button>
+        <div class="topbar-tab-sep"></div>
+        <div class="menu-dropdown">
+          <button class="topbar-tab" onclick="toggleMenu(this)">Generators <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg></button>
+          <div class="menu-panel">
+            <button class="menu-item" onclick="switchToolFromMenu('catgen', this)">Category Generator</button>
+            <button class="menu-item" onclick="switchToolFromMenu('prompt-gen', this)">Prompt Generator</button>
+            <button class="menu-item" onclick="switchToolFromMenu('scripts', this)">Script Generator</button>
+          </div>
+        </div>
+        <div class="menu-dropdown">
+          <button class="topbar-tab" onclick="toggleMenu(this)">Results <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg></button>
+          <div class="menu-panel">
+            <button class="menu-item" onclick="switchToolFromMenu('results', this)">Results Viewer</button>
+            <button class="menu-item" onclick="switchToolFromMenu('analysis', this)">Results Analysis</button>
+            <button class="menu-item" onclick="switchToolFromMenu('compare', this)">LLM vs Humans</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-chip" id="status-chip">
+        <span class="status-dot"></span>
+        Ready
+      </div>
+      <button class="btn btn-ghost btn-sm topbar-btn" onclick="showToast('Settings — Phase 3')">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <div class="layout">
+
+    <!-- ══════════════════════════════════════ -->
+    <!-- MAIN CONTENT AREA                      -->
+    <!-- ══════════════════════════════════════ -->
+    <main class="main">
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: Build & Run Pipeline                                  -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page active" id="tool-pipeline">
+        <div class="tool-header">
+          <div>
+            <h1>Build &amp; Run Pipeline</h1>
+            <p class="tool-desc">Configure your experiment end-to-end, run across multiple models, and aggregate results via voting.</p>
+          </div>
+        </div>
+
+        <div class="pipeline-layout">
+          <!-- Config column -->
+          <div class="config-col">
+            <div class="config-scroll">
+
+            <!-- Step 1: Experiment -->
+            <section class="panel open" id="step-experiment">
+              <button class="panel-head" onclick="togglePanel(this)">
+                <div class="panel-head-left">
+                  <span class="step-badge">1</span>
+                  <span class="panel-label">Experiment Setup</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+              </button>
+              <div class="panel-content">
+                <div class="f"><label>Task name</label><input type="text" placeholder="e.g., Therapist utterance classification"></div>
+                <div class="f"><label>Hypothesis</label><textarea rows="2" placeholder="e.g., Therapist reflections correlate with client engagement"></textarea></div>
+                <div class="f"><label>Goals</label><textarea rows="2" placeholder="e.g., Classify each therapist utterance into MI-consistent categories"></textarea></div>
+
+                <div class="sub-label" style="margin-top:12px">API Keys</div>
+                <p class="hint">Add keys for the providers you want to use. Models from providers without a key will be unavailable.</p>
+                <div class="api-keys-list" id="api-keys-list">
+                  <div class="api-key-row" data-provider="openai">
+                    <select class="api-key-provider" onchange="updateApiKeyProvider(this)">
+                      <option value="openai" selected>OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="google">Google</option>
+                      <option value="meta">Meta (via Together)</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="mistral">Mistral</option>
+                    </select>
+                    <input type="password" class="api-key-input" placeholder="sk-..." oninput="syncApiKeys()">
+                    <button class="btn btn-ghost btn-xs api-key-toggle" onclick="toggleKeyVisibility(this)" title="Show/hide key">
+                      <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-xs api-key-rm" onclick="removeApiKeyRow(this)">&times;</button>
+                  </div>
+                </div>
+                <button class="btn btn-ghost btn-xs" style="margin-top:4px" onclick="addApiKeyRow()">+ Add provider</button>
+              </div>
+            </section>
+
+            <!-- Step 2: Data -->
+            <section class="panel open" id="step-data">
+              <button class="panel-head" onclick="togglePanel(this)">
+                <div class="panel-head-left">
+                  <span class="step-badge">2</span>
+                  <span class="panel-label">Data Source</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+              </button>
+              <div class="panel-content">
+                <div class="dropzone" id="dropzone" onclick="loadMockData()">
+                  <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+                  <span class="dz-text">Drop CSV or JSONL here, or click to browse</span>
+                </div>
+                <div id="upload-details" class="hidden">
+                  <div class="file-chip">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3.5A1.5 1.5 0 014.5 2h6.879a1.5 1.5 0 011.06.44l4.122 4.12A1.5 1.5 0 0117 7.622V16.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 013 16.5v-13z"/></svg>
+                    therapy_sessions.csv
+                    <span class="chip-meta">10 rows &middot; 5 cols</span>
+                  </div>
+                  <div class="sub-label">Column Mapping</div>
+                  <div class="fg cols-3">
+                    <div class="f"><label>Episode ID</label>
+                      <select><option selected>episode_id</option><option>speaker</option><option>content</option><option>timestamp</option><option>session_num</option></select>
+                    </div>
+                    <div class="f"><label>Content</label>
+                      <select><option>episode_id</option><option>speaker</option><option selected>content</option><option>timestamp</option><option>session_num</option></select>
+                    </div>
+                    <div class="f"><label>Metadata</label>
+                      <select multiple size="3"><option selected>speaker</option><option selected>timestamp</option><option selected>session_num</option></select>
+                    </div>
+                  </div>
+                  <div class="sub-label">Preview</div>
+                  <div class="table-wrap">
+                    <table class="tbl tbl-compact">
+                      <thead><tr><th>episode_id</th><th>speaker</th><th>content</th><th>timestamp</th><th>session</th></tr></thead>
+                      <tbody>
+                        <tr><td class="mono">EP001</td><td>therapist</td><td>Can you tell me more about how that made you feel?</td><td class="mono">10:03:22</td><td class="c">1</td></tr>
+                        <tr><td class="mono">EP002</td><td>client</td><td>I felt really overwhelmed and couldn't think clearly.</td><td class="mono">10:04:01</td><td class="c">1</td></tr>
+                        <tr><td class="mono">EP003</td><td>therapist</td><td>It sounds like that situation triggered a strong emotional response.</td><td class="mono">10:04:45</td><td class="c">1</td></tr>
+                        <tr><td class="mono">EP004</td><td>client</td><td>Yes, I think it reminded me of something from childhood.</td><td class="mono">10:05:12</td><td class="c">1</td></tr>
+                        <tr><td class="mono">EP005</td><td>therapist</td><td>That's an important connection. Let's explore that.</td><td class="mono">10:05:55</td><td class="c">1</td></tr>
+                        <tr><td class="mono">EP006</td><td>client</td><td>I remember feeling ignored when I tried to speak up.</td><td class="mono">10:06:30</td><td class="c">1</td></tr>
+                        <tr><td class="mono">EP007</td><td>therapist</td><td>How does that pattern show up in your current relationships?</td><td class="mono">10:07:10</td><td class="c">2</td></tr>
+                        <tr><td class="mono">EP008</td><td>client</td><td>I tend to shut down when I feel like I'm not being heard.</td><td class="mono">10:07:55</td><td class="c">2</td></tr>
+                        <tr><td class="mono">EP009</td><td>therapist</td><td>That withdrawal is a protective mechanism.</td><td class="mono">10:08:30</td><td class="c">2</td></tr>
+                        <tr><td class="mono">EP010</td><td>client</td><td>I never thought of it that way, but it makes sense.</td><td class="mono">10:09:05</td><td class="c">2</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Step 3: Codebook -->
+            <section class="panel open" id="step-codebook">
+              <button class="panel-head" onclick="togglePanel(this)">
+                <div class="panel-head-left">
+                  <span class="step-badge">3</span>
+                  <span class="panel-label">Codebook</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+              </button>
+              <div class="panel-content">
+                <p class="hint">Define your measurement variables. Click the table to open the full editor.</p>
+                <div class="table-wrap cb-preview" onclick="openCodebookSpreadsheet()">
+                  <table class="tbl tbl-click" id="cb-preview-table">
+                    <thead><tr><th style="width:32px">#</th><th style="width:120px">Label</th><th style="width:80px">Type</th><th>Definition</th></tr></thead>
+                    <tbody id="cb-preview-body">
+                      <tr><td class="c mono">1</td><td>Reflection</td><td><span class="pill lbl">classify</span></td><td class="td-truncate">Therapist mirrors or paraphrases client's statement</td></tr>
+                      <tr><td class="c mono">2</td><td>Open Question</td><td><span class="pill lbl">classify</span></td><td class="td-truncate">Asks an exploratory, non-yes/no question</td></tr>
+                      <tr><td class="c mono">3</td><td>Affirmation</td><td><span class="pill lbl">classify</span></td><td class="td-truncate">Acknowledges client strength or effort</td></tr>
+                      <tr><td class="c mono">4</td><td>Info Giving</td><td><span class="pill lbl">classify</span></td><td class="td-truncate">Provides factual info or psychoeducation</td></tr>
+                      <tr><td class="c mono">5</td><td>Empathy Level</td><td><span class="pill lbl">rate</span></td><td class="td-truncate">Degree of empathic understanding demonstrated</td></tr>
+                      <tr><td class="c mono">6</td><td>Key Topics</td><td><span class="pill lbl">extract</span></td><td class="td-truncate">Therapeutic topics discussed in the episode</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="flex-row" style="margin-top:6px">
+                  <span class="hint" id="cb-pipeline-count">6 variables defined</span>
+                  <div class="spacer"></div>
+                  <button class="btn btn-outline btn-xs btn-ai" onclick="event.stopPropagation(); generateCodebookAI()">
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.633.633l-2.051.683a1 1 0 000 1.898l2.051.684a1 1 0 01.633.632l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.633-.633l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.633-.633L6.95 5.684z"/></svg>
+                    Generate with AI
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Step 4: Prompt -->
+            <section class="panel open" id="step-prompt">
+              <button class="panel-head" onclick="togglePanel(this)">
+                <div class="panel-head-left">
+                  <span class="step-badge">4</span>
+                  <span class="panel-label">Prompt Template</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+              </button>
+              <div class="panel-content">
+                <div class="tab-strip">
+                  <button class="tab active" onclick="switchTab('builder',this)">Builder</button>
+                  <button class="tab" onclick="switchTab('generator',this)">Compiled Output</button>
+                </div>
+                <div id="tab-builder" class="tab-pane">
+                  <div class="f"><label>System prompt</label><textarea rows="3" class="mono-textarea">You are an expert behavioral coder trained in psychotherapy process research.
+Your task is to classify therapist utterances into communication categories.
+Output valid JSON matching the provided schema. Follow definitions exactly.</textarea></div>
+                  <div class="f"><label>User prompt template</label><textarea rows="6" class="mono-textarea">Classify the following therapist utterance into exactly one category.
+
+Categories:
+{{CATEGORIES}}
+
+Episode Text:
+{EPISODE_TEXT}
+
+Respond with JSON: { "label": "<category>", "confidence": <0-100> }</textarea>
+                    <span class="hint"><code>{EPISODE_TEXT}</code> = data placeholder &middot; <code>{{CATEGORIES}}</code> = auto-populated from codebook</span>
+                  </div>
+                  <div class="flex-row" style="margin-top:8px">
+                    <div class="spacer"></div>
+                    <button class="btn btn-outline btn-xs btn-ai" onclick="generatePromptAI()">
+                      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.633.633l-2.051.683a1 1 0 000 1.898l2.051.684a1 1 0 01.633.632l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.633-.633l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.633-.633L6.95 5.684z"/></svg>
+                      Generate with AI
+                    </button>
+                  </div>
+                </div>
+                <div id="tab-generator" class="tab-pane hidden">
+                  <div class="f"><label>Compiled prompt</label><pre class="code-block">System: You are an expert behavioral coder...
+
+User: Classify the following therapist utterance into exactly one category.
+
+Categories:
+- Reflection: Mirrors or paraphrases client
+- Open Question: Exploratory, non-yes/no question
+- Affirmation: Acknowledges client strength
+- Info Giving: Factual information or psychoeducation
+
+Episode Text:
+{EPISODE_TEXT}
+
+Respond with JSON: { "label": "&lt;category&gt;", "confidence": &lt;0-100&gt; }</pre></div>
+                  <div class="f"><label>Output schema</label><pre class="code-block">{
+  "type": "object",
+  "properties": {
+    "label": { "type": "string", "enum": ["Reflection","Open Question","Affirmation","Info Giving"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 100 }
+  },
+  "required": ["label", "confidence"]
+}</pre></div>
+                  <div class="f"><label>Parse rules</label>
+                    <ol class="rule-list">
+                      <li>Parse response as JSON</li>
+                      <li>Validate <code>label</code> is a defined category</li>
+                      <li>Validate <code>confidence</code> is 0-100</li>
+                      <li>On failure, retry with repair prompt (max 2)</li>
+                      <li>If still invalid &rarr; <code>needs_review</code></li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Step 5: Models -->
+            <section class="panel open" id="step-models">
+              <button class="panel-head" onclick="togglePanel(this)">
+                <div class="panel-head-left">
+                  <span class="step-badge">5</span>
+                  <span class="panel-label">Models &amp; Aggregation</span>
+                </div>
+                <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+              </button>
+              <div class="panel-content">
+                <div class="sub-label">Model Configuration</div>
+                <div class="model-summary">
+                  <span class="model-summary-label">3 models selected:</span>
+                  <div class="model-summary-chips">
+                    <span class="model-summary-chip">GPT-4o (2&times;)</span>
+                    <span class="model-summary-chip">Claude Sonnet 4 (1&times;)</span>
+                    <span class="model-summary-chip">Gemini 2.0 Flash (1&times;)</span>
+                  </div>
+                  <button class="btn btn-outline btn-sm" onclick="openModelModal('pipeline')">Configure Models</button>
+                </div>
+                <div class="sub-label" style="margin-top:12px">Run Settings</div>
+                <div class="fg cols-3">
+                  <div class="f"><label>Runs per model</label><input type="number" value="3" min="1" max="10"></div>
+                  <div class="f"><label>Retries on failure</label><input type="number" value="2" min="0" max="5"></div>
+                  <div class="f"><label>Aggregation</label><select><option selected>Weighted majority</option></select></div>
+                </div>
+                <span class="hint" style="margin-top:4px">Ties resolved by highest confidence score</span>
+              </div>
+            </section>
+            </div><!-- /config-scroll -->
+
+            <!-- Run bar — pinned to bottom -->
+            <div class="run-bar">
+              <button class="btn btn-outline" onclick="showResults()">Dry Run (20 items)</button>
+              <button class="btn btn-run" onclick="showResults()">
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.841A1.5 1.5 0 004 4.12V15.88a1.5 1.5 0 002.3 1.28l9.344-5.88a1.5 1.5 0 000-2.56L6.3 2.84z"/></svg>
+                Run Pipeline
+              </button>
+            </div>
+          </div><!-- /config-col -->
+
+          <!-- Results column -->
+          <div class="results-col">
+            <div class="results-empty" id="results-empty">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5"/></svg>
+              <p>Run the pipeline to see results</p>
+            </div>
+            <div id="results-live" class="hidden">
+              <div class="res-head"><h2>Encoding Results</h2><span class="res-meta">5 episodes &middot; 3 models &middot; 3 runs</span></div>
+
+              <!-- Stats -->
+              <div class="stat-row">
+                <div class="stat"><div class="stat-v">5</div><div class="stat-l">Episodes</div></div>
+                <div class="stat"><div class="stat-v">82%</div><div class="stat-l">Avg Confidence</div></div>
+                <div class="stat"><div class="stat-v">Open Question</div><div class="stat-l">Most Common</div></div>
+              </div>
+
+              <!-- Distribution -->
+              <div class="res-section">
+                <div class="res-section-h">Label Distribution</div>
+                <div class="dist">
+                  <div class="dist-r"><span class="dist-l">Open Question</span><div class="dist-t"><div class="dist-f" style="width:40%"></div></div><span class="dist-n">2</span></div>
+                  <div class="dist-r"><span class="dist-l">Reflection</span><div class="dist-t"><div class="dist-f" style="width:20%"></div></div><span class="dist-n">1</span></div>
+                  <div class="dist-r"><span class="dist-l">Affirmation</span><div class="dist-t"><div class="dist-f" style="width:20%"></div></div><span class="dist-n">1</span></div>
+                  <div class="dist-r"><span class="dist-l">Info Giving</span><div class="dist-t"><div class="dist-f" style="width:20%"></div></div><span class="dist-n">1</span></div>
+                </div>
+              </div>
+
+              <!-- Confidence Distribution -->
+              <div class="res-section">
+                <div class="res-section-h">Confidence Distribution</div>
+                <div class="dist">
+                  <div class="dist-r"><span class="dist-l">90–100%</span><div class="dist-t"><div class="dist-f" style="width:40%"></div></div><span class="dist-n">2</span></div>
+                  <div class="dist-r"><span class="dist-l">70–89%</span><div class="dist-t"><div class="dist-f" style="width:40%"></div></div><span class="dist-n">2</span></div>
+                  <div class="dist-r"><span class="dist-l">50–69%</span><div class="dist-t"><div class="dist-f" style="width:20%"></div></div><span class="dist-n">1</span></div>
+                  <div class="dist-r"><span class="dist-l">&lt; 50%</span><div class="dist-t"><div class="dist-f" style="width:0%"></div></div><span class="dist-n">0</span></div>
+                </div>
+              </div>
+
+              <!-- Table -->
+              <div class="res-section">
+                <div class="res-section-h">Episode Details</div>
+                <div class="table-wrap">
+                  <table class="tbl tbl-compact res-tbl">
+                    <thead><tr><th>Episode</th><th>Content</th><th>Encoded Label</th><th>Confidence</th></tr></thead>
+                    <tbody>
+                      <tr><td class="mono">EP001</td><td class="td-content">Can you tell me more about how that made you feel?</td><td><span class="pill lbl">Open Question</span></td><td class="c">92%</td></tr>
+                      <tr><td class="mono">EP003</td><td class="td-content">It sounds like that situation triggered a strong emotional response.</td><td><span class="pill lbl">Reflection</span></td><td class="c">91%</td></tr>
+                      <tr><td class="mono">EP005</td><td class="td-content">That's an important connection. Let's explore that.</td><td><span class="pill lbl">Affirmation</span></td><td class="c">78%</td></tr>
+                      <tr><td class="mono">EP007</td><td class="td-content">How does that pattern show up in your current relationships?</td><td><span class="pill lbl">Open Question</span></td><td class="c">60%</td></tr>
+                      <tr><td class="mono">EP009</td><td class="td-content">That withdrawal is a protective mechanism.</td><td><span class="pill lbl">Info Giving</span></td><td class="c">50%</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Export -->
+              <div class="export-row">
+                <span class="export-label">Export</span>
+                <button class="btn btn-outline btn-xs" onclick="showToast('CSV export — Phase 3')">CSV</button>
+                <button class="btn btn-outline btn-xs" onclick="showToast('JSONL export — Phase 3')">JSONL</button>
+                <button class="btn btn-outline btn-xs" onclick="showToast('Parquet export — Phase 3')">Parquet</button>
+                <button class="btn btn-primary btn-xs" onclick="showToast('Bundle export — Phase 3')">Reproducibility Bundle</button>
+              </div>
+            </div>
+          </div><!-- /results-col -->
+        </div><!-- /pipeline-layout -->
+      </div><!-- /tool-pipeline -->
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: Prompt Generator                                      -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page" id="tool-prompt-gen">
+        <div class="tool-header">
+          <div>
+            <h1>Prompt Generator</h1>
+            <p class="tool-desc">Generate measurement prompts from your codebook and goals &mdash; without running a full pipeline.</p>
+          </div>
+          <div class="tool-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="showToast('Copied to clipboard')">Copy All</button>
+            <button class="btn btn-primary btn-sm" onclick="showToast('Prompt generated')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192z"/></svg>
+              Generate
+            </button>
+          </div>
+        </div>
+        <div class="split-layout">
+          <!-- Left: Inputs -->
+          <div class="split-left">
+            <div class="tp-section">
+              <div class="sub-label">Configuration</div>
+              <div class="fg cols-2">
+                <div class="f"><label>Output type</label>
+                  <select><option selected>Classify (single label)</option><option>Tag (multi-label)</option><option>Rate (scaled)</option><option>Extract (structured)</option></select>
+                </div>
+                <div class="f"><label>Response format</label>
+                  <select><option selected>JSON</option><option>JSON Lines</option><option>Plain text</option></select>
+                </div>
+              </div>
+              <div class="f"><label>Research goals</label><textarea rows="2" placeholder="e.g., Classify therapist utterances into MI-consistent categories">Classify each therapist utterance into MI-consistent communication categories for behavioral coding research.</textarea></div>
+              <div class="f"><label>Hypothesis (optional)</label><textarea rows="2" placeholder="e.g., Therapist reflections correlate with client engagement">Therapist reflections and open questions are associated with higher client engagement in subsequent turns.</textarea></div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Codebook Reference</div>
+              <div class="table-wrap"><table class="tbl tbl-compact">
+                <thead><tr><th>Label</th><th>Definition</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Reflection</strong></td><td>Mirrors or paraphrases client's statement</td></tr>
+                  <tr><td><strong>Open Question</strong></td><td>Exploratory, non-yes/no question</td></tr>
+                  <tr><td><strong>Affirmation</strong></td><td>Acknowledges client strength or effort</td></tr>
+                  <tr><td><strong>Info Giving</strong></td><td>Provides factual info or psychoeducation</td></tr>
+                </tbody>
+              </table></div>
+              <span class="hint">Categories are pulled from your active codebook. Edit in the Codebook Builder.</span>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Sample Input</div>
+              <div class="f"><label>Example episode</label><textarea rows="2" class="mono-textarea">It sounds like that situation triggered a strong emotional response for you.</textarea></div>
+            </div>
+          </div>
+          <!-- Right: Output -->
+          <div class="split-right">
+            <div class="tp-section">
+              <div class="sub-label">System Prompt</div>
+              <pre class="code-block">You are an expert behavioral coder trained in psychotherapy process research. Your task is to classify therapist utterances into communication categories using the Motivational Interviewing (MI) framework.
+
+You must output valid JSON matching the provided schema. Be precise and follow the category definitions exactly. When uncertain between two categories, choose the one whose definition most closely matches the primary communicative function of the utterance.</pre>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">User Prompt Template</div>
+              <pre class="code-block">Classify the following therapist utterance into exactly one category.
+
+Categories:
+- Reflection: Mirrors or paraphrases the client's statement. Includes restatements, empathic reflections, and summaries. Excludes direct questions and advice-giving.
+- Open Question: Asks an exploratory, non-yes/no question. Includes how/what/tell-me-more questions. Excludes closed yes/no and leading questions.
+- Affirmation: Acknowledges client strength or effort. Includes compliments on effort and recognition of courage. Excludes generic praise and flattery.
+- Info Giving: Provides factual information or psychoeducation. Includes explaining concepts and sharing research. Excludes unsolicited advice and personal opinions.
+
+Episode Text:
+{EPISODE_TEXT}
+
+Respond with JSON:
+{
+  "label": "&lt;one of: Reflection, Open Question, Affirmation, Info Giving&gt;",
+  "confidence": &lt;integer 0-100&gt;
+}</pre>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Output JSON Schema</div>
+              <pre class="code-block">{
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "enum": ["Reflection", "Open Question", "Affirmation", "Info Giving"]
+    },
+    "confidence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "required": ["label", "confidence"],
+  "additionalProperties": false
+}</pre>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Parsing &amp; Validation Rules</div>
+              <div class="rules-grid">
+                <div class="rule-card">
+                  <div class="rule-num">1</div>
+                  <div class="rule-body">
+                    <strong>Parse JSON</strong>
+                    <span>Extract JSON object from model response. Strip markdown fences if present.</span>
+                  </div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-num">2</div>
+                  <div class="rule-body">
+                    <strong>Validate label</strong>
+                    <span>Confirm <code>label</code> matches one of the defined category names exactly.</span>
+                  </div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-num">3</div>
+                  <div class="rule-body">
+                    <strong>Validate confidence</strong>
+                    <span>Confirm <code>confidence</code> is an integer between 0 and 100 inclusive.</span>
+                  </div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-num">4</div>
+                  <div class="rule-body">
+                    <strong>Retry on failure</strong>
+                    <span>If parse or validation fails, send repair prompt with the error. Max 2 retries.</span>
+                  </div>
+                </div>
+                <div class="rule-card">
+                  <div class="rule-num">5</div>
+                  <div class="rule-body">
+                    <strong>Flag unresolved</strong>
+                    <span>If still invalid after retries, set label to <code>needs_review</code> and log the raw response.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: Results Viewer                                        -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page" id="tool-results">
+        <div class="tool-header">
+          <div>
+            <h1>Results Viewer</h1>
+            <p class="tool-desc">Browse, filter, and export results from previous pipeline runs.</p>
+          </div>
+          <div class="tool-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="showToast('CSV exported')">Export CSV</button>
+            <button class="btn btn-outline btn-sm" onclick="showToast('JSONL exported')">Export JSONL</button>
+            <button class="btn btn-primary btn-sm" onclick="showToast('Bundle exported')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"/><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/></svg>
+              Reproducibility Bundle
+            </button>
+          </div>
+        </div>
+        <div class="tool-body">
+          <!-- Run selector -->
+          <div class="rv-selector">
+            <div class="fg cols-4">
+              <div class="f"><label>Pipeline run</label>
+                <select>
+                  <option selected>MI Coding — Feb 26, 2026 14:32</option>
+                  <option>MI Coding — Feb 25, 2026 09:15</option>
+                  <option>Empathy Rating — Feb 24, 2026 11:08</option>
+                </select>
+              </div>
+              <div class="f"><label>Filter by label</label>
+                <select><option selected>All labels</option><option>Reflection</option><option>Open Question</option><option>Affirmation</option><option>Info Giving</option><option>Closed Question</option></select>
+              </div>
+              <div class="f"><label>Confidence threshold</label>
+                <div class="flex-row" style="gap:8px">
+                  <input type="range" min="0" max="100" value="0" id="rv-thresh" style="flex:1">
+                  <span class="fv" data-slider="rv-thresh">&ge; 0%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Stats -->
+          <div class="stat-row stat-row-4">
+            <div class="stat"><div class="stat-v">247</div><div class="stat-l">Total Episodes</div></div>
+            <div class="stat"><div class="stat-v">3</div><div class="stat-l">Models Used</div></div>
+            <div class="stat"><div class="stat-v">82%</div><div class="stat-l">Avg Confidence</div></div>
+            <div class="stat"><div class="stat-v">Reflection</div><div class="stat-l">Most Common</div></div>
+          </div>
+          <!-- Charts row -->
+          <div class="rv-charts">
+            <div class="res-section">
+              <div class="res-section-h">Label Distribution</div>
+              <div class="dist">
+                <div class="dist-r"><span class="dist-l">Reflection</span><div class="dist-t"><div class="dist-f" style="width:35%"></div></div><span class="dist-n">86</span></div>
+                <div class="dist-r"><span class="dist-l">Open Question</span><div class="dist-t"><div class="dist-f" style="width:28%"></div></div><span class="dist-n">69</span></div>
+                <div class="dist-r"><span class="dist-l">Affirmation</span><div class="dist-t"><div class="dist-f" style="width:18%"></div></div><span class="dist-n">45</span></div>
+                <div class="dist-r"><span class="dist-l">Info Giving</span><div class="dist-t"><div class="dist-f" style="width:10%"></div></div><span class="dist-n">24</span></div>
+                <div class="dist-r"><span class="dist-l">Closed Question</span><div class="dist-t"><div class="dist-f" style="width:4%"></div></div><span class="dist-n">9</span></div>
+                <div class="dist-r"><span class="dist-l">Confrontation</span><div class="dist-t"><div class="dist-f" style="width:1.5%"></div></div><span class="dist-n">4</span></div>
+              </div>
+            </div>
+            <div class="res-section">
+              <div class="res-section-h">Confidence Distribution</div>
+              <div class="dist">
+                <div class="dist-r"><span class="dist-l">90–100%</span><div class="dist-t"><div class="dist-f" style="width:38%"></div></div><span class="dist-n">94</span></div>
+                <div class="dist-r"><span class="dist-l">70–89%</span><div class="dist-t"><div class="dist-f" style="width:42%"></div></div><span class="dist-n">104</span></div>
+                <div class="dist-r"><span class="dist-l">50–69%</span><div class="dist-t"><div class="dist-f" style="width:16%"></div></div><span class="dist-n">39</span></div>
+                <div class="dist-r"><span class="dist-l">&lt; 50%</span><div class="dist-t"><div class="dist-f dist-warn" style="width:4%"></div></div><span class="dist-n">10</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Full results table -->
+          <div class="res-section">
+            <div class="res-section-h">
+              <span>Episode Details</span>
+              <span class="res-section-count">247 episodes &middot; Showing 1-10</span>
+            </div>
+            <div class="table-wrap" style="border:none;border-radius:0"><table class="tbl tbl-compact res-tbl">
+              <thead><tr><th>Episode ID</th><th>Speaker</th><th>Content</th><th>Encoded Label</th><th>Confidence</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">EP001</td><td>therapist</td><td class="td-content">Can you tell me more about how that made you feel?</td><td><span class="pill lbl">Open Question</span></td><td class="c">92%</td></tr>
+                <tr><td class="mono">EP003</td><td>therapist</td><td class="td-content">It sounds like that situation triggered a strong emotional response.</td><td><span class="pill lbl">Reflection</span></td><td class="c">91%</td></tr>
+                <tr><td class="mono">EP005</td><td>therapist</td><td class="td-content">That's an important connection. Let's explore that.</td><td><span class="pill lbl">Affirmation</span></td><td class="c">78%</td></tr>
+                <tr><td class="mono">EP007</td><td>therapist</td><td class="td-content">How does that pattern show up in your current relationships?</td><td><span class="pill lbl">Open Question</span></td><td class="c">60%</td></tr>
+                <tr><td class="mono">EP009</td><td>therapist</td><td class="td-content">That withdrawal is a protective mechanism.</td><td><span class="pill lbl">Info Giving</span></td><td class="c">45%</td></tr>
+              </tbody>
+            </table></div>
+            <div class="tbl-footer">
+              <span class="hint">Showing 5 of 247 episodes</span>
+              <div class="pagination">
+                <button class="btn btn-ghost btn-xs" disabled>&larr; Prev</button>
+                <span class="page-indicator">Page 1 of 25</span>
+                <button class="btn btn-ghost btn-xs">Next &rarr;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: Results Analysis                                        -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page" id="tool-analysis">
+        <div class="tool-header">
+          <div>
+            <h1>Results Analysis</h1>
+            <p class="tool-desc">Automated diagnostics and insights from your encoding results. Surface patterns, anomalies, and areas worth investigating.</p>
+          </div>
+          <div class="tool-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="showToast('Report exported')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"/><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/></svg>
+              Export Report
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="showToast('Running analysis…')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.841A1.5 1.5 0 004 4.12V15.88a1.5 1.5 0 002.3 1.28l9.344-5.88a1.5 1.5 0 000-2.56L6.3 2.84z"/></svg>
+              Run Analysis
+            </button>
+          </div>
+        </div>
+        <div class="tool-body">
+          <!-- Run selector -->
+          <div class="rv-selector">
+            <div class="fg cols-3">
+              <div class="f"><label>Pipeline run</label>
+                <select>
+                  <option selected>MI Coding &mdash; Feb 26, 2026 14:32</option>
+                  <option>MI Coding &mdash; Feb 25, 2026 09:15</option>
+                  <option>Empathy Rating &mdash; Feb 24, 2026 11:08</option>
+                </select>
+              </div>
+              <div class="f"><label>Analysis depth</label>
+                <select><option selected>Standard</option><option>Deep (slower)</option></select>
+              </div>
+              <div class="f"><label>Focus variable</label>
+                <select><option selected>All variables</option><option>Reflection</option><option>Open Question</option><option>Affirmation</option></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary stats -->
+          <div class="stat-row stat-row-4">
+            <div class="stat"><div class="stat-v">247</div><div class="stat-l">Episodes Analyzed</div></div>
+            <div class="stat"><div class="stat-v">6</div><div class="stat-l">Variables</div></div>
+            <div class="stat"><div class="stat-v">3</div><div class="stat-l">Flags Raised</div></div>
+            <div class="stat"><div class="stat-v">82%</div><div class="stat-l">Overall Confidence</div></div>
+          </div>
+
+          <!-- Findings grid -->
+          <div class="analysis-grid">
+            <!-- Low confidence cluster -->
+            <div class="analysis-card analysis-warn">
+              <div class="analysis-card-h">
+                <span class="analysis-icon warn">!</span>
+                <div>
+                  <strong>Low-Confidence Cluster Detected</strong>
+                  <span class="analysis-severity pill mid">Investigate</span>
+                </div>
+              </div>
+              <div class="analysis-card-body">
+                <p>18 episodes (7.3%) have confidence below 50%. These are concentrated in episodes where therapist utterances are short (&lt;10 words) and ambiguous between <strong>Reflection</strong> and <strong>Affirmation</strong>.</p>
+                <div class="analysis-detail">
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Affected episodes</span>
+                    <span class="mono">EP009, EP023, EP041, EP067, EP089, EP112, +12 more</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Avg confidence</span>
+                    <span class="mono">38%</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Recommendation</span>
+                    <span>Review codebook boundary between Reflection and Affirmation for short utterances. Consider adding disambiguation examples.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Label imbalance -->
+            <div class="analysis-card analysis-info">
+              <div class="analysis-card-h">
+                <span class="analysis-icon info">i</span>
+                <div>
+                  <strong>Label Distribution Skew</strong>
+                  <span class="analysis-severity pill lbl">Note</span>
+                </div>
+              </div>
+              <div class="analysis-card-body">
+                <p><strong>Reflection</strong> accounts for 34.8% of all labels, while <strong>Confrontation</strong> only 1.6%. This skew is expected for MI-adherent sessions but may affect model calibration for rare categories.</p>
+                <div class="analysis-detail">
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Most common</span>
+                    <span>Reflection (86), Open Question (69)</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Least common</span>
+                    <span>Confrontation (4), Closed Question (9)</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Recommendation</span>
+                    <span>Consider increasing runs for rare categories or using stratified sampling to improve reliability.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model disagreement -->
+            <div class="analysis-card analysis-warn">
+              <div class="analysis-card-h">
+                <span class="analysis-icon warn">!</span>
+                <div>
+                  <strong>Model Disagreement Pattern</strong>
+                  <span class="analysis-severity pill mid">Investigate</span>
+                </div>
+              </div>
+              <div class="analysis-card-body">
+                <p>GPT-4o and Claude Sonnet 4 disagree on 23 episodes (9.3%), primarily on the <strong>Open Question vs Closed Question</strong> boundary. Gemini 2.0 Flash tends to side with GPT-4o in these cases.</p>
+                <div class="analysis-detail">
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Top confusion pair</span>
+                    <span>Open Question &harr; Closed Question (14 episodes)</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Second confusion</span>
+                    <span>Reflection &harr; Affirmation (6 episodes)</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Recommendation</span>
+                    <span>Add explicit question-type boundary rules to the prompt. Consider whether "How about..." questions should be open or closed.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Confidence by category -->
+            <div class="analysis-card">
+              <div class="analysis-card-h">
+                <span class="analysis-icon ok">&#10003;</span>
+                <div>
+                  <strong>Per-Category Confidence Breakdown</strong>
+                  <span class="analysis-severity pill good">Healthy</span>
+                </div>
+              </div>
+              <div class="analysis-card-body">
+                <div class="dist">
+                  <div class="dist-r"><span class="dist-l">Reflection</span><div class="dist-t"><div class="dist-f" style="width:87%"></div></div><span class="dist-n">87%</span></div>
+                  <div class="dist-r"><span class="dist-l">Open Question</span><div class="dist-t"><div class="dist-f" style="width:85%"></div></div><span class="dist-n">85%</span></div>
+                  <div class="dist-r"><span class="dist-l">Affirmation</span><div class="dist-t"><div class="dist-f" style="width:79%"></div></div><span class="dist-n">79%</span></div>
+                  <div class="dist-r"><span class="dist-l">Info Giving</span><div class="dist-t"><div class="dist-f" style="width:76%"></div></div><span class="dist-n">76%</span></div>
+                  <div class="dist-r"><span class="dist-l">Closed Question</span><div class="dist-t"><div class="dist-f dist-warn" style="width:62%"></div></div><span class="dist-n">62%</span></div>
+                  <div class="dist-r"><span class="dist-l">Confrontation</span><div class="dist-t"><div class="dist-f dist-warn" style="width:55%"></div></div><span class="dist-n">55%</span></div>
+                </div>
+                <span class="hint" style="margin-top:8px">Categories below 70% average confidence are flagged for review.</span>
+              </div>
+            </div>
+
+            <!-- Temporal pattern -->
+            <div class="analysis-card analysis-info">
+              <div class="analysis-card-h">
+                <span class="analysis-icon info">i</span>
+                <div>
+                  <strong>Sequence Pattern Detected</strong>
+                  <span class="analysis-severity pill lbl">Insight</span>
+                </div>
+              </div>
+              <div class="analysis-card-body">
+                <p><strong>Open Questions</strong> are 3.2x more likely to appear in the first quarter of sessions, while <strong>Reflections</strong> increase steadily toward session end. This matches typical MI session flow.</p>
+                <div class="analysis-detail">
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Early session (Q1)</span>
+                    <span>Open Question (42%), Closed Question (18%), Reflection (22%)</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Late session (Q4)</span>
+                    <span>Reflection (41%), Affirmation (24%), Info Giving (15%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Prompt quality -->
+            <div class="analysis-card analysis-warn">
+              <div class="analysis-card-h">
+                <span class="analysis-icon warn">!</span>
+                <div>
+                  <strong>Codebook Coverage Gap</strong>
+                  <span class="analysis-severity pill mid">Investigate</span>
+                </div>
+              </div>
+              <div class="analysis-card-body">
+                <p>12 episodes contain therapist <em>silence</em> or <em>minimal encouragers</em> ("mm-hmm", "go on") that don't clearly map to any category. Models assigned these inconsistently across Reflection (5), Affirmation (4), and Info Giving (3).</p>
+                <div class="analysis-detail">
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Affected episodes</span>
+                    <span class="mono">EP015, EP033, EP048, EP071, EP094, EP103, +6 more</span>
+                  </div>
+                  <div class="analysis-detail-row">
+                    <span class="analysis-detail-label">Recommendation</span>
+                    <span>Consider adding a "Minimal Encourager" category or explicitly defining how to handle these in the codebook.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: Script Generator                                      -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page" id="tool-scripts">
+        <div class="tool-header">
+          <div>
+            <h1>Script Generator</h1>
+            <p class="tool-desc">Export your pipeline configuration as a standalone, reproducible Python script.</p>
+          </div>
+          <div class="tool-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="showToast('Copied to clipboard')">Copy Script</button>
+            <button class="btn btn-primary btn-sm" onclick="showToast('Downloaded pipeline_run.py')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"/><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/></svg>
+              Download .py
+            </button>
+          </div>
+        </div>
+        <div class="split-layout">
+          <!-- Left: Config summary -->
+          <div class="split-left split-narrow">
+            <div class="tp-section">
+              <div class="sub-label">Source Configuration</div>
+              <div class="f"><label>Pipeline run</label>
+                <select><option selected>MI Coding — Feb 26, 2026</option><option>Empathy Rating — Feb 24, 2026</option><option>Custom configuration...</option></select>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Included Components</div>
+              <div class="checklist">
+                <label class="check-item"><input type="checkbox" checked><span>Provider setup &amp; API keys</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Codebook / schema definition</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Prompt templates</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Data loader (CSV/JSONL)</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Multi-model runner</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Voting / aggregation</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Results export</span></label>
+                <label class="check-item"><input type="checkbox"><span>Checkpoint / resume logic</span></label>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Script Options</div>
+              <div class="f"><label>Language</label>
+                <select><option selected>Python 3.10+</option><option>Python 3.8+ (compat)</option></select>
+              </div>
+              <div class="f"><label>LLM library</label>
+                <select><option selected>litellm</option><option>openai + anthropic + google SDKs</option><option>Raw HTTP requests</option></select>
+              </div>
+              <div class="f"><label>Output format</label>
+                <select><option selected>Single file (.py)</option><option>Package (directory)</option></select>
+              </div>
+              <div class="toggle-inline" style="padding-top:4px">
+                <span>Include inline comments</span>
+                <label class="sw"><input type="checkbox" checked><span class="sw-track"><span class="sw-knob"></span></span></label>
+              </div>
+              <div class="toggle-inline" style="padding-top:8px">
+                <span>Mask API keys</span>
+                <label class="sw"><input type="checkbox" checked><span class="sw-track"><span class="sw-knob"></span></span></label>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Manifest Hash</div>
+              <div class="manifest-hash">
+                <code>sha256:a3f8c2...d91e</code>
+                <span class="hint">Deterministic hash of config + schema + prompt</span>
+              </div>
+            </div>
+          </div>
+          <!-- Right: Code preview -->
+          <div class="split-right">
+            <div class="code-header">
+              <span class="code-filename">pipeline_run.py</span>
+              <div class="code-meta">
+                <span class="pill lbl">Python</span>
+                <span class="hint">~142 lines</span>
+              </div>
+            </div>
+            <pre class="code-block code-full">#!/usr/bin/env python3
+"""
+LLM Measurement Pipeline — MI Communication Coding
+Generated by SSELab LLM Measurement Toolkit
+Config hash: sha256:a3f8c2...d91e
+
+Usage:
+    pip install litellm pandas
+    export OPENAI_API_KEY=sk-...
+    export ANTHROPIC_API_KEY=sk-ant-...
+    export GOOGLE_API_KEY=AI...
+    python pipeline_run.py --input data.csv --output results.jsonl
+"""
+
+import json
+import hashlib
+import argparse
+from pathlib import Path
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pandas as pd
+import litellm
+
+# ── Configuration ────────────────────────────────────────
+TASK_NAME = "MI Communication Coding"
+UNIT = "episode"
+OUTPUT_TYPE = "classify"
+
+MODELS = [
+    {"provider": "openai", "model": "gpt-4o", "weight": 2},
+    {"provider": "anthropic", "model": "claude-sonnet-4", "weight": 1},
+    {"provider": "google", "model": "gemini-2.0-flash", "weight": 1},
+]
+
+RUNS_PER_MODEL = 3
+TEMPERATURE = 0.0
+SEED = 42
+MAX_TOKENS = 1024
+CONCURRENCY = 5
+MAX_RETRIES = 2
+
+# ── Codebook ─────────────────────────────────────────────
+CATEGORIES = {
+    "Reflection": "Mirrors or paraphrases client's statement",
+    "Open Question": "Exploratory, non-yes/no question",
+    "Affirmation": "Acknowledges client strength or effort",
+    "Info Giving": "Provides factual info or psychoeducation",
+    "Closed Question": "Yes/no or limited-choice question",
+    "Confrontation": "Challenges, disagrees, or argues with client",
+}
+
+# ── Prompts ──────────────────────────────────────────────
+SYSTEM_PROMPT = """You are an expert behavioral coder trained in
+psychotherapy process research. Classify therapist utterances into
+MI communication categories. Output valid JSON only."""
+
+USER_TEMPLATE = """Classify this therapist utterance into one category.
+
+Categories:
+{categories}
+
+Episode: {episode_text}
+
+JSON: {{"label": "&lt;category&gt;", "confidence": &lt;0-100&gt;}}"""
+
+# ── Output Schema ────────────────────────────────────────
+OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "label": {"type": "string", "enum": list(CATEGORIES.keys())},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+    },
+    "required": ["label", "confidence"],
+}
+
+
+def classify_episode(episode_text: str, model_cfg: dict) -> dict:
+    """Send a single episode to a single model and parse the response."""
+    categories_str = "\n".join(
+        f"- {k}: {v}" for k, v in CATEGORIES.items()
+    )
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": USER_TEMPLATE.format(
+            categories=categories_str, episode_text=episode_text
+        )},
+    ]
+    resp = litellm.completion(
+        model=model_cfg["model"],
+        messages=messages,
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
+        seed=SEED,
+    )
+    return json.loads(resp.choices[0].message.content)
+
+
+def weighted_majority(outputs: list[dict], models: list[dict]) -> dict:
+    """Aggregate outputs via weighted majority vote."""
+    weighted_counts = Counter()
+    confidences = {}
+    for o in outputs:
+        w = next(m["weight"] for m in models if m["model"] == o["model"])
+        weighted_counts[o["label"]] += w
+        confidences.setdefault(o["label"], []).append(o["confidence"])
+    winner = weighted_counts.most_common(1)[0][0]
+    avg_conf = sum(confidences[winner]) / len(confidences[winner])
+    return {
+        "label": winner,
+        "confidence": round(avg_conf, 1),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", default="results.jsonl")
+    args = parser.parse_args()
+
+    df = pd.read_csv(args.input)
+    results = []
+
+    with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        for _, row in df.iterrows():
+            outputs = []
+            for model in MODELS:
+                for _ in range(RUNS_PER_MODEL):
+                    result = classify_episode(row["content"], model)
+                    outputs.append({**result, "model": model["model"]})
+            voted = weighted_majority(outputs, MODELS)
+            results.append({
+                "episode_id": row["episode_id"],
+                **voted,
+                "model_outputs": outputs,
+            })
+
+    Path(args.output).write_text(
+        "\n".join(json.dumps(r) for r in results)
+    )
+    print(f"Done. {len(results)} episodes → {args.output}")
+
+
+if __name__ == "__main__":
+    main()</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: Category Generator                                     -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page" id="tool-catgen">
+        <div class="tool-header">
+          <div>
+            <h1>Category Generator</h1>
+            <p class="tool-desc">Automatically generate coding categories, tags, rating rubrics, or extraction schemas from your research goals.</p>
+          </div>
+          <div class="tool-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="showToast('Sent to Codebook Builder')">Send to Codebook</button>
+            <button class="btn btn-outline btn-sm" onclick="showToast('Exported as JSON')">Export JSON</button>
+            <button class="btn btn-primary btn-sm" onclick="showToast('Generating categories…')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192z"/></svg>
+              Generate
+            </button>
+          </div>
+        </div>
+        <div class="split-layout">
+          <!-- Left: Inputs -->
+          <div class="split-left">
+            <div class="tp-section">
+              <div class="sub-label">Research Context</div>
+              <div class="f"><label>Research goals</label>
+                <textarea rows="3" placeholder="Describe what you want to measure…">Classify therapist communication behaviors during motivational interviewing sessions into standard MI-consistent and MI-inconsistent categories for behavioral coding research.</textarea>
+              </div>
+              <div class="f"><label>Hypothesis (optional)</label>
+                <textarea rows="2" placeholder="What patterns do you expect to find?">Therapist reflections and open questions are associated with higher client engagement in subsequent turns.</textarea>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Generation Settings</div>
+              <div class="fg cols-2">
+                <div class="f"><label>Output type</label>
+                  <select id="catgen-type">
+                    <option value="classify" selected>Classify (single label)</option>
+                    <option value="tag">Tag (multi-label)</option>
+                    <option value="rate">Rate (scaled)</option>
+                    <option value="extract">Extract (structured)</option>
+                  </select>
+                </div>
+                <div class="f"><label>Target count</label>
+                  <div class="flex-row" style="gap:8px">
+                    <input type="range" min="3" max="20" value="6" id="catgen-count" style="flex:1">
+                    <span class="fv" data-slider="catgen-count">6</span>
+                  </div>
+                </div>
+              </div>
+              <div class="fg cols-2">
+                <div class="f"><label>Domain</label>
+                  <input type="text" value="Psychotherapy / Motivational Interviewing" placeholder="e.g., Healthcare, Education, Legal…">
+                </div>
+                <div class="f"><label>Generator model</label>
+                  <select><option selected>GPT-4o</option><option>Claude 3.5 Sonnet</option><option>Gemini 1.5 Pro</option></select>
+                </div>
+              </div>
+              <div class="f"><label>Reference materials (optional)</label>
+                <textarea rows="2" class="mono-textarea" placeholder="Paste existing coding manual excerpts, category lists, or relevant definitions…">MITI 4.2 behavioral codes: Giving Information (GI), Persuade (Per), Persuade with Permission (PwP), Question (Q), Simple Reflection (SR), Complex Reflection (CR), Affirm (AF), Seek Collaboration (SeC), Emphasize Autonomy (EA), Confront (Con).</textarea>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Sample Episodes (optional)</div>
+              <div class="f"><textarea rows="3" class="mono-textarea" placeholder="Paste 2-3 example episodes so the AI can tailor categories to your data…">EP1: "It sounds like you've been feeling overwhelmed lately."
+EP2: "What would it look like if things were different?"
+EP3: "You showed real courage in bringing that up today."</textarea></div>
+              <span class="hint">Providing sample episodes helps generate more relevant categories.</span>
+            </div>
+          </div>
+          <!-- Right: Generated Output -->
+          <div class="split-right">
+            <div class="tp-section">
+              <div class="sub-label">Generated Categories</div>
+              <span class="hint" style="margin-bottom:10px;display:block">Based on your goals, hypothesis, domain, and MITI 4.2 reference.</span>
+              <div class="catgen-results">
+                <div class="catgen-card">
+                  <div class="catgen-card-h"><span class="catgen-num">1</span><strong>Reflection</strong></div>
+                  <div class="catgen-card-body">
+                    <div class="catgen-field"><span class="catgen-label">Definition</span>Therapist mirrors, paraphrases, or summarizes the client's statement to demonstrate understanding.</div>
+                    <div class="catgen-field"><span class="catgen-label">Include</span>Simple reflections, complex reflections, restatements, empathic reflections, summaries.</div>
+                    <div class="catgen-field"><span class="catgen-label">Exclude</span>Direct questions, advice-giving, interpretations not grounded in client's words.</div>
+                    <div class="catgen-field"><span class="catgen-label">Example</span><em>"It sounds like you felt frustrated when that happened."</em></div>
+                  </div>
+                </div>
+                <div class="catgen-card">
+                  <div class="catgen-card-h"><span class="catgen-num">2</span><strong>Open Question</strong></div>
+                  <div class="catgen-card-body">
+                    <div class="catgen-field"><span class="catgen-label">Definition</span>Asks an exploratory, non-yes/no question that invites elaboration and self-reflection.</div>
+                    <div class="catgen-field"><span class="catgen-label">Include</span>How/what/tell-me-more questions, exploring questions, hypothetical questions.</div>
+                    <div class="catgen-field"><span class="catgen-label">Exclude</span>Closed yes/no questions, leading questions, rhetorical questions.</div>
+                    <div class="catgen-field"><span class="catgen-label">Example</span><em>"What would it look like if things were different?"</em></div>
+                  </div>
+                </div>
+                <div class="catgen-card">
+                  <div class="catgen-card-h"><span class="catgen-num">3</span><strong>Affirmation</strong></div>
+                  <div class="catgen-card-body">
+                    <div class="catgen-field"><span class="catgen-label">Definition</span>Acknowledges client's strengths, efforts, or positive behaviors.</div>
+                    <div class="catgen-field"><span class="catgen-label">Include</span>Compliments on effort, recognition of courage, highlighting strengths, expressing confidence.</div>
+                    <div class="catgen-field"><span class="catgen-label">Exclude</span>Generic praise ("good job"), flattery, approval of harmful behaviors.</div>
+                    <div class="catgen-field"><span class="catgen-label">Example</span><em>"You showed real courage in bringing that up today."</em></div>
+                  </div>
+                </div>
+                <div class="catgen-card">
+                  <div class="catgen-card-h"><span class="catgen-num">4</span><strong>Information Giving</strong></div>
+                  <div class="catgen-card-body">
+                    <div class="catgen-field"><span class="catgen-label">Definition</span>Provides factual information, psychoeducation, or feedback with permission.</div>
+                    <div class="catgen-field"><span class="catgen-label">Include</span>Explaining concepts, sharing research findings, providing feedback when invited.</div>
+                    <div class="catgen-field"><span class="catgen-label">Exclude</span>Unsolicited advice, personal opinions, persuasion without permission.</div>
+                    <div class="catgen-field"><span class="catgen-label">Example</span><em>"Research shows that anxiety often manifests as physical tension."</em></div>
+                  </div>
+                </div>
+                <div class="catgen-card">
+                  <div class="catgen-card-h"><span class="catgen-num">5</span><strong>Autonomy Support</strong></div>
+                  <div class="catgen-card-body">
+                    <div class="catgen-field"><span class="catgen-label">Definition</span>Emphasizes client's right and ability to make their own decisions.</div>
+                    <div class="catgen-field"><span class="catgen-label">Include</span>Statements supporting choice, emphasizing autonomy, acknowledging control.</div>
+                    <div class="catgen-field"><span class="catgen-label">Exclude</span>Directing behavior, prescriptive statements, removing choice.</div>
+                    <div class="catgen-field"><span class="catgen-label">Example</span><em>"Ultimately, this is your decision to make."</em></div>
+                  </div>
+                </div>
+                <div class="catgen-card">
+                  <div class="catgen-card-h"><span class="catgen-num">6</span><strong>Confrontation</strong></div>
+                  <div class="catgen-card-body">
+                    <div class="catgen-field"><span class="catgen-label">Definition</span>Challenges, disagrees, argues, shames, or directly opposes the client (MI-inconsistent).</div>
+                    <div class="catgen-field"><span class="catgen-label">Include</span>Arguing, correcting, blaming, shaming, warning, threatening.</div>
+                    <div class="catgen-field"><span class="catgen-label">Exclude</span>Respectful questioning, gentle probes, collaborative disagreement.</div>
+                    <div class="catgen-field"><span class="catgen-label">Example</span><em>"You need to stop making excuses and take this seriously."</em></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="tp-section" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+              <div class="sub-label">Codebook</div>
+              <span class="hint" style="margin-bottom:10px;display:block">Convert the generated categories into a structured codebook with variable definitions, output types, and examples ready for your pipeline.</span>
+              <button class="btn btn-primary btn-sm" onclick="showToast('Generating codebook from categories…')" style="width:100%">
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 16.82A7.462 7.462 0 0115 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0018 15.06v-11a.75.75 0 00-.546-.721A9.006 9.006 0 0015 3a8.999 8.999 0 00-4.25 1.065v12.755zM9.25 4.065A8.999 8.999 0 005 3c-.85 0-1.673.118-2.454.339A.75.75 0 002 4.06v11a.75.75 0 00.954.721A7.506 7.506 0 015 15.5c1.579 0 3.042.487 4.25 1.32V4.065z"/></svg>
+                Generate Codebook
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <!-- TOOL: LLM vs Humans                                    -->
+      <!-- ════════════════════════════════════════════════════════════ -->
+      <div class="tool-page" id="tool-compare">
+        <div class="tool-header">
+          <div>
+            <h1>LLM vs Humans</h1>
+            <p class="tool-desc">Upload human-coded gold standard data and compare against LLM encoding results to measure accuracy, reliability, and per-category performance.</p>
+          </div>
+          <div class="tool-header-actions">
+            <button class="btn btn-outline btn-sm" onclick="showToast('Exported comparison report')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"/><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/></svg>
+              Export Report
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="showToast('Running comparison…')">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.841A1.5 1.5 0 004 4.12V15.88a1.5 1.5 0 002.3 1.28l9.344-5.88a1.5 1.5 0 000-2.56L6.3 2.84z"/></svg>
+              Run Comparison
+            </button>
+          </div>
+        </div>
+        <div class="split-layout">
+          <!-- Left: Config -->
+          <div class="split-left">
+            <div class="tp-section">
+              <div class="sub-label">LLM Encoding Run</div>
+              <div class="f"><label>Pipeline run to compare</label>
+                <select>
+                  <option selected>MI Coding — Feb 26, 2026 14:22</option>
+                  <option>Empathy Rating — Feb 24, 2026 11:08</option>
+                  <option>Custom upload…</option>
+                </select>
+              </div>
+              <div class="fg cols-2">
+                <div class="f"><label>Episodes</label>
+                  <input type="text" value="247" disabled class="mono-input">
+                </div>
+                <div class="f"><label>Output type</label>
+                  <input type="text" value="classify" disabled class="mono-input">
+                </div>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Human-Coded Data</div>
+              <div class="dropzone" id="compare-dropzone" onclick="showToast('Loading mock human data…'); document.getElementById('compare-dropzone').classList.add('hidden'); document.getElementById('compare-upload-details').classList.remove('hidden');">
+                <div class="dropzone-icon">
+                  <svg width="28" height="28" viewBox="0 0 20 20" fill="currentColor"><path d="M9.25 13.25a.75.75 0 001.5 0V4.636l2.955 3.129a.75.75 0 001.09-1.03l-4.25-4.5a.75.75 0 00-1.09 0l-4.25 4.5a.75.75 0 101.09 1.03L9.25 4.636v8.614z"/><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/></svg>
+                </div>
+                <div class="dropzone-text">Upload CSV with human codes</div>
+                <div class="dropzone-hint">Must include episode_id and human_label columns</div>
+              </div>
+              <div id="compare-upload-details" class="hidden">
+                <div class="upload-file">
+                  <span class="upload-file-name">human_codes_mi.csv</span>
+                  <span class="upload-file-meta">247 rows &middot; 14 KB</span>
+                </div>
+                <div class="fg cols-2" style="margin-top:8px">
+                  <div class="f"><label>Episode ID column</label>
+                    <select><option selected>episode_id</option></select>
+                  </div>
+                  <div class="f"><label>Human label column</label>
+                    <select><option selected>human_label</option><option>coder_label</option></select>
+                  </div>
+                </div>
+                <span class="hint" style="margin-top:6px">247 matched episodes between LLM and human data.</span>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Comparison Settings</div>
+              <div class="f"><label>Metrics to compute</label></div>
+              <div class="checklist">
+                <label class="check-item"><input type="checkbox" checked><span>Accuracy</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Cohen's Kappa</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Precision (macro)</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Recall (macro)</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>F1 Score (macro)</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Confusion matrix</span></label>
+                <label class="check-item"><input type="checkbox" checked><span>Per-category breakdown</span></label>
+              </div>
+            </div>
+          </div>
+          <!-- Right: Results -->
+          <div class="split-right">
+            <div class="tp-section">
+              <div class="sub-label">Overall Metrics</div>
+              <div class="stat-row stat-row-4">
+                <div class="stat"><div class="stat-v">84.2%</div><div class="stat-l">Accuracy</div></div>
+                <div class="stat"><div class="stat-v">0.78</div><div class="stat-l">Cohen's Kappa</div></div>
+                <div class="stat"><div class="stat-v">0.82</div><div class="stat-l">Precision (macro)</div></div>
+                <div class="stat"><div class="stat-v">0.80</div><div class="stat-l">Recall (macro)</div></div>
+              </div>
+              <div class="stat-row stat-row-4" style="margin-top:8px">
+                <div class="stat"><div class="stat-v">0.81</div><div class="stat-l">F1 (macro)</div></div>
+                <div class="stat"><div class="stat-v">247</div><div class="stat-l">Episodes Compared</div></div>
+                <div class="stat"><div class="stat-v">208</div><div class="stat-l">Agreements</div></div>
+                <div class="stat"><div class="stat-v">39</div><div class="stat-l">Disagreements</div></div>
+              </div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Confusion Matrix</div>
+              <span class="hint" style="margin-bottom:8px;display:block">Rows = Human labels, Columns = LLM labels</span>
+              <div class="table-wrap"><table class="tbl tbl-compact cm-table">
+                <thead>
+                  <tr><th class="cm-corner"></th><th class="cm-col-h">Reflection</th><th class="cm-col-h">Open Q</th><th class="cm-col-h">Affirm</th><th class="cm-col-h">Info</th><th class="cm-col-h">Closed Q</th><th class="cm-col-h">Confront</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="cm-row-h">Reflection</td><td class="cm-diag">74</td><td class="cm-off">4</td><td class="cm-off">6</td><td class="cm-off">1</td><td class="cm-off">0</td><td class="cm-off">1</td></tr>
+                  <tr><td class="cm-row-h">Open Q</td><td class="cm-off">3</td><td class="cm-diag">62</td><td class="cm-off">0</td><td class="cm-off">1</td><td class="cm-off">3</td><td class="cm-off">0</td></tr>
+                  <tr><td class="cm-row-h">Affirm</td><td class="cm-off">5</td><td class="cm-off">1</td><td class="cm-diag">37</td><td class="cm-off">2</td><td class="cm-off">0</td><td class="cm-off">0</td></tr>
+                  <tr><td class="cm-row-h">Info</td><td class="cm-off">2</td><td class="cm-off">1</td><td class="cm-off">1</td><td class="cm-diag">19</td><td class="cm-off">1</td><td class="cm-off">0</td></tr>
+                  <tr><td class="cm-row-h">Closed Q</td><td class="cm-off">0</td><td class="cm-off">2</td><td class="cm-off">0</td><td class="cm-off">1</td><td class="cm-diag">6</td><td class="cm-off">0</td></tr>
+                  <tr><td class="cm-row-h">Confront</td><td class="cm-off">1</td><td class="cm-off">0</td><td class="cm-off">1</td><td class="cm-off">0</td><td class="cm-off">0</td><td class="cm-diag">2</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Per-Category Metrics</div>
+              <div class="table-wrap"><table class="tbl tbl-compact">
+                <thead><tr><th>Category</th><th>Human Count</th><th>LLM Count</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+                <tbody>
+                  <tr><td>Reflection</td><td class="c">86</td><td class="c">85</td><td class="c">0.87</td><td class="c">0.86</td><td class="c">0.87</td></tr>
+                  <tr><td>Open Question</td><td class="c">69</td><td class="c">70</td><td class="c">0.89</td><td class="c">0.90</td><td class="c">0.89</td></tr>
+                  <tr><td>Affirmation</td><td class="c">45</td><td class="c">45</td><td class="c">0.82</td><td class="c">0.82</td><td class="c">0.82</td></tr>
+                  <tr><td>Info Giving</td><td class="c">24</td><td class="c">24</td><td class="c">0.79</td><td class="c">0.79</td><td class="c">0.79</td></tr>
+                  <tr><td>Closed Question</td><td class="c">9</td><td class="c">10</td><td class="c">0.60</td><td class="c">0.67</td><td class="c">0.63</td></tr>
+                  <tr><td>Confrontation</td><td class="c">4</td><td class="c">3</td><td class="c">0.67</td><td class="c">0.50</td><td class="c">0.57</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+            <div class="tp-section">
+              <div class="sub-label">Disagreements</div>
+              <span class="hint" style="margin-bottom:8px;display:block">Episodes where human and LLM labels differ (39 of 247)</span>
+              <div class="table-wrap"><table class="tbl tbl-compact">
+                <thead><tr><th>Episode ID</th><th>Human Label</th><th>LLM Label</th><th>LLM Confidence</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">EP012</td><td><span class="pill lbl">Reflection</span></td><td><span class="pill lbl">Affirmation</span></td><td class="c">62%</td></tr>
+                  <tr><td class="mono">EP018</td><td><span class="pill lbl">Open Question</span></td><td><span class="pill lbl">Closed Question</span></td><td class="c">55%</td></tr>
+                  <tr><td class="mono">EP024</td><td><span class="pill lbl">Affirmation</span></td><td><span class="pill lbl">Reflection</span></td><td class="c">58%</td></tr>
+                  <tr><td class="mono">EP037</td><td><span class="pill lbl">Info Giving</span></td><td><span class="pill lbl">Affirmation</span></td><td class="c">48%</td></tr>
+                  <tr><td class="mono">EP051</td><td><span class="pill lbl">Confrontation</span></td><td><span class="pill lbl">Reflection</span></td><td class="c">42%</td></tr>
+                </tbody>
+              </table></div>
+              <div class="tbl-footer">
+                <span class="hint">Showing 5 of 39 disagreements</span>
+                <div class="pagination">
+                  <button class="btn btn-ghost btn-xs" disabled>&larr; Prev</button>
+                  <span class="page-indicator">Page 1 of 8</span>
+                  <button class="btn btn-ghost btn-xs">Next &rarr;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- MODEL SELECTION MODAL                 -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="modal-overlay" id="model-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Select &amp; Configure Models</h2>
+        <button class="modal-close" onclick="closeModelModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Left: Model pool -->
+        <div>
+          <div class="model-pool-h">Available Models</div>
+          <div class="model-pool-list">
+            <div class="model-chip selected" data-model="gpt-4o" data-provider="openai" onclick="toggleModelInPool(this)">
+              <span class="chip-add">&#10003;</span> GPT-4o <span class="chip-provider">OpenAI</span>
+            </div>
+            <div class="model-chip" data-model="gpt-4o-mini" data-provider="openai" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> GPT-4o mini <span class="chip-provider">OpenAI</span>
+            </div>
+            <div class="model-chip" data-model="gpt-4.1" data-provider="openai" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> GPT-4.1 <span class="chip-provider">OpenAI</span>
+            </div>
+            <div class="model-chip selected" data-model="claude-sonnet-4" data-provider="anthropic" onclick="toggleModelInPool(this)">
+              <span class="chip-add">&#10003;</span> Claude Sonnet 4 <span class="chip-provider">Anthropic</span>
+            </div>
+            <div class="model-chip" data-model="claude-haiku-3.5" data-provider="anthropic" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> Claude Haiku 3.5 <span class="chip-provider">Anthropic</span>
+            </div>
+            <div class="model-chip selected" data-model="gemini-2.0-flash" data-provider="google" onclick="toggleModelInPool(this)">
+              <span class="chip-add">&#10003;</span> Gemini 2.0 Flash <span class="chip-provider">Google</span>
+            </div>
+            <div class="model-chip" data-model="gemini-2.5-pro" data-provider="google" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> Gemini 2.5 Pro <span class="chip-provider">Google</span>
+            </div>
+            <div class="model-chip" data-model="llama-3.3-70b" data-provider="meta" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> Llama 3.3 70B <span class="chip-provider">Meta</span>
+            </div>
+            <div class="model-chip" data-model="deepseek-v3" data-provider="deepseek" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> DeepSeek V3 <span class="chip-provider">DeepSeek</span>
+            </div>
+            <div class="model-chip" data-model="mistral-large" data-provider="mistral" onclick="toggleModelInPool(this)">
+              <span class="chip-add">+</span> Mistral Large <span class="chip-provider">Mistral</span>
+            </div>
+          </div>
+        </div>
+        <!-- Right: Selected models + params -->
+        <div>
+          <div class="sel-models-h">Selected Models (<span id="modal-sel-count">3</span>)</div>
+          <div class="sel-models-list" id="modal-sel-list">
+            <div class="sel-model-card" data-model="gpt-4o">
+              <div class="sel-model-hdr">
+                <span class="sel-model-name"><span class="sel-model-num">1</span> GPT-4o</span>
+                <button class="sel-model-rm" onclick="removeModelFromModal('gpt-4o')">&times;</button>
+              </div>
+              <div class="sel-model-params">
+                <div class="fg cols-3">
+                  <div class="f"><label>Temp</label><input type="number" value="0" min="0" max="2" step="0.1"></div>
+                  <div class="f"><label>Max tokens</label><input type="number" value="256" min="64" max="16384"></div>
+                  <div class="f"><label>Weight</label><select class="sel-sm"><option value="1">1&times;</option><option value="2" selected>2&times;</option><option value="3">3&times;</option><option value="4">4&times;</option><option value="5">5&times;</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="sel-model-card" data-model="claude-sonnet-4">
+              <div class="sel-model-hdr">
+                <span class="sel-model-name"><span class="sel-model-num">2</span> Claude Sonnet 4</span>
+                <button class="sel-model-rm" onclick="removeModelFromModal('claude-sonnet-4')">&times;</button>
+              </div>
+              <div class="sel-model-params">
+                <div class="fg cols-3">
+                  <div class="f"><label>Temp</label><input type="number" value="0" min="0" max="2" step="0.1"></div>
+                  <div class="f"><label>Max tokens</label><input type="number" value="256" min="64" max="16384"></div>
+                  <div class="f"><label>Weight</label><select class="sel-sm"><option value="1" selected>1&times;</option><option value="2">2&times;</option><option value="3">3&times;</option><option value="4">4&times;</option><option value="5">5&times;</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="sel-model-card" data-model="gemini-2.0-flash">
+              <div class="sel-model-hdr">
+                <span class="sel-model-name"><span class="sel-model-num">3</span> Gemini 2.0 Flash</span>
+                <button class="sel-model-rm" onclick="removeModelFromModal('gemini-2.0-flash')">&times;</button>
+              </div>
+              <div class="sel-model-params">
+                <div class="fg cols-3">
+                  <div class="f"><label>Temp</label><input type="number" value="0" min="0" max="2" step="0.1"></div>
+                  <div class="f"><label>Max tokens</label><input type="number" value="256" min="64" max="16384"></div>
+                  <div class="f"><label>Weight</label><select class="sel-sm"><option value="1" selected>1&times;</option><option value="2">2&times;</option><option value="3">3&times;</option><option value="4">4&times;</option><option value="5">5&times;</option></select></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="agg-info" style="margin:0"><div class="agg-desc">Weighted majority rule &mdash; ties resolved by confidence</div></div>
+        <button class="btn btn-primary btn-sm" onclick="closeModelModal()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- CODEBOOK SPREADSHEET MODAL            -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="modal-overlay cb-spread-modal" id="codebook-spread-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Codebook Editor</h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-outline btn-xs btn-ai" onclick="generateCodebookAI()">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.962l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.962 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.962l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.633.633l-2.051.683a1 1 0 000 1.898l2.051.684a1 1 0 01.633.632l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.633-.633l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.633-.633L6.95 5.684z"/></svg>
+            Generate with AI
+          </button>
+          <button class="modal-close" onclick="closeCodebookSpreadsheet()">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body cb-spread-body">
+        <div class="table-wrap cb-spread-wrap">
+          <table class="tbl cb-spread-tbl">
+            <thead><tr>
+              <th style="width:36px">#</th>
+              <th style="width:140px">Label</th>
+              <th style="width:100px">Type</th>
+              <th style="min-width:180px">Values</th>
+              <th>Definition</th>
+              <th style="width:40px"></th>
+            </tr></thead>
+            <tbody id="cb-spread-body">
+              <!-- Rows rendered by JS from codebookData -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost btn-sm" onclick="addSpreadsheetRow()">+ Add Variable</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="closeCodebookSpreadsheet()">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="saveCodebookSpreadsheet()">Save &amp; Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
