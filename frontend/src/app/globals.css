@@ -979,3 +979,83 @@ td.cm-off:hover{background:var(--bg)}
   .topbar-tabs{display:none}
   .cols-3,.cols-4{grid-template-columns:1fr 1fr}
 }
+
+/* ═══════════════════════════════════════════════════ */
+/* ENCODING PAGE                                      */
+/* ═══════════════════════════════════════════════════ */
+.enc-error{
+  font-size:12px;color:var(--bad);
+  background:var(--bad-bg);padding:6px 10px;border-radius:var(--radius);
+  margin-top:8px;
+}
+.script-preview{max-height:60vh;overflow:auto}
+.script-preview .code-block{
+  font-size:11px;line-height:1.55;
+  max-height:none;border:none;border-radius:0;
+}
+
+/* progress bar */
+.enc-progress-wrap{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 16px;
+}
+.enc-progress-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:8px;
+}
+.enc-progress-label{font-size:13px;font-weight:600;color:var(--text)}
+.enc-progress-pct{font-size:18px;font-weight:700;color:var(--purple);font-family:var(--mono)}
+.enc-progress-track{
+  height:8px;background:var(--border-lt);border-radius:4px;overflow:hidden;
+}
+.enc-progress-fill{
+  height:100%;background:var(--purple);border-radius:4px;
+  transition:width .3s ease;
+}
+.enc-progress-fill.complete{background:var(--good)}
+
+/* live table */
+.enc-live-table-wrap{overflow-x:auto;max-height:300px;overflow-y:auto}
+.enc-encoded-col{text-align:center}
+.enc-row-animate{animation:encRowIn .25s ease}
+@keyframes encRowIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
+/* pulsing dot on tab */
+.enc-pulse{
+  display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--teal);margin-left:6px;
+  animation:encPulse 1.2s infinite ease-in-out;
+}
+@keyframes encPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+/* complete bar */
+.enc-complete-bar{
+  margin-top:16px;padding:14px 16px;
+  background:var(--good-bg);border:1px solid var(--good);
+  border-radius:var(--radius);
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:13px;color:var(--text);
+}
+
+/* clickable table hint */
+.table-clickable{cursor:pointer;position:relative;transition:box-shadow .15s}
+.table-clickable:hover{box-shadow:0 0 0 2px var(--purple-lt)}
+.table-clickable::after{
+  content:"⤢";position:absolute;top:6px;right:8px;
+  font-size:14px;color:var(--text-3);opacity:0;transition:opacity .15s;
+  pointer-events:none;
+}
+.table-clickable:hover::after{opacity:1}
+
+/* fullscreen table modal — override base modal hidden state for React rendering */
+.modal-overlay:has(.modal-table){opacity:1;pointer-events:auto}
+.modal-overlay:has(.modal-table) .modal{transform:translateY(0)}
+.modal-table{width:94vw;max-width:94vw;max-height:90vh}
+.modal-table .modal-body{
+  display:block;overflow:auto;padding:0;
+}
+.modal-table .tbl{font-size:13px;table-layout:fixed;width:100%}
+.modal-table .tbl td,.modal-table .tbl th{padding:10px 14px;white-space:pre-wrap;word-break:break-word;vertical-align:top}
+.modal-table .tbl td{line-height:1.6}
+.modal-table .tbl .col-def{width:40%}
+.modal-table .tbl .col-msg{width:45%}
