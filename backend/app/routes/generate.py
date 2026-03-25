@@ -15,6 +15,9 @@ class GenerateRequest(BaseModel):
     goals: str = ""
     data_sample: list[dict] | None = None
     codebook: list[dict] | None = None  # only for prompt generation
+    domain: str #for category generator
+    references: list[dict] | None = None #for category generator
+
 
 
 @router.post("/generate/codebook")
@@ -58,3 +61,31 @@ async def generate_prompt(req: GenerateRequest):
 
     result = await provider.complete(prompt, system_prompt=system)
     return {"raw": result["response"]}
+
+
+@router.post("/generate/categories")
+async def generate_categories(req: GenerateRequest):
+    try:
+        provider = get_provider(req.model, req.api_key)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    system = "You are an expert in qualitative behavioral coding. Generate structured categories with labels, definitions, inclusions/exclusion criteria, and example phrases."
+    prompt = (
+        f"Goals: {req.goals}\n"
+        f"Hypothesis: {req.hypothesis}\n"
+        f"Domain: {req.domain}\n"
+        f"References: {req.references}\n"
+        f"Sample episdoes: {json.dumps(req.data_sample) if req.data_sample else '[]'}\n\n"
+        "Generate a JSON array of categories. Each should include: \n"
+        "- label(string)\n"
+        "- definition (string)\n"
+        "- include(string)\n"
+        "- exclude (string)\n"
+        "- example (string)\n\n"
+        "Return ONLY valid JSON"
+        )
+
+    result = await provider.complete(prompt, system_prompt=system)
+    return {"raw": result["response"]}
+
