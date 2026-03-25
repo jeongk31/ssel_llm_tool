@@ -83,6 +83,7 @@ class GenerateScriptRequest(BaseModel):
     encoding_instructions: str
     codebook: list[CodebookEntry]
     provider: str
+    model: str = ""
     api_key: str
 
 
@@ -101,6 +102,7 @@ async def generate_script(req: GenerateScriptRequest):
         encoding_instructions=req.encoding_instructions,
         codebook=codebook_dicts,
         provider=req.provider,
+        model=req.model,
         api_key=req.api_key,
     )
 
@@ -151,10 +153,19 @@ async def ws_run_encoding(ws: WebSocket):
             return
 
         codebook = config.get("codebook", [])
-        provider = config.get("provider", "")
-        api_key = config.get("api_key", "")
+        model_slots = config.get("model_slots", [])
+        runs_per_model = config.get("runs_per_model", 1)
+        aggregation = config.get("aggregation", "mode")
 
-        if not codebook or not provider or not api_key:
+        # Support legacy single-model format
+        if not model_slots:
+            provider = config.get("provider", "")
+            model_id = config.get("model", "")
+            api_key = config.get("api_key", "")
+            if provider and api_key:
+                model_slots = [{"provider": provider, "model": model_id, "api_key": api_key}]
+
+        if not codebook or not model_slots:
             await ws.send_json({"type": "error", "message": "Missing required config fields."})
             await ws.close()
             return
@@ -166,8 +177,9 @@ async def ws_run_encoding(ws: WebSocket):
             experiment_instructions=config.get("experiment_instructions", ""),
             encoding_instructions=config.get("encoding_instructions", ""),
             codebook=codebook,
-            provider_name=provider,
-            api_key=api_key,
+            model_slots=model_slots,
+            runs_per_model=runs_per_model,
+            aggregation=aggregation,
         ):
             await ws.send_json(update)
 
