@@ -1,45 +1,34 @@
-"""Runs LLM-based encoding row by row, yielding progress updates."""
+"""Runs LLM-based encoding row by row with multi-model voting support."""
 
 import json
-import time
+from collections import Counter
+from statistics import mean as stat_mean
 from typing import Any, AsyncGenerator
 
 import pandas as pd
 
-from app.services.providers import get_provider
 from app.services.providers.base import LLMProvider
 
 
-# Provider → (model_id_in_registry, fallback_model_name, base_url)
-PROVIDER_MODEL_MAP = {
-    "openai": ("gpt-4o", "gpt-4o", None),
-    "anthropic": (None, "claude-sonnet-4-20250514", None),
-    "gemini": (None, "gemini-2.0-flash", None),
-    "deepseek": ("deepseek-r1", "deepseek-reasoner", "https://api.deepseek.com"),
-    "mistral": ("mistral-large", "mistral-large-latest", "https://api.mistral.ai/v1"),
-    "together": ("llama-4-maverick", "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", "https://api.together.xyz/v1"),
+# Provider → base_url (None = default for the SDK)
+PROVIDER_BASE_URLS = {
+    "openai": None,
+    "anthropic": None,
+    "gemini": None,
+    "deepseek": "https://api.deepseek.com",
+    "mistral": "https://api.mistral.ai/v1",
+    "together": "https://api.together.xyz/v1",
 }
 
 
-def _get_provider_instance(provider_name: str, api_key: str) -> LLMProvider:
-    """Get an LLM provider instance for the given provider name."""
-    info = PROVIDER_MODEL_MAP.get(provider_name)
-    if not info:
+def _get_provider_instance(provider_name: str, model_id: str, api_key: str) -> LLMProvider:
+    """Get an LLM provider instance for the given provider and model."""
+    if provider_name not in PROVIDER_BASE_URLS:
         raise ValueError(f"Unknown provider: {provider_name}")
+    base_url = PROVIDER_BASE_URLS.get(provider_name)
 
-    registry_id, _, _ = info
-
-    # Try the registry first
-    if registry_id:
-        try:
-            return get_provider(registry_id, api_key)
-        except ValueError:
-            pass
-
-    # Fall back to OpenAI-compatible for most providers
     from app.services.providers.openai_provider import OpenAICompatibleProvider
-    _, model_name, base_url = info
-    return OpenAICompatibleProvider(api_key=api_key, model=model_name, base_url=base_url)
+    return OpenAICompatibleProvider(api_key=api_key, model=model_id, base_url=base_url)
 
 
 def _build_prompt(
@@ -88,7 +77,6 @@ def _parse_llm_json(text: str) -> dict | None:
     except json.JSONDecodeError:
         pass
 
-    # Strip markdown code fences
     if text.startswith("```"):
         text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         try:
@@ -99,6 +87,47 @@ def _parse_llm_json(text: str) -> dict | None:
     return None
 
 
+def _aggregate_results(
+    all_encoded: list[dict[str, Any]],
+    labels: list[str],
+    aggregation: str,
+) -> dict[str, Any]:
+    """Aggregate multiple encoding results for one row using mode or mean."""
+    result = {}
+
+    for label in labels:
+        values = [e.get(label) for e in all_encoded if e.get(label) is not None and "_error" not in e]
+
+        if not values:
+            result[label] = None
+            continue
+
+        if aggregation == "mean":
+            # Try numeric mean
+            try:
+                nums = [float(v) for v in values]
+                result[label] = round(stat_mean(nums), 4)
+            except (ValueError, TypeError):
+                # Fall back to mode for non-numeric
+                counter = Counter(str(v) for v in values)
+                winner, count = counter.most_common(1)[0]
+                result[label] = winner
+        else:
+            # Mode (majority vote)
+            counter = Counter(str(v) for v in values)
+            most_common = counter.most_common()
+            winner, count = most_common[0]
+
+            # Check for ties
+            if len(most_common) > 1 and most_common[0][1] == most_common[1][1]:
+                result[label] = winner  # Take first in tie
+                result[f"_{label}_tie"] = True
+            else:
+                result[label] = winner
+
+    return result
+
+
 async def run_encoding(
     *,
     df: pd.DataFrame,
@@ -106,21 +135,34 @@ async def run_encoding(
     experiment_instructions: str,
     encoding_instructions: str,
     codebook: list[dict[str, Any]],
-    provider_name: str,
-    api_key: str,
+    model_slots: list[dict[str, str]] | None = None,
+    runs_per_model: int = 1,
+    aggregation: str = "mode",
+    # Legacy single-model params (used if model_slots not provided)
+    provider_name: str = "",
+    model_id: str = "",
+    api_key: str = "",
     max_retries: int = 3,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
-    Encode each row and yield progress messages:
-      {"type": "progress", "current": int, "total": int, "percent": float}
-      {"type": "row", "index": int, "original": dict, "encoded": dict}
-      {"type": "error", "index": int, "message": str}
-      {"type": "complete", "total_rows": int, "encoded_rows": int, "file_name": str}
+    Encode each row and yield progress messages.
+
+    Supports multiple models × runs_per_model with voting aggregation.
     """
-    provider = _get_provider_instance(provider_name, api_key)
+    # Build provider instances
+    if model_slots and len(model_slots) > 0:
+        providers = []
+        for slot in model_slots:
+            p = _get_provider_instance(slot["provider"], slot["model"], slot["api_key"])
+            providers.append({"instance": p, "label": f"{slot['provider']}/{slot['model']}"})
+    else:
+        providers = [{"instance": _get_provider_instance(provider_name, model_id, api_key), "label": f"{provider_name}/{model_id}"}]
+
     labels = [v["label"] for v in codebook]
     null_result = {label: None for label in labels}
     total = len(df)
+    total_calls = len(providers) * runs_per_model
+    use_voting = total_calls > 1
     encoded_count = 0
     all_results = []
 
@@ -129,7 +171,7 @@ async def run_encoding(
         message = str(row[message_column]) if pd.notna(row[message_column]) else ""
         original = {col: (None if pd.isna(row[col]) else row[col]) for col in df.columns}
 
-        # Convert numpy types to native Python for JSON serialization
+        # Convert numpy types
         for k, v in original.items():
             if hasattr(v, 'item'):
                 original[k] = v.item()
@@ -143,33 +185,56 @@ async def run_encoding(
             all_results.append({**original, **encoded})
             continue
 
-        # Call LLM with retries
-        encoded = None
-        for attempt in range(1, max_retries + 1):
-            try:
-                prompt = _build_prompt(message, experiment_instructions, encoding_instructions, codebook)
-                result = await provider.complete(
-                    prompt,
-                    system_prompt="You are a precise data encoder. Return only valid JSON.",
-                    params={"temperature": 0.1, "max_tokens": 2048},
-                )
-                parsed = _parse_llm_json(result["response"])
+        # Collect results from all models × runs
+        prompt = _build_prompt(message, experiment_instructions, encoding_instructions, codebook)
+        call_results: list[dict[str, Any]] = []
+        call_details: list[dict[str, Any]] = []
+
+        for p_info in providers:
+            provider_inst = p_info["instance"]
+            for run_num in range(1, runs_per_model + 1):
+                parsed = None
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        result = await provider_inst.complete(
+                            prompt,
+                            system_prompt="You are a precise data encoder. Return only valid JSON.",
+                            params={"temperature": 0.1, "max_tokens": 2048},
+                        )
+                        parsed = _parse_llm_json(result["response"])
+                        if parsed:
+                            break
+                        if attempt == max_retries:
+                            yield {"type": "error", "index": row_idx,
+                                   "message": f"Row {row_idx + 1} [{p_info['label']} run {run_num}]: JSON parse failed after {max_retries} retries"}
+                    except Exception as e:
+                        if attempt == max_retries:
+                            yield {"type": "error", "index": row_idx,
+                                   "message": f"Row {row_idx + 1} [{p_info['label']} run {run_num}]: {e}"}
+
                 if parsed:
-                    encoded = parsed
-                    break
-                if attempt == max_retries:
-                    encoded = {**null_result, "_error": "json_parse_failed"}
-                    yield {"type": "error", "index": row_idx, "message": f"Row {row_idx + 1}: Failed to parse JSON after {max_retries} attempts"}
-            except Exception as e:
-                if attempt == max_retries:
-                    encoded = {**null_result, "_error": str(e)}
-                    yield {"type": "error", "index": row_idx, "message": f"Row {row_idx + 1}: {e}"}
+                    call_results.append(parsed)
+                    call_details.append({"model": p_info["label"], "run": run_num, "result": parsed})
+                else:
+                    call_details.append({"model": p_info["label"], "run": run_num, "result": None, "error": True})
 
-        if encoded is None:
-            encoded = {**null_result, "_error": "unknown_error"}
+        # Aggregate
+        if call_results:
+            if use_voting:
+                encoded = _aggregate_results(call_results, labels, aggregation)
+                encoded["_votes"] = len(call_results)
+                encoded["_total_calls"] = total_calls
+            else:
+                encoded = call_results[0]
+            encoded_count += 1
+        else:
+            encoded = {**null_result, "_error": "all_calls_failed"}
 
-        encoded_count += 1
-        all_results.append({**original, **encoded})
+        # Include per-call details for transparency
+        if use_voting:
+            encoded["_call_details"] = call_details
+
+        all_results.append({**original, **{k: v for k, v in encoded.items() if not k.startswith("_call")}})
 
         yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
         yield {"type": "row", "index": row_idx, "original": original, "encoded": encoded}

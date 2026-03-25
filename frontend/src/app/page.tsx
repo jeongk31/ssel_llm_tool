@@ -36,13 +36,61 @@ interface RunProgress {
   percent: number;
 }
 
-const PROVIDERS = [
-  { value: "openai", label: "OpenAI (GPT-4o)" },
-  { value: "anthropic", label: "Anthropic (Claude)" },
-  { value: "gemini", label: "Google (Gemini)" },
-  { value: "deepseek", label: "DeepSeek" },
-  { value: "mistral", label: "Mistral" },
-  { value: "together", label: "Together AI (Llama)" },
+const PROVIDERS: { value: string; label: string; models: { value: string; label: string }[] }[] = [
+  {
+    value: "openai", label: "OpenAI", models: [
+      { value: "gpt-4o", label: "GPT-4o" },
+      { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+      { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
+      { value: "gpt-4", label: "GPT-4" },
+      { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
+      { value: "o1", label: "o1" },
+      { value: "o1-mini", label: "o1 Mini" },
+      { value: "o3-mini", label: "o3 Mini" },
+    ],
+  },
+  {
+    value: "anthropic", label: "Anthropic", models: [
+      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+      { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+      { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
+      { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
+      { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
+    ],
+  },
+  {
+    value: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-2.5-pro-preview-06-05", label: "Gemini 2.5 Pro" },
+      { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
+      { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
+      { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+    ],
+  },
+  {
+    value: "deepseek", label: "DeepSeek", models: [
+      { value: "deepseek-chat", label: "DeepSeek-V3" },
+      { value: "deepseek-reasoner", label: "DeepSeek-R1" },
+    ],
+  },
+  {
+    value: "mistral", label: "Mistral", models: [
+      { value: "mistral-large-latest", label: "Mistral Large" },
+      { value: "mistral-medium-latest", label: "Mistral Medium" },
+      { value: "mistral-small-latest", label: "Mistral Small" },
+      { value: "codestral-latest", label: "Codestral" },
+    ],
+  },
+  {
+    value: "together", label: "Together AI", models: [
+      { value: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", label: "Llama 4 Maverick" },
+      { value: "meta-llama/Llama-4-Scout-17B-16E-Instruct", label: "Llama 4 Scout" },
+      { value: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo", label: "Llama 3.1 405B" },
+      { value: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", label: "Llama 3.1 70B" },
+      { value: "Qwen/Qwen2.5-72B-Instruct-Turbo", label: "Qwen 2.5 72B" },
+      { value: "mistralai/Mixtral-8x22B-Instruct-v0.1", label: "Mixtral 8x22B" },
+    ],
+  },
 ];
 
 const CODEBOOK_TYPES = [
@@ -54,6 +102,14 @@ const CODEBOOK_TYPES = [
 ];
 
 const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", encoded_values: "" };
+
+interface ModelSlot {
+  provider: string;
+  model: string;
+  apiKey: string;
+}
+
+const EMPTY_SLOT: ModelSlot = { provider: "openai", model: "gpt-4o", apiKey: "" };
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -69,9 +125,16 @@ export default function Home() {
   const [experimentInstructions, setExperimentInstructions] = useState("");
   const [encodingInstructions, setEncodingInstructions] = useState("");
   const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);
-  const [provider, setProvider] = useState("openai");
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
+
+  // Model slots
+  const [modelSlots, setModelSlots] = useState<ModelSlot[]>([{ ...EMPTY_SLOT }]);
+  const [runsPerModel, setRunsPerModel] = useState(1);
+  const [aggregation, setAggregation] = useState<"mode" | "mean">("mode");
+
+  // Legacy aliases for compatibility with generate/run code
+  const provider = modelSlots[0]?.provider ?? "openai";
+  const model = modelSlots[0]?.model ?? "gpt-4o";
+  const apiKey = modelSlots[0]?.apiKey ?? "";
 
   // Generate state
   const [generating, setGenerating] = useState(false);
@@ -86,6 +149,10 @@ export default function Home() {
   const [runComplete, setRunComplete] = useState<{ total_rows: number; encoded_rows: number; file_path: string } | null>(null);
   const [runError, setRunError] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Console log state
+  const [consoleLogs, setConsoleLogs] = useState<{ time: string; level: "info" | "warn" | "error"; msg: string }[]>([]);
+  const consoleRef = useRef<HTMLDivElement>(null);
 
   // Right panel view: "script" | "run"
   const [rightView, setRightView] = useState<"script" | "run">("script");
@@ -167,8 +234,8 @@ export default function Home() {
     experimentInstructions.trim() &&
     encodingInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type && e.definition.trim()) &&
-    provider &&
-    apiKey.trim();
+    modelSlots.length > 0 &&
+    modelSlots.every((s) => s.provider && s.model && s.apiKey.trim());
 
   const handleGenerate = async () => {
     if (!canGenerate || !uploadResult) return;
@@ -189,6 +256,7 @@ export default function Home() {
           encoding_instructions: encodingInstructions,
           codebook,
           provider,
+          model,
           api_key: apiKey,
         }),
       });
@@ -218,19 +286,75 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  // ── Console logging helper ───────────────────────────────────────────────────
+
+  const log = (level: "info" | "warn" | "error", msg: string) => {
+    const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setConsoleLogs((prev) => [...prev, { time, level, msg }]);
+    // Auto-scroll console
+    setTimeout(() => consoleRef.current?.scrollTo({ top: consoleRef.current.scrollHeight }), 50);
+  };
+
   // ── Run encoding via WebSocket ──────────────────────────────────────────────
 
-  const handleRun = () => {
+  const handleRun = async () => {
     if (!canGenerate || !uploadResult) return;
 
-    // Reset run state
+    // Reset state
     setRunning(true);
     setRunProgress(null);
     setEncodedRows([]);
     setRunErrors([]);
     setRunComplete(null);
     setRunError("");
+    setGenerateError("");
+    setConsoleLogs([]);
     setRightView("run");
+
+    // Step 1: Generate the script first
+    log("info", "Generating encoding script...");
+    try {
+      const res = await fetch("/api/encoding/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_name: uploadResult.file_name,
+          message_column: messageColumn,
+          experiment_instructions: experimentInstructions,
+          encoding_instructions: encodingInstructions,
+          codebook,
+          provider,
+          model,
+          api_key: apiKey,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail || res.statusText);
+      }
+
+      const data: GenerateResult = await res.json();
+      setResult(data);
+      log("info", `Script generated: ${data.filename}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Script generation failed";
+      log("error", `Script generation failed: ${msg}`);
+      setGenerateError(msg);
+      setRunning(false);
+      return;
+    }
+
+    // Step 2: Connect WebSocket and run encoding
+    log("info", `Connecting to encoding service...`);
+    const modelNames = modelSlots.map((s) => {
+      const p = PROVIDERS.find((p) => p.value === s.provider);
+      const m = p?.models.find((m) => m.value === s.model);
+      return `${p?.label}/${m?.label}`;
+    });
+    log("info", `Models: ${modelNames.join(", ")} × ${runsPerModel} run${runsPerModel > 1 ? "s" : ""} each`);
+    log("info", `Aggregation: ${aggregation} · File: ${uploadResult.file_name} (${uploadResult.row_count} rows)`);
+    log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
 
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${wsProtocol}//localhost:8000/api/ws/encoding/run`;
@@ -238,6 +362,7 @@ export default function Home() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      log("info", "Connected. Starting encoding...");
       ws.send(
         JSON.stringify({
           file_id: uploadResult.file_id,
@@ -245,8 +370,13 @@ export default function Home() {
           experiment_instructions: experimentInstructions,
           encoding_instructions: encodingInstructions,
           codebook,
-          provider,
-          api_key: apiKey,
+          model_slots: modelSlots.map((s) => ({
+            provider: s.provider,
+            model: s.model,
+            api_key: s.apiKey,
+          })),
+          runs_per_model: runsPerModel,
+          aggregation,
         })
       );
     };
@@ -256,12 +386,18 @@ export default function Home() {
 
       if (msg.type === "progress") {
         setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
+        log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
       } else if (msg.type === "row") {
         setEncodedRows((prev) => [...prev, { index: msg.index, original: msg.original, encoded: msg.encoded }]);
+        if (msg.encoded._error) {
+          log("warn", `Row ${msg.index + 1}: ${msg.encoded._error}`);
+        }
       } else if (msg.type === "error" && msg.index !== undefined) {
         setRunErrors((prev) => [...prev, msg.message]);
+        log("error", msg.message);
       } else if (msg.type === "error") {
         setRunError(msg.message);
+        log("error", `Fatal: ${msg.message}`);
         setRunning(false);
       } else if (msg.type === "complete") {
         setRunComplete({
@@ -269,16 +405,21 @@ export default function Home() {
           encoded_rows: msg.encoded_rows,
           file_path: msg.file_path,
         });
+        log("info", `Encoding complete. ${msg.total_rows} rows processed, ${msg.encoded_rows} encoded.`);
         setRunning(false);
       }
     };
 
     ws.onerror = () => {
+      log("error", "WebSocket connection failed. Is the backend running?");
       setRunError("WebSocket connection failed");
       setRunning(false);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (event.code !== 1000 && event.code !== 1005) {
+        log("warn", `WebSocket closed (code: ${event.code})`);
+      }
       setRunning(false);
     };
   };
@@ -288,6 +429,7 @@ export default function Home() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    log("warn", "Encoding stopped by user.");
     setRunning(false);
   };
 
@@ -369,8 +511,10 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
       },
     ]);
 
-    // Set provider (leave as default openai)
-    setProvider("openai");
+    // Set model slots
+    setModelSlots([{ provider: "openai", model: "gpt-4o-mini", apiKey: "" }]);
+    setRunsPerModel(1);
+    setAggregation("mode");
 
     // Open all panels
     setOpenPanels(new Set([1, 2, 3, 4, 5, 6]));
@@ -393,10 +537,10 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
           <span className="topbar-badge">beta</span>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-outline btn-xs" onClick={handleTestFill}>Test</button>
+          <button className="btn btn-ghost btn-xs" onClick={handleTestFill} style={{ color: "var(--text-3)" }}>Load demo</button>
           <div className="status-chip">
-            <span className="status-dot" />
-            Ready
+            <span className="status-dot" style={{ background: running ? "var(--mid)" : "var(--good)" }} />
+            {running ? "Running" : "Ready"}
           </div>
         </div>
       </nav>
@@ -406,9 +550,9 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
           <div className="tool-page active">
             <div className="tool-header">
               <div>
-                <h1>Encoding Script Generator</h1>
+                <h1>LLM Encoding</h1>
                 <p className="tool-desc">
-                  Configure your LLM-based encoding job, generate a Python script, or run it directly.
+                  Upload data, configure codebook variables, and encode with one or more LLMs.
                 </p>
               </div>
             </div>
@@ -647,52 +791,121 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
                     </div>
                   </div>
 
-                  {/* Panel 6: LLM Provider + API Key */}
+                  {/* Panel 6: Models + Voting */}
                   <div className={`panel ${openPanels.has(6) ? "open" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(6)}>
                       <div className="panel-head-left">
                         <span className="step-badge">6</span>
-                        <span className="panel-label">LLM Provider</span>
-                        {provider && <span className="tag">{PROVIDERS.find((p) => p.value === provider)?.label ?? provider}</span>}
+                        <span className="panel-label">Models &amp; Voting</span>
+                        <span className="tag">
+                          {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
+                        </span>
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content">
-                      <div className="fg cols-2">
-                        <div className="f">
-                          <label>Provider</label>
-                          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-                            {PROVIDERS.map((p) => (
-                              <option key={p.value} value={p.value}>{p.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="f">
-                          <label>API Key</label>
-                          <div style={{ position: "relative" }}>
+
+                      {/* Model slots */}
+                      <div className="model-slots">
+                        {modelSlots.map((slot, idx) => {
+                          const provInfo = PROVIDERS.find((p) => p.value === slot.provider);
+                          const modelInfo = provInfo?.models.find((m) => m.value === slot.model);
+                          return (
+                            <div className="model-slot" key={idx}>
+                              <div className="slot-header">
+                                <span className="slot-num" style={{ background: "var(--purple)" }}>{idx + 1}</span>
+                                <span className="slot-title">{provInfo?.label ?? slot.provider} — {modelInfo?.label ?? slot.model}</span>
+                                <div style={{ flex: 1 }} />
+                                {modelSlots.length > 1 && (
+                                  <button
+                                    className="row-rm"
+                                    onClick={() => setModelSlots((prev) => prev.filter((_, i) => i !== idx))}
+                                    title="Remove model"
+                                  >×</button>
+                                )}
+                              </div>
+                              <div className="slot-body">
+                                <div className="fg cols-3">
+                                  <div className="f">
+                                    <label>Provider</label>
+                                    <select
+                                      value={slot.provider}
+                                      onChange={(e) => {
+                                        const np = e.target.value;
+                                        const ms = PROVIDERS.find((p) => p.value === np)?.models ?? [];
+                                        setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, provider: np, model: ms[0]?.value ?? "" } : s));
+                                      }}
+                                    >
+                                      {PROVIDERS.map((p) => (
+                                        <option key={p.value} value={p.value}>{p.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="f">
+                                    <label>Model</label>
+                                    <select
+                                      value={slot.model}
+                                      onChange={(e) => setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, model: e.target.value } : s))}
+                                    >
+                                      {(provInfo?.models ?? []).map((m) => (
+                                        <option key={m.value} value={m.value}>{m.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="f">
+                                    <label>API Key</label>
+                                    <input
+                                      type="password"
+                                      value={slot.apiKey}
+                                      onChange={(e) => setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, apiKey: e.target.value } : s))}
+                                      placeholder="sk-..."
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        className="btn btn-ghost btn-xs"
+                        style={{ marginTop: 8 }}
+                        onClick={() => setModelSlots((prev) => [...prev, { ...EMPTY_SLOT }])}
+                      >
+                        + Add Model
+                      </button>
+
+                      {/* Voting settings */}
+                      <div className="enc-voting-settings">
+                        <div className="enc-voting-row">
+                          <div className="f" style={{ flex: 1 }}>
+                            <label>Runs per model <span className="fv">{runsPerModel}×</span></label>
                             <input
-                              type={showKey ? "text" : "password"}
-                              value={apiKey}
-                              onChange={(e) => setApiKey(e.target.value)}
-                              placeholder="sk-..."
-                              style={{ paddingRight: 40 }}
+                              type="range"
+                              min={1}
+                              max={10}
+                              value={runsPerModel}
+                              onChange={(e) => setRunsPerModel(Number(e.target.value))}
                             />
-                            <button
-                              className="btn btn-ghost"
-                              onClick={() => setShowKey(!showKey)}
-                              style={{
-                                position: "absolute",
-                                right: 2,
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                padding: "2px 6px",
-                                fontSize: 10,
-                              }}
-                            >
-                              {showKey ? "Hide" : "Show"}
-                            </button>
                           </div>
-                          <p className="hint">Your key is used transiently. It is not stored.</p>
+                          <div className="f" style={{ width: 160, flexShrink: 0 }}>
+                            <label>Aggregation</label>
+                            <select value={aggregation} onChange={(e) => setAggregation(e.target.value as "mode" | "mean")}>
+                              <option value="mode">Mode (majority vote)</option>
+                              <option value="mean">Mean (average)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="enc-voting-summary">
+                          <span className="enc-voting-calc">
+                            {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""} = <strong>{modelSlots.length * runsPerModel}</strong> calls/row
+                          </span>
+                          {modelSlots.length * runsPerModel > 1 && (
+                            <span className="enc-voting-agg">
+                              {aggregation === "mode" ? "Majority vote" : "Average"} across all calls
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -702,16 +915,16 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
 
                 {/* Run bar */}
                 <div className="run-bar">
-                  {generateError && <span className="enc-error" style={{ flex: 1 }}>{generateError}</span>}
+                  {generateError && <span className="enc-error" style={{ flex: 1, marginRight: 8 }}>{generateError}</span>}
                   <button
-                    className="btn btn-outline"
+                    className="btn btn-outline btn-sm"
                     disabled={!canGenerate || generating || running}
                     onClick={handleGenerate}
                   >
-                    {generating ? "Generating..." : "Generate Script"}
+                    {generating ? "Generating..." : "Script only"}
                   </button>
                   {running ? (
-                    <button className="btn btn-outline" style={{ borderColor: "var(--bad)", color: "var(--bad)" }} onClick={handleStop}>
+                    <button className="btn btn-sm" style={{ background: "var(--bad)", color: "white", border: "1px solid var(--bad)" }} onClick={handleStop}>
                       Stop
                     </button>
                   ) : (
@@ -721,6 +934,11 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
                       onClick={handleRun}
                     >
                       Run Encoding
+                      {modelSlots.length * runsPerModel > 1 && (
+                        <span style={{ opacity: 0.7, fontWeight: 400, marginLeft: 4 }}>
+                          ({modelSlots.length}×{runsPerModel})
+                        </span>
+                      )}
                     </button>
                   )}
                 </div>
@@ -851,6 +1069,25 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
                         </button>
                       </div>
                     )}
+
+                    {/* Console */}
+                    {consoleLogs.length > 0 && (
+                      <div className="enc-console" style={{ marginTop: 12 }}>
+                        <div className="enc-console-header">
+                          <span>Console</span>
+                          <button className="btn btn-ghost btn-xs" onClick={() => setConsoleLogs([])}>Clear</button>
+                        </div>
+                        <div className="enc-console-body" ref={consoleRef}>
+                          {consoleLogs.map((entry, i) => (
+                            <div key={i} className={`enc-console-line ${entry.level}`}>
+                              <span className="enc-console-time">{entry.time}</span>
+                              <span className={`enc-console-level ${entry.level}`}>{entry.level.toUpperCase()}</span>
+                              <span className="enc-console-msg">{entry.msg}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : rightView === "run" ? (
                   <div className="results-empty">
@@ -880,8 +1117,8 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
                         <div className="stat-l">Variables</div>
                       </div>
                       <div className="stat">
-                        <div className="stat-v" style={{ fontSize: 14 }}>{PROVIDERS.find((p) => p.value === provider)?.label ?? provider}</div>
-                        <div className="stat-l">Provider</div>
+                        <div className="stat-v">{modelSlots.length} × {runsPerModel}</div>
+                        <div className="stat-l">Models × Runs</div>
                       </div>
                     </div>
 
