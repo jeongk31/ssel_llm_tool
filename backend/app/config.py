@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     max_concurrent_llm_calls: int = 5
 
+
     class Config:
         env_file = ".env"
 

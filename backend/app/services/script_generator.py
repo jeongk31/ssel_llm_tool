@@ -12,6 +12,7 @@ def generate_encoding_script(
     encoding_instructions: str,
     codebook: list[dict[str, Any]],
     provider: str,
+    model:str,
     api_key: str,
 ) -> str:
     """Build a ready-to-run Python script from the user's configuration."""
