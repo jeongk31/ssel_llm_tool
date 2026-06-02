@@ -566,6 +566,10 @@ input[type="range"]::-webkit-slider-thumb{
 .action-bar{display:flex;align-items:center;gap:8px;margin-top:6px}
 .action-spacer{flex:1}
 
+.catgen-page .flex-row {
+  gap: 30px;
+  align-items: flex-start;
+}
 
 /* ═══════════════════════════════════════════════════ */
 /* TOOL HEADER with actions                            */
