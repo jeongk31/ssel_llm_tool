@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,11 +112,21 @@ interface ModelSlot {
 
 const EMPTY_SLOT: ModelSlot = { provider: "openai", model: "gpt-4o", apiKey: "" };
 
+type Tool = "encoding" | "catgen" | "newtool1" | "newtool2";
+const TOOLS: { value: Tool; label: string }[] = [
+  { value: "encoding", label: "LLM Encoding" },
+  { value: "catgen", label: "Category Generator" },
+];
+
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
   // File upload state
+  
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+    // Tool switching
+  const [activeTool, setActiveTool] = useState<"encoding" | "catgen">("encoding");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -537,6 +548,17 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
           <span className="topbar-badge">beta</span>
         </div>
         <div className="topbar-right">
+          <div className="tool-switcher">
+            <select
+              value={activeTool}
+              onChange={(e) =>
+                setActiveTool(e.target.value as "encoding" | "catgen")
+              }
+            >
+              <option value="encoding">LLM Encoding</option>
+              <option value="catgen">Category Generator</option>
+            </select>
+          </div>
           <button className="btn btn-ghost btn-xs" onClick={handleTestFill} style={{ color: "var(--text-3)" }}>Load demo</button>
           <div className="status-chip">
             <span className="status-dot" style={{ background: running ? "var(--mid)" : "var(--good)" }} />
@@ -547,6 +569,7 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
 
       <div className="layout">
         <main className="main">
+          {activeTool === "encoding" && (
           <div className="tool-page active">
             <div className="tool-header">
               <div>
@@ -1147,6 +1170,8 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
               </div>
             </div>
           </div>
+          )}
+          {activeTool === "catgen" && (<CategoryGenerator providers={PROVIDERS} />)}
         </main>
       </div>
 
