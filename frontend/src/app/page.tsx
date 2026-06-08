@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const catgenDemoRef = useRef<(() => void) | null>(null);
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
@@ -453,6 +455,10 @@ export default function Home() {
 
   const handleTestFill = async () => {
     // Upload the test CSV
+    if (activeTool === "catgen") {
+      catgenDemoRef.current?.();
+      return;
+    }
     try {
       const res = await fetch("/test_messages.csv");
       const blob = await res.blob();
@@ -1171,7 +1177,7 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
             </div>
           </div>
           )}
-          {activeTool === "catgen" && (<CategoryGenerator providers={PROVIDERS} />)}
+          {activeTool === "catgen" && (<CategoryGenerator providers={PROVIDERS} demoRef={catgenDemoRef}/>)}
         </main>
       </div>
 

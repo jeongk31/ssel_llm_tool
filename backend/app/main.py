@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routes import files, generate, pipeline, encoding
 
+from fastapi import Request
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +33,14 @@ app.include_router(pipeline.router, prefix="/api")
 app.include_router(encoding.router, prefix="/api")
 
 
+
 @app.get("/")
 async def root():
     return {"status": "ok", "service": "LLM Measurement Toolkit API"}
+
+
+
+@app.middleware("http")
+async def log_origin(request: Request, call_next):
+    print(f"ORIGIN: {request.headers.get('origin')}")
+    return await call_next(request)

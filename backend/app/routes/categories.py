@@ -1,11 +1,3 @@
-# from fastapi import APIRouter, HTTPException
-# from pydantic import BaseModel
-# import json
-
-# from app.services.providers import get_provider
-
-# router = APIRouter()
-
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 import json
@@ -15,16 +7,6 @@ from app.services.category_runner import run_category_generation
 
 router = APIRouter()
 
-class GenerateRequest(BaseModel):
-    api_key: str
-    model: str
-    provider: str
-    name: str
-    hypothesis: str = ""
-    goals: str = ""
-    data_sample: list[dict] | None = None
-    codebook: list[dict] | None = None  # only for prompt generation
-    domain: str | None = None
 
 # Category Generator
 class CategoryGenerateRequest(BaseModel):
@@ -39,24 +21,31 @@ class CategoryGenerateRequest(BaseModel):
     target_count: int | None = None
     data_sample: list[dict] | None = None
 
-@router.post("/generate/codebook")
-async def generate_codebook(req: GenerateRequest):
+
+@router.post("/generate/categories")
+async def generate_categories(req: CategoryGenerateRequest):
     try:
         provider = get_provider(req.model, req.api_key)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    system = "You are a research methodology expert. Generate a codebook of measurement variables."
+    system = "You are an expert in qualitative behavioral coding. Generate structured categories with labels, definitions, inclusions/exclusion criteria, and example phrases."
     prompt = (
-        f"Research: {req.name}\n"
+        f"Goals: {req.goals}\n"
         f"Hypothesis: {req.hypothesis}\n"
-        f"Goals: {req.goals}\n\n"
-        "Generate a JSON array of codebook variables. Each variable should have: "
-        'label (string), type (one of: classify, tag, rate, extract), '
-        'values (array of categories for classify/tag, [min,max] for rate, empty for extract), '
-        'def (definition string).\n\n'
-        "Respond with ONLY the JSON array."
-    )
+        f"Output type: {req.output_type}\n"
+        f"Target number of categories: {req.target_count}\n"
+        f"Domain: {req.domain}\n"
+        f"References: {req.references if req.references else ''}\n"
+        f"Sample episodes: {json.dumps(req.data_sample) if req.data_sample else '[]'}\n\n"
+        "Generate a JSON array of categories. Each should include: \n"
+        "- label(string)\n"
+        "- definition (string)\n"
+        "- include(string)\n"
+        "- exclude (string)\n"
+        "- example (string)\n\n"
+        "Return ONLY a raw JSON array. No markdown. No code fences. No explanation. The response must start with [ and end with ]."
+        )
 
     result = await provider.complete(prompt, system_prompt=system)
     return {"raw": result["response"]}
@@ -82,35 +71,7 @@ async def generate_prompt(req: GenerateRequest):
     return {"raw": result["response"]}
 
 
-# @router.post("/generate/categories")
-# async def generate_categories(req: CategoryGenerateRequest):
-#     try:
-#         provider = get_provider(req.model, req.api_key)
-#     except ValueError as e:
-#         raise HTTPException(400, str(e))
-
-#     system = "You are an expert in qualitative behavioral coding. Generate structured categories with labels, definitions, inclusions/exclusion criteria, and example phrases."
-#     prompt = (
-#         f"Goals: {req.goals}\n"
-#         f"Hypothesis: {req.hypothesis}\n"
-#         f"Output type: {req.output_type}\n"
-#         f"Target number of categories: {req.target_count}\n"
-#         f"Domain: {req.domain}\n"
-#         f"References: {req.references if req.references else ''}\n"
-#         f"Sample episodes: {json.dumps(req.data_sample) if req.data_sample else '[]'}\n\n"
-#         "Generate a JSON array of categories. Each should include: \n"
-#         "- label(string)\n"
-#         "- definition (string)\n"
-#         "- include(string)\n"
-#         "- exclude (string)\n"
-#         "- example (string)\n\n"
-#         "Return ONLY a raw JSON array. No markdown. No code fences. No explanation. The response must start with [ and end with ]."
-#         )
-
-#     result = await provider.complete(prompt, system_prompt=system)
-#     return {"raw": result["response"]}
-
-
+# ── Category Generator via WebSocket ─────────────────────────────────────────
 
 @router.websocket("/ws/generate/categories")
 async def ws_generate_categories(ws: WebSocket):
@@ -142,8 +103,3 @@ async def ws_generate_categories(ws: WebSocket):
             await ws.close()
         except Exception:
             pass
-
-@router.websocket("/ws/generate/categories")
-async def ws_generate_categories(ws: WebSocket):
-    print(f"WS headers: {dict(ws.headers)}")
-    await ws.accept()
