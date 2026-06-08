@@ -1,26 +1,31 @@
-
-
-
 'use client'
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
-// interface Category {
-//   label: string;
-//   definition: string;
-//   include: string;
-//   exclude: string;
-//   example: string;
-// }
+interface UploadResult {
+  file_id: string;
+  file_name: string;
+  columns: string[];
+  row_count: number;
+  preview: Record<string, unknown>[];
+}
+
+interface CodebookEntry {
+  label: string;
+  type: string;
+  definition: string;
+  encoded_values: string;
+}
+
+const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", encoded_values: "" };
+
 
 interface Category {
   // shared
   label: string;
   definition: string;
   example: string;
-  // classify / tag
-  include?: string;
-  exclude?: string;
+  values: string;
   // rate
   scale_min?: number;
   scale_max?: number;
@@ -48,8 +53,7 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
   const [targetCount, setTargetCount] = useState(6);
   const [domain, setDomain] = useState("");
   const [references, setReferences] = useState("");
-  const [dataSampleText, setDataSampleText] = useState("");
-  const [openPanels, setOpenPanels] = useState(new Set([1, 2, 3, 4]));
+  const [openPanels, setOpenPanels] = useState(new Set([1, 2, 3, 4, 5]));
   const [genConfig, setGenConfig] = useState({
     provider: "openai",
     model: "gpt-4o",
@@ -70,17 +74,71 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // // File upload state
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Table expand modal: null | "preview" | "codebook" | "live"
+  const [expandedTable, setExpandedTable] = useState<string | null>(null);
+
+  // Form state
+  const [messageColumn, setMessageColumn] = useState("");
+  const [experimentInstructions, setExperimentInstructions] = useState("");
+  const [encodingInstructions, setEncodingInstructions] = useState("");
+  const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);
+
+  
+  const handleUpload = useCallback(async (file: File) => {
+    setUploading(true);
+    setUploadError("");
+    setUploadResult(null);
+    setMessageColumn("");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/encoding/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail || res.statusText);
+      }
+      const data: UploadResult = await res.json();
+      setUploadResult(data);
+      setOpenPanels((prev) => new Set([...prev, 2]));
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleUpload(file);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleUpload(file);
+  };
+
   useEffect(() => {
     if (!demoRef) return;
     demoRef.current = () => {
-      setGoals("Classify therapist communication behaviors during motivational interviewing sessions into standard MI-consistent and MI-inconsistent categories for behavioral coding research.");
-      setHypothesis("Therapist reflections and open questions are associated with higher client engagement in subsequent turns.");
-      setDomain("Psychotherapy / Motivational Interviewing");
+      setGoals("Classify the communication strategies used by Player B in pre-play messages during a trust game experiment into behavioral categories for coding research.");
+      setHypothesis("Player B messages containing explicit promises to cooperate are associated with higher rates of Player A choosing 'In' compared to messages containing only empty talk or no message.");
+      setDomain("Behavioral Economics / Experimental Trust Games");
       setOutputType("classify");
       setTargetCount(6);
-      setReferences("MITI 4.2 behavioral codes: Giving Information (GI), Persuade (Per), Persuade with Permission (PwP), Question (Q), Simple Reflection (SR), Complex Reflection (CR), Affirm (AF), Seek Collaboration (SeC), Emphasize Autonomy (EA), Confront (Con).");
-      setDataSampleText(`EP1: "It sounds like you've been feeling overwhelmed lately."\nEP2: "What would it look like if things were different?"\nEP3: "You showed real courage in bringing that up today."`);
-      setOpenPanels(new Set([1, 2, 3, 4]));
+      setReferences("Charness & Dufwenberg (2006) trust game paradigm. Categories of interest: Promise (explicit commitment to Roll), Empty Talk (non-binding persuasion without commitment), No Message (blank). MITI-style behavioral coding framework.");
+      setOpenPanels(new Set([3, 4, 5]));
     };
   }, [demoRef]);
 
@@ -98,10 +156,10 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
     setProgress(null);
     setLoading(true);
 
-    const dataSample = dataSampleText
-      .split("\n")
-      .filter(line => line.trim() !== "")
-      .map((line, idx) => ({ id: idx + 1, text: line.trim() }));
+    // const dataSample = dataSampleText
+    //   .split("\n")
+    //   .filter(line => line.trim() !== "")
+    //   .map((line, idx) => ({ id: idx + 1, text: line.trim() }));
 
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${wsProtocol}//localhost:8000/api/ws/generate/categories`);
@@ -118,7 +176,8 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
         target_count: targetCount,
         domain,
         references,
-        data_sample: dataSample,
+        message_column: messageColumn,       
+        file_id: uploadResult?.file_id ?? null, 
       }));
     };
 
@@ -148,6 +207,7 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
     };
   };
 
+
   return (
     <div className="tool-page active">
       <div className="tool-header">
@@ -162,12 +222,106 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
       <div className="pipeline-layout split">
         <div className="config-col">
           <div className="config-scroll">
-
-            {/* Panel 1: Research Context */}
+            {/* Panel 1: Upload Dataset */}
             <div className={`panel ${openPanels.has(1) ? "open" : ""}`}>
               <button className="panel-head" onClick={() => togglePanel(1)}>
                 <div className="panel-head-left">
                   <span className="step-badge">1</span>
+                  <span className="panel-label">Upload Dataset</span>
+                  {uploadResult && <span className="tag">uploaded</span>}
+                </div>
+                <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
+              </button>
+              <div className="panel-content">
+                <div
+                  className="dropzone"
+                  onClick={() => fileRef.current?.click()}
+                  onDrop={onDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                >
+                  <div className="dz-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="28" height="28">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                    </svg>
+                  </div>
+                  <p className="dz-text">
+                    {uploading ? "Uploading..." : "Drop a CSV or Excel file here, or click to browse"}
+                  </p>
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={onFileChange}
+                  style={{ display: "none" }}
+                />
+
+                {uploadError && <p className="enc-error">{uploadError}</p>}
+
+                {uploadResult && (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="file-chip">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
+                      {uploadResult.file_name}
+                      <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
+                    </div>
+
+                    <div className="table-wrap table-clickable" onClick={() => setExpandedTable("preview")} title="Click to expand">
+                      <table className="tbl tbl-compact">
+                        <thead>
+                          <tr>
+                            {uploadResult.columns.map((col) => (
+                              <th key={col}>{col}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {uploadResult.preview.map((row, i) => (
+                            <tr key={i}>
+                              {uploadResult.columns.map((col) => (
+                                <td key={col} className="mono">{String(row[col] ?? "")}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Panel 2: Select Message Column */}
+            <div className={`panel ${openPanels.has(2) ? "open" : ""}`}>
+              <button className="panel-head" onClick={() => togglePanel(2)}>
+                <div className="panel-head-left">
+                  <span className="step-badge">2</span>
+                  <span className="panel-label">Message Column</span>
+                  {messageColumn && <span className="tag">{messageColumn}</span>}
+                </div>
+                <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
+              </button>
+              <div className="panel-content">
+                {uploadResult ? (
+                  <div className="f">
+                    <label>Select the column containing the text to encode</label>
+                    <select value={messageColumn} onChange={(e) => setMessageColumn(e.target.value)}>
+                      <option value="">— Choose column —</option>
+                      {uploadResult.columns.map((col) => (
+                        <option key={col} value={col}>{col}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <p className="hint">Upload a file first to see available columns.</p>
+                )}
+              </div>
+            </div>
+            {/* Panel 1: Research Context */}
+            <div className={`panel ${openPanels.has(3) ? "open" : ""}`}>
+              <button className="panel-head" onClick={() => togglePanel(3)}>
+                <div className="panel-head-left">
+                  <span className="step-badge">3</span>
                   <span className="panel-label">Research Context</span>
                 </div>
                 <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -183,10 +337,10 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
             </div>
 
             {/* Panel 2: Generation Settings */}
-            <div className={`panel ${openPanels.has(2) ? "open" : ""}`}>
-              <button className="panel-head" onClick={() => togglePanel(2)}>
+            <div className={`panel ${openPanels.has(4) ? "open" : ""}`}>
+              <button className="panel-head" onClick={() => togglePanel(4)}>
                 <div className="panel-head-left">
-                  <span className="step-badge">2</span>
+                  <span className="step-badge">4</span>
                   <span className="panel-label">Generation Settings</span>
                 </div>
                 <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -253,10 +407,10 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
             </div>
 
             {/* Panel 3: References */}
-            <div className={`panel ${openPanels.has(3) ? "open" : ""}`}>
-              <button className="panel-head" onClick={() => togglePanel(3)}>
+            <div className={`panel ${openPanels.has(5) ? "open" : ""}`}>
+              <button className="panel-head" onClick={() => togglePanel(5)}>
                 <div className="panel-head-left">
-                  <span className="step-badge">3</span>
+                  <span className="step-badge">5</span>
                   <span className="panel-label">References (optional)</span>
                 </div>
                 <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -266,20 +420,6 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
               </div>
             </div>
 
-            {/* Panel 4: Sample Data */}
-            <div className={`panel ${openPanels.has(4) ? "open" : ""}`}>
-              <button className="panel-head" onClick={() => togglePanel(4)}>
-                <div className="panel-head-left">
-                  <span className="step-badge">4</span>
-                  <span className="panel-label">Sample Data (optional)</span>
-                </div>
-                <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-              </button>
-              <div className="panel-content">
-                <textarea rows={4} value={dataSampleText} onChange={(e) => setDataSampleText(e.target.value)} />
-                <p className="hint">Optional but improves quality.</p>
-              </div>
-            </div>
 
           </div>
 
@@ -319,21 +459,11 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
                         <span className="catgen-label">Definition:</span>
                         {cat.definition}
                       </div>
-
-                      {/* classify / tag */}
-                      {cat.include && (
-                        <div className="catgen-field">
-                          <span className="catgen-label">Include:</span>
-                          {cat.include}
-                        </div>
-                      )}
-                      {cat.exclude && (
-                        <div className="catgen-field">
-                          <span className="catgen-label">Exclude:</span>
-                          {cat.exclude}
-                        </div>
-                      )}
-
+                      <div className="catgen-field">
+                        <span className="catgen-label">Values:</span>
+                        {cat.values}
+                      </div>
+                      
                       {/* rate */}
                       {cat.scale_min !== undefined && (
                         <div className="catgen-field">

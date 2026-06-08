@@ -123,15 +123,16 @@ const TOOLS: { value: Tool; label: string }[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  // File upload state
-  
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
     // Tool switching
   const [activeTool, setActiveTool] = useState<"encoding" | "catgen">("encoding");
+  const catgenDemoRef = useRef<(() => void) | null>(null);
+
+  // File upload state
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const catgenDemoRef = useRef<(() => void) | null>(null);
+
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
