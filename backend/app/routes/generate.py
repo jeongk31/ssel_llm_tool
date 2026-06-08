@@ -143,7 +143,7 @@ async def ws_generate_categories(ws: WebSocket):
         except Exception:
             pass
 
-@router.websocket("/ws/generate/categories")
-async def ws_generate_categories(ws: WebSocket):
-    print(f"WS headers: {dict(ws.headers)}")
-    await ws.accept()
+# @router.websocket("/ws/generate/categories")
+# async def ws_generate_categories(ws: WebSocket):
+#     print(f"WS headers: {dict(ws.headers)}")
+#     await ws.accept()
