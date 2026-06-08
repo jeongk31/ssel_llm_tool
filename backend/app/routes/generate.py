@@ -37,7 +37,6 @@ class CategoryGenerateRequest(BaseModel):
     references: str | None = None
     output_type: str = ""
     target_count: int | None = None
-    data_sample: list[dict] | None = None
 
 @router.post("/generate/codebook")
 async def generate_codebook(req: GenerateRequest):
@@ -128,7 +127,8 @@ async def ws_generate_categories(ws: WebSocket):
             target_count=config.get("target_count"),
             domain=config.get("domain", ""),
             references=config.get("references", ""),
-            data_sample=config.get("data_sample"),
+            file_id=config.get("file_id"),           
+            message_column=config.get("message_column"), 
         ):
             await ws.send_json(update)
 
@@ -143,7 +143,4 @@ async def ws_generate_categories(ws: WebSocket):
         except Exception:
             pass
 
-# @router.websocket("/ws/generate/categories")
-# async def ws_generate_categories(ws: WebSocket):
-#     print(f"WS headers: {dict(ws.headers)}")
-#     await ws.accept()
+
