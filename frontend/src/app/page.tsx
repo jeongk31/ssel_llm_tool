@@ -168,6 +168,10 @@ export default function Home() {
   const [consoleLogs, setConsoleLogs] = useState<{ time: string; level: "info" | "warn" | "error"; msg: string }[]>([]);
   const consoleRef = useRef<HTMLDivElement>(null);
 
+  // Add this state near your other form state
+  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "encode">("error");
+  const [emptyMessageValue, setEmptyMessageValue] = useState("N");
+
   // Right panel view: "script" | "run"
   const [rightView, setRightView] = useState<"script" | "run">("script");
 
@@ -240,6 +244,7 @@ export default function Home() {
     setCodebook((prev) => prev.filter((_, i) => i !== idx));
   };
 
+
   // ── Script generation ───────────────────────────────────────────────────────
 
   const canGenerate =
@@ -268,6 +273,7 @@ export default function Home() {
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
           encoding_instructions: encodingInstructions,
+          empty_message_handling: emptyMessageHandling,
           codebook,
           provider,
           model,
@@ -336,6 +342,7 @@ export default function Home() {
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
           encoding_instructions: encodingInstructions,
+          empty_message_handling: emptyMessageHandling,
           codebook,
           provider,
           model,
@@ -383,6 +390,8 @@ export default function Home() {
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
           encoding_instructions: encodingInstructions,
+          empty_message_handling: emptyMessageHandling,
+
           codebook,
           model_slots: modelSlots.map((s) => ({
             provider: s.provider,
@@ -732,6 +741,22 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
                           placeholder="E.g., Read each message carefully. Classify the tone, intent, and strategy used by the sender..."
                         />
                         <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row.</p>
+                      </div>
+                      <div className="f" style={{ marginTop: 12 }}>
+                        <label>Empty message handling</label>
+                        <select
+                          value={emptyMessageHandling}
+                          onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "encode")}
+                        >
+                          <option value="error">Flag as error (default)</option>
+                          <option value="ignore">Ignore (skip row)</option>
+                          <option value="encode">Encode as value</option>
+                        </select>
+                        <p className="hint">
+                          {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
+                          {emptyMessageHandling === "encode" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
+                          {emptyMessageHandling === "error" && "Empty rows will be flagged with an error in the output."}
+                        </p>
                       </div>
                     </div>
                   </div>
