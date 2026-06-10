@@ -1,6 +1,7 @@
 from app.services.providers.base import LLMProvider
 from app.services.providers.openai_provider import OpenAICompatibleProvider
 
+
 # Maps user-facing model ID -> (provider_class, api_model_name, base_url or None)
 PROVIDER_REGISTRY: dict[str, tuple[type[LLMProvider], str, str | None]] = {
     # OpenAI
@@ -12,6 +13,12 @@ PROVIDER_REGISTRY: dict[str, tuple[type[LLMProvider], str, str | None]] = {
     # Google — uses its own provider
     # "gemini-2.0-flash": (GoogleProvider, "gemini-2.0-flash", None),
     # "gemini-2.5-pro":   (GoogleProvider, "gemini-2.5-pro-preview-06-05", None),
+    # "gemini-2.5-pro-preview-06-05":  (OpenAICompatibleProvider, "gemini-2.5-pro-preview-06-05", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+    # "gemini-2.5-flash-preview-05-20":(OpenAICompatibleProvider, "gemini-2.5-flash-preview-05-20", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+    # "gemini-2.0-flash":              (OpenAICompatibleProvider, "gemini-2.0-flash", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    "gemini-3.5-flash":              (OpenAICompatibleProvider, "gemini-3.5-flash", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    "gemini-2.5-pro":   (OpenAICompatibleProvider, "gemini-2.5-pro", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    "gemini-2.5-flash": (OpenAICompatibleProvider, "gemini-2.5-flash", "https://generativelanguage.googleapis.com/v1beta/openai"),
     # Together AI (Llama) — OpenAI-compatible
     "llama-4-maverick": (OpenAICompatibleProvider, "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", "https://api.together.xyz/v1"),
     "llama-4-scout":    (OpenAICompatibleProvider, "meta-llama/Llama-4-Scout-17B-16E-Instruct", "https://api.together.xyz/v1"),
