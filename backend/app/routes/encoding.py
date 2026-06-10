@@ -85,7 +85,6 @@ class GenerateScriptRequest(BaseModel):
     provider: str
     model: str = ""
     api_key: str
-    empty_message_handling: str
 
 
 @router.post("/encoding/generate-script")
@@ -129,9 +128,14 @@ async def ws_run_encoding(ws: WebSocket):
 
     try:
         # Receive config from client
+        # config = await ws.receive_json()
+
         config = await ws.receive_json()
+        print(f">>> config received: file_id={config.get('file_id')}, model_slots={config.get('model_slots')}")
+
 
         file_id = config.get("file_id")
+        print(f">>> checking file_id: {file_id}, in store: {file_id in _uploaded_files}")
         if not file_id or file_id not in _uploaded_files:
             await ws.send_json({"type": "error", "message": "File not found. Please re-upload."})
             await ws.close()
@@ -139,6 +143,7 @@ async def ws_run_encoding(ws: WebSocket):
 
         file_info = _uploaded_files[file_id]
         file_path = file_info["path"]
+        print(f">>> loading file: {file_path}")
 
         # Load the DataFrame
         ext = file_path.rsplit(".", 1)[-1].lower()
@@ -146,8 +151,10 @@ async def ws_run_encoding(ws: WebSocket):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
+        print(f">>> file loaded, shape: {df.shape}")
 
         message_column = config.get("message_column", "")
+        print(f">>> message_column: {message_column}, in columns: {message_column in df.columns}")
         if message_column not in df.columns:
             await ws.send_json({"type": "error", "message": f"Column '{message_column}' not found in file."})
             await ws.close()
@@ -177,10 +184,10 @@ async def ws_run_encoding(ws: WebSocket):
             message_column=message_column,
             experiment_instructions=config.get("experiment_instructions", ""),
             encoding_instructions=config.get("encoding_instructions", ""),
-            empty_message_handling=config.get("empty_message_handling", ""),
             codebook=codebook,
             model_slots=model_slots,
             runs_per_model=runs_per_model,
+            empty_message_handling=config.get("empty_message_handling", ""), 
             aggregation=aggregation,
         ):
             await ws.send_json(update)

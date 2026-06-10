@@ -62,11 +62,12 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
   },
   {
     value: "gemini", label: "Google (Gemini)", models: [
-      { value: "gemini-2.5-pro-preview-06-05", label: "Gemini 2.5 Pro" },
-      { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
-      { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-      { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
-      { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+      // { value: "gemini-2.5-pro-preview-06-05", label: "Gemini 2.5 Pro" },
+      // { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
+      // { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+      { value: "gemini-3.5-flash", label: "gemini-3.5-flash" },
     ],
   },
   {
@@ -169,8 +170,8 @@ export default function Home() {
   const consoleRef = useRef<HTMLDivElement>(null);
 
   // Add this state near your other form state
-  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "encode">("error");
-  const [emptyMessageValue, setEmptyMessageValue] = useState("N");
+  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "encode">("ignore");
+
 
   // Right panel view: "script" | "run"
   const [rightView, setRightView] = useState<"script" | "run">("script");
@@ -748,7 +749,7 @@ If the message field is empty/blank, classify as: Promise=0, Empty_Talk=0, No_Me
                           value={emptyMessageHandling}
                           onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "encode")}
                         >
-                          <option value="error">Flag as error (default)</option>
+                          <option value="error">Flag as error</option>
                           <option value="ignore">Ignore (skip row)</option>
                           <option value="encode">Encode as value</option>
                         </select>

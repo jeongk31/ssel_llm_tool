@@ -14,7 +14,7 @@ from app.services.providers.base import LLMProvider
 PROVIDER_BASE_URLS = {
     "openai": None,
     "anthropic": None,
-    "gemini": None,
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "deepseek": "https://api.deepseek.com",
     "mistral": "https://api.mistral.ai/v1",
     "together": "https://api.together.xyz/v1",
@@ -36,8 +36,6 @@ def _build_prompt(
     experiment_instructions: str,
     encoding_instructions: str,
     codebook: list[dict[str, Any]],
-    empty_message_handling: str,
-
 ) -> str:
     """Construct the full encoding prompt for one row."""
     codebook_block = ""
@@ -50,13 +48,6 @@ def _build_prompt(
 
     labels = [v["label"] for v in codebook]
 
-    # display_message = (
-    #     "[EMPTY MESSAGE]"
-    #     if not message_text.strip()
-    #     else message_text
-    # )
-
-
     return f"""You are encoding one row of data. One row = one unit of observation.
 
 ## Experiment Instructions
@@ -67,16 +58,8 @@ def _build_prompt(
 
 ## Codebook Variables
 {codebook_block}
-
 ## Message to Encode
 {message_text}
-
-## Empty Message Handling
-{empty_message_handling}
-
-## Special Rule
-If the message is empty and the handling is set to "encode", then encode the row using the
-experiment instructions, encoding instructions, and codebook.
 
 ## Output Requirements
 - Return ONLY valid JSON
@@ -155,9 +138,9 @@ async def run_encoding(
     model_slots: list[dict[str, str]] | None = None,
     runs_per_model: int = 1,
     aggregation: str = "mode",
-    empty_message_handling: str = "",
     # Legacy single-model params (used if model_slots not provided)
     provider_name: str = "",
+    empty_message_handling: str = "ignore", 
     model_id: str = "",
     api_key: str = "",
     max_retries: int = 3,
@@ -203,40 +186,20 @@ async def run_encoding(
         #     all_results.append({**original, **encoded})
         #     continue
         if not message.strip():
-
             if empty_message_handling == "ignore":
-                yield {
-                    "type": "progress",
-                    "current": row_idx + 1,
-                    "total": total,
-                    "percent": percent,
-                }
+                yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
                 continue
-
             elif empty_message_handling == "encode":
-                # Allow empty message to continue through normal LLM encoding flow
                 pass
-
-            else:  # "error"
+            else:
                 encoded = {**null_result, "_error": "empty_message"}
                 all_results.append({**original, **encoded})
-
-                yield {
-                    "type": "progress",
-                    "current": row_idx + 1,
-                    "total": total,
-                    "percent": percent,
-                }
-                yield {
-                    "type": "row",
-                    "index": row_idx,
-                    "original": original,
-                    "encoded": encoded,
-                }
+                yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
+                yield {"type": "row", "index": row_idx, "original": original, "encoded": encoded}
                 continue
 
         # Collect results from all models × runs
-        prompt = _build_prompt(message, experiment_instructions, encoding_instructions, codebook, empty_message_handling)
+        prompt = _build_prompt(message, experiment_instructions, encoding_instructions, codebook)
         call_results: list[dict[str, Any]] = []
         call_details: list[dict[str, Any]] = []
 
