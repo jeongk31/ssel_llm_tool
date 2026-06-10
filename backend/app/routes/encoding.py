@@ -85,6 +85,7 @@ class GenerateScriptRequest(BaseModel):
     provider: str
     model: str = ""
     api_key: str
+    empty_message_handling: str
 
 
 @router.post("/encoding/generate-script")
@@ -176,6 +177,7 @@ async def ws_run_encoding(ws: WebSocket):
             message_column=message_column,
             experiment_instructions=config.get("experiment_instructions", ""),
             encoding_instructions=config.get("encoding_instructions", ""),
+            empty_message_handling=config.get("empty_message_handling", ""),
             codebook=codebook,
             model_slots=model_slots,
             runs_per_model=runs_per_model,

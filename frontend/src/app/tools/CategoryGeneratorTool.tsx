@@ -80,14 +80,14 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Table expand modal: null | "preview" | "codebook" | "live"
+  // Table expand modal: null | "preview" | "codebook" | "live". will use this for object types
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
-  const [experimentInstructions, setExperimentInstructions] = useState("");
-  const [encodingInstructions, setEncodingInstructions] = useState("");
-  const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);
+  const [experimentInstructions, setExperimentInstructions] = useState("");  //get rid of
+  const [encodingInstructions, setEncodingInstructions] = useState("");    //get ride of
+  const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);   //change to object types -> not codebook naming
 
   
   const handleUpload = useCallback(async (file: File) => {
@@ -463,7 +463,7 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
                         <span className="catgen-label">Values:</span>
                         {cat.values}
                       </div>
-                      
+
                       {/* rate */}
                       {cat.scale_min !== undefined && (
                         <div className="catgen-field">
