@@ -12,7 +12,8 @@ def generate_encoding_script(
     encoding_instructions: str,
     codebook: list[dict[str, Any]],
     provider: str,
-    api_key: str,
+    model: str = "",
+    api_key: str = "",
 ) -> str:
     """Build a ready-to-run Python script from the user's configuration."""
 
@@ -33,7 +34,7 @@ def generate_encoding_script(
     codebook_prompt_block = "\\n".join(codebook_lines)
 
     # Map provider to the right SDK setup
-    provider_imports, provider_setup, provider_call = _get_provider_code(provider)
+    provider_imports, provider_setup, provider_call = _get_provider_code(provider, model)
 
     # Build the list of codebook labels for output columns
     labels = [e["label"] for e in codebook]
@@ -227,33 +228,20 @@ if __name__ == "__main__":
     return script
 
 
-def _get_provider_code(provider: str) -> tuple[str, str, str]:
-    """Return (import_block, setup_block, call_block) for the selected provider."""
+def _get_provider_code(provider: str, model: str) -> tuple[str, str, str]:
+    """Return (import_block, setup_block, call_block) for the selected provider and model."""
 
-    if provider == "openai":
-        return (
-            "from openai import OpenAI",
-            'client = OpenAI(api_key=API_KEY)',
-            '''            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a precise data encoder. Return only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
-            response_text = response.choices[0].message.content''',
-        )
-    elif provider == "anthropic":
+    model_str = json.dumps(model)
+
+    if provider == "anthropic":
         return (
             "import anthropic",
             'client = anthropic.Anthropic(api_key=API_KEY)',
-            '''            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+            f'''            response = client.messages.create(
+                model={model_str},
                 max_tokens=2048,
                 system="You are a precise data encoder. Return only valid JSON.",
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{{"role": "user", "content": prompt}}],
             )
             response_text = response.content[0].text''',
         )
@@ -261,68 +249,39 @@ def _get_provider_code(provider: str) -> tuple[str, str, str]:
         return (
             "from google import genai",
             'client = genai.Client(api_key=API_KEY)',
-            '''            response = client.models.generate_content(
-                model="gemini-2.0-flash",
+            f'''            response = client.models.generate_content(
+                model={model_str},
                 contents=prompt,
-                config={"system_instruction": "You are a precise data encoder. Return only valid JSON."},
+                config={{"system_instruction": "You are a precise data encoder. Return only valid JSON."}},
             )
             response_text = response.text''',
         )
-    elif provider == "deepseek":
-        return (
-            "from openai import OpenAI",
-            'client = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")',
-            '''            response = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
-                    {"role": "system", "content": "You are a precise data encoder. Return only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,
-            )
-            response_text = response.choices[0].message.content''',
-        )
-    elif provider == "mistral":
-        return (
-            "from openai import OpenAI",
-            'client = OpenAI(api_key=API_KEY, base_url="https://api.mistral.ai/v1")',
-            '''            response = client.chat.completions.create(
-                model="mistral-large-latest",
-                messages=[
-                    {"role": "system", "content": "You are a precise data encoder. Return only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,
-            )
-            response_text = response.choices[0].message.content''',
-        )
-    elif provider == "together":
-        return (
-            "from openai import OpenAI",
-            'client = OpenAI(api_key=API_KEY, base_url="https://api.together.xyz/v1")',
-            '''            response = client.chat.completions.create(
-                model="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-                messages=[
-                    {"role": "system", "content": "You are a precise data encoder. Return only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,
-            )
-            response_text = response.choices[0].message.content''',
-        )
     else:
-        # Default to OpenAI-compatible
+        # OpenAI-compatible: openai, deepseek, mistral, together
+        base_urls = {
+            "deepseek": "https://api.deepseek.com",
+            "mistral": "https://api.mistral.ai/v1",
+            "together": "https://api.together.xyz/v1",
+        }
+        base_url = base_urls.get(provider)
+        if base_url:
+            setup = f'client = OpenAI(api_key=API_KEY, base_url="{base_url}")'
+        else:
+            setup = 'client = OpenAI(api_key=API_KEY)'
+
+        # OpenAI supports json_object response format
+        rf_line = '\n                response_format={"type": "json_object"},' if provider == "openai" else ""
+
         return (
             "from openai import OpenAI",
-            'client = OpenAI(api_key=API_KEY)',
-            '''            response = client.chat.completions.create(
-                model="gpt-4o",
+            setup,
+            f'''            response = client.chat.completions.create(
+                model={model_str},
                 messages=[
-                    {"role": "system", "content": "You are a precise data encoder. Return only valid JSON."},
-                    {"role": "user", "content": prompt},
+                    {{"role": "system", "content": "You are a precise data encoder. Return only valid JSON."}},
+                    {{"role": "user", "content": prompt}},
                 ],
-                temperature=0.1,
-                response_format={"type": "json_object"},
+                temperature=0.1,{rf_line}
             )
             response_text = response.choices[0].message.content''',
         )
