@@ -25,8 +25,17 @@ def _get_provider_instance(provider_name: str, model_id: str, api_key: str) -> L
     """Get an LLM provider instance for the given provider and model."""
     if provider_name not in PROVIDER_BASE_URLS:
         raise ValueError(f"Unknown provider: {provider_name}")
-    base_url = PROVIDER_BASE_URLS.get(provider_name)
 
+    if provider_name == "anthropic":
+        from app.services.providers.anthropic_provider import AnthropicProvider
+        return AnthropicProvider(api_key=api_key, model=model_id)
+
+    if provider_name == "gemini":
+        from app.services.providers.gemini_provider import GeminiProvider
+        return GeminiProvider(api_key=api_key, model=model_id)
+
+    # OpenAI-compatible: openai, deepseek, mistral, together
+    base_url = PROVIDER_BASE_URLS.get(provider_name)
     from app.services.providers.openai_provider import OpenAICompatibleProvider
     return OpenAICompatibleProvider(api_key=api_key, model=model_id, base_url=base_url)
 
@@ -178,21 +187,18 @@ async def run_encoding(
 
         percent = round(((row_idx + 1) / total) * 100, 1)
 
+        # Treat empty/missing messages as empty string — still encode
         if not message.strip():
-            encoded = {**null_result, "_error": "empty_message"}
-            yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
-            yield {"type": "row", "index": row_idx, "original": original, "encoded": encoded}
-            all_results.append({**original, **encoded})
-            continue
+            message = "(empty)"
 
         # Collect results from all models × runs
         prompt = _build_prompt(message, experiment_instructions, encoding_instructions, codebook)
         call_results: list[dict[str, Any]] = []
-        call_details: list[dict[str, Any]] = []
 
         for p_info in providers:
             provider_inst = p_info["instance"]
             for run_num in range(1, runs_per_model + 1):
+                encoder_label = f"{p_info['label']}__run{run_num}" if runs_per_model > 1 else p_info["label"]
                 parsed = None
                 for attempt in range(1, max_retries + 1):
                     try:
@@ -206,19 +212,19 @@ async def run_encoding(
                             break
                         if attempt == max_retries:
                             yield {"type": "error", "index": row_idx,
-                                   "message": f"Row {row_idx + 1} [{p_info['label']} run {run_num}]: JSON parse failed after {max_retries} retries"}
+                                   "message": f"Row {row_idx + 1} [{encoder_label}]: JSON parse failed after {max_retries} retries"}
                     except Exception as e:
                         if attempt == max_retries:
                             yield {"type": "error", "index": row_idx,
-                                   "message": f"Row {row_idx + 1} [{p_info['label']} run {run_num}]: {e}"}
+                                   "message": f"Row {row_idx + 1} [{encoder_label}]: {e}"}
 
                 if parsed:
                     call_results.append(parsed)
-                    call_details.append({"model": p_info["label"], "run": run_num, "result": parsed})
+                    all_results.append({**original, "encoder": encoder_label, **parsed})
                 else:
-                    call_details.append({"model": p_info["label"], "run": run_num, "result": None, "error": True})
+                    all_results.append({**original, "encoder": encoder_label, **null_result, "_error": "api_failed"})
 
-        # Aggregate
+        # Aggregate for the streamed row (what the UI shows)
         if call_results:
             if use_voting:
                 encoded = _aggregate_results(call_results, labels, aggregation)
@@ -227,20 +233,24 @@ async def run_encoding(
             else:
                 encoded = call_results[0]
             encoded_count += 1
+
+            # Add aggregated row to output
+            if use_voting:
+                all_results.append({**original, "encoder": f"__aggregated ({aggregation})", **{k: v for k, v in encoded.items() if not k.startswith("_")}})
         else:
             encoded = {**null_result, "_error": "all_calls_failed"}
-
-        # Include per-call details for transparency
-        if use_voting:
-            encoded["_call_details"] = call_details
-
-        all_results.append({**original, **{k: v for k, v in encoded.items() if not k.startswith("_call")}})
 
         yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
         yield {"type": "row", "index": row_idx, "original": original, "encoded": encoded}
 
     # Save results
     result_df = pd.DataFrame(all_results)
+    # Reorder columns: original cols, encoder, codebook labels, then any extra
+    orig_cols = list(df.columns)
+    ordered_cols = orig_cols + ["encoder"] + labels
+    extra_cols = [c for c in result_df.columns if c not in ordered_cols]
+    result_df = result_df[[c for c in ordered_cols + extra_cols if c in result_df.columns]]
+
     import tempfile, os
     output_dir = tempfile.mkdtemp(prefix="llm_encoding_")
     output_path = os.path.join(output_dir, "encoded_results.csv")

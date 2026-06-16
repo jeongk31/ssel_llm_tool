@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import files, generate, pipeline, encoding
+from app.routes import files, generate, pipeline, encoding, agreement
 
 
 @asynccontextmanager
@@ -29,6 +29,7 @@ app.include_router(files.router, prefix="/api")
 app.include_router(generate.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
 app.include_router(encoding.router, prefix="/api")
+app.include_router(agreement.router, prefix="/api")
 
 
 @app.get("/")
