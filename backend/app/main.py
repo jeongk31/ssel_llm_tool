@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import files, generate, pipeline, encoding
+from app.routes import files, generate, pipeline, encoding, agreement
 
 from fastapi import Request
 
@@ -21,7 +21,7 @@ app = FastAPI(title="LLM Measurement Toolkit", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,6 +31,7 @@ app.include_router(files.router, prefix="/api")
 app.include_router(generate.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
 app.include_router(encoding.router, prefix="/api")
+app.include_router(agreement.router, prefix="/api")
 
 
 

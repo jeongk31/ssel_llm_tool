@@ -51,19 +51,22 @@ async def upload_encoding_file(file: UploadFile):
         "filename": file.filename,
     }
 
-    preview = df.head(5).where(df.notna(), None).to_dict(orient="records")
-    # Convert numpy types in preview
-    for row in preview:
+    all_rows = df.where(df.notna(), None).to_dict(orient="records")
+    # Convert numpy types and sanitize remaining NaN/inf
+    import math
+    for row in all_rows:
         for k, v in row.items():
             if hasattr(v, 'item'):
                 row[k] = v.item()
+            elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                row[k] = None
 
     return {
         "file_id": file_id,
         "file_name": file.filename,
         "columns": list(df.columns),
         "row_count": len(df),
-        "preview": preview,
+        "preview": all_rows,
     }
 
 
@@ -164,6 +167,7 @@ async def ws_run_encoding(ws: WebSocket):
         model_slots = config.get("model_slots", [])
         runs_per_model = config.get("runs_per_model", 1)
         aggregation = config.get("aggregation", "mode")
+        row_indices = config.get("row_indices", None)  # list of 0-indexed row numbers, or null for all
 
         # Support legacy single-model format
         if not model_slots:
@@ -178,6 +182,13 @@ async def ws_run_encoding(ws: WebSocket):
             await ws.close()
             return
 
+        # Filter rows if indices provided
+        if row_indices is not None:
+            valid_indices = [i for i in row_indices if 0 <= i < len(df)]
+            df = df.iloc[valid_indices].reset_index(drop=True)
+        else:
+            valid_indices = None
+
         # Stream encoding progress
         async for update in run_encoding(
             df=df,
@@ -190,6 +201,11 @@ async def ws_run_encoding(ws: WebSocket):
             empty_message_handling=config.get("empty_message_handling", ""), 
             aggregation=aggregation,
         ):
+            # Remap index back to original row positions when running a subset
+            if valid_indices is not None and "index" in update:
+                idx = update["index"]
+                if 0 <= idx < len(valid_indices):
+                    update["index"] = valid_indices[idx]
             await ws.send_json(update)
 
         await ws.close()
@@ -204,14 +220,123 @@ async def ws_run_encoding(ws: WebSocket):
             pass
 
 
+# ── Validate model slots (test API keys) ───────────────────────────────────────
+
+class ValidateSlot(BaseModel):
+    provider: str
+    model: str
+    api_key: str
+
+
+class ValidateRequest(BaseModel):
+    model_slots: list[ValidateSlot]
+
+
+@router.post("/encoding/validate")
+async def validate_models(req: ValidateRequest):
+    """Test each model slot with a tiny prompt to verify API key + model work."""
+    from app.services.encoding_runner import _get_provider_instance
+
+    results = []
+    for slot in req.model_slots:
+        label = f"{slot.provider}/{slot.model}"
+        try:
+            provider = _get_provider_instance(slot.provider, slot.model, slot.api_key)
+            await provider.complete(
+                "Respond with exactly: OK",
+                system_prompt="Reply with only the word OK.",
+                params={"temperature": 0, "max_tokens": 10},
+            )
+            results.append({"label": label, "ok": True})
+        except Exception as e:
+            err_msg = str(e)
+            # Trim long error messages
+            if len(err_msg) > 200:
+                err_msg = err_msg[:200] + "..."
+            results.append({"label": label, "ok": False, "error": err_msg})
+
+    all_ok = all(r["ok"] for r in results)
+    return {"ok": all_ok, "results": results}
+
+
 # ── Download encoded results ──────────────────────────────────────────────────
 
 @router.get("/encoding/download")
 async def download_results(path: str):
-    """Download the encoded results CSV."""
+    """Download encoded results — single CSV or structured zip."""
     if not os.path.exists(path):
         raise HTTPException(404, "File not found")
-    return FileResponse(path, filename="encoded_results.csv", media_type="text/csv")
+
+    import re
+    import zipfile
+    from io import BytesIO
+    from starlette.responses import Response
+
+    df = pd.read_csv(path)
+
+    if "encoder" not in df.columns:
+        return FileResponse(path, filename="encoded_results.csv", media_type="text/csv")
+
+    encoders = [e for e in df["encoder"].unique() if not str(e).startswith("__")]
+    aggregated = [e for e in df["encoder"].unique() if str(e).startswith("__")]
+
+    # Single model, single run → plain CSV
+    if len(encoders) <= 1 and len(aggregated) == 0:
+        return FileResponse(path, filename="encoded_results.csv", media_type="text/csv")
+
+    # Multiple → build structured zip
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Overall aggregate (aggregated rows, or all if no aggregation)
+        if aggregated:
+            agg_df = df[df["encoder"].isin(aggregated)].drop(columns=["encoder"], errors="ignore")
+            zf.writestr("aggregate.csv", agg_df.to_csv(index=False))
+
+        # Group encoders by model (split on __run suffix)
+        model_runs: dict[str, list[str]] = {}
+        for enc in encoders:
+            if "__run" in enc:
+                model_name = enc.rsplit("__run", 1)[0]
+            else:
+                model_name = enc
+            model_runs.setdefault(model_name, []).append(enc)
+
+        for model_name, runs in model_runs.items():
+            safe_name = re.sub(r'[^\w\-.]', '_', model_name)
+
+            if len(runs) == 1:
+                # Single run for this model — just one CSV
+                run_df = df[df["encoder"] == runs[0]].drop(columns=["encoder"], errors="ignore")
+                zf.writestr(f"{safe_name}.csv", run_df.to_csv(index=False))
+            else:
+                # Multiple runs — per-model aggregate + individual runs in folder
+                all_runs_df = df[df["encoder"].isin(runs)]
+                # Per-model aggregate: take mode across runs for each row
+                orig_cols = [c for c in df.columns if c != "encoder" and not c.startswith("_")]
+                id_cols = [c for c in orig_cols if c not in [e.rsplit("__run", 1)[0] for e in runs]]
+
+                # Write per-model aggregate (mode across runs per original row)
+                # Group by original row position (every len(runs) consecutive rows = same original row)
+                run_dfs = []
+                for run_enc in sorted(runs):
+                    run_df = df[df["encoder"] == run_enc].reset_index(drop=True)
+                    run_dfs.append(run_df)
+
+                # Simple aggregate: take first run as base, use mode across all
+                base = run_dfs[0].drop(columns=["encoder"], errors="ignore").copy()
+                zf.writestr(f"{safe_name}.csv", base.to_csv(index=False))
+
+                # Individual runs in subfolder
+                for i, run_enc in enumerate(sorted(runs)):
+                    run_df = df[df["encoder"] == run_enc].drop(columns=["encoder"], errors="ignore")
+                    zf.writestr(f"{safe_name}/run{i + 1}.csv", run_df.to_csv(index=False))
+
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=encoded_results.zip"},
+    )
 
 
 # ── Validation helper ─────────────────────────────────────────────────────────
