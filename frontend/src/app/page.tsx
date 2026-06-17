@@ -624,7 +624,8 @@ export default function Home() {
     log("info", `Aggregation: ${aggregation} · File: ${uploadResult.file_name} (${filterActive ? `${parsedFilter.indices.length} of ` : ""}${uploadResult.row_count} rows)`);
     log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
     const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/encoding/run`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -829,7 +830,8 @@ export default function Home() {
       log("info", "Re-running all rows from scratch...");
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
     const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/encoding/run`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

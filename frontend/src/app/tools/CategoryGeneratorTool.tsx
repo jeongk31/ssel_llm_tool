@@ -147,7 +147,8 @@ export default function CategoryGenerator({ providers }: Props) {
     //   .filter(line => line.trim() !== "")
     //   .map((line, idx) => ({ id: idx + 1, text: line.trim() }));
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
     const ws = new WebSocket(`${apiBase.replace(/^http/, "ws")}/api/ws/generate/categories`);
     wsRef.current = ws;
 
