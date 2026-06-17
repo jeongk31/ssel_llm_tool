@@ -43,10 +43,9 @@ interface ProviderModel {
 
 interface Props {
   providers: ProviderModel[];
-  demoRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-export default function CategoryGenerator({ providers, demoRef }: Props) {
+export default function CategoryGenerator({ providers }: Props) {
   const [goals, setGoals] = useState("");
   const [hypothesis, setHypothesis] = useState("");
   const [outputType, setOutputType] = useState("classify");
@@ -129,19 +128,6 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
     if (file) handleUpload(file);
   };
 
-  useEffect(() => {
-    if (!demoRef) return;
-    demoRef.current = () => {
-      setGoals("Classify the communication strategies used by Player B in pre-play messages during a trust game experiment into behavioral categories for coding research.");
-      setHypothesis("Player B messages containing explicit promises to cooperate are associated with higher rates of Player A choosing 'In' compared to messages containing only empty talk or no message.");
-      setDomain("Behavioral Economics / Experimental Trust Games");
-      setOutputType("classify");
-      setTargetCount(6);
-      setReferences("Charness & Dufwenberg (2006) trust game paradigm. Categories of interest: Promise (explicit commitment to Roll), Empty Talk (non-binding persuasion without commitment), No Message (blank). MITI-style behavioral coding framework.");
-      setOpenPanels(new Set([3, 4, 5]));
-    };
-  }, [demoRef]);
-
   const handleGenerate = async () => {
     if (!goals.trim()) { alert("Please enter research goals."); return; }
     if (!hypothesis.trim()) { alert("Please enter a hypothesis."); return; }
@@ -161,8 +147,8 @@ export default function CategoryGenerator({ providers, demoRef }: Props) {
     //   .filter(line => line.trim() !== "")
     //   .map((line, idx) => ({ id: idx + 1, text: line.trim() }));
 
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${wsProtocol}//localhost:8000/api/ws/generate/categories`);
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const ws = new WebSocket(`${apiBase.replace(/^http/, "ws")}/api/ws/generate/categories`);
     wsRef.current = ws;
 
     ws.onopen = () => {
