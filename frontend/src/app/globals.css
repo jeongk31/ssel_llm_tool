@@ -70,6 +70,8 @@ body{
 .topbar-logo{height:28px;width:auto}
 .topbar-sep{width:1px;height:24px;background:var(--border)}
 .topbar-title{font-weight:600;font-size:14px;color:var(--text);letter-spacing:-0.01em}
+.topbar-title-link{cursor:pointer;outline:none}
+.topbar-title-link:hover{color:var(--purple)}
 .topbar-badge{
   font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
   color:var(--teal);background:var(--teal-bg);
