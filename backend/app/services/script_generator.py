@@ -1,15 +1,15 @@
-"""Generates a standalone Python script for LLM-based encoding of datasets."""
+"""Generates a standalone Python script for LLM-based coding of datasets."""
 
 import json
 from typing import Any
 
 
-def generate_encoding_script(
+def generate_coding_script(
     *,
     file_name: str,
     message_column: str,
     experiment_instructions: str,
-    encoding_instructions: str,
+    coding_instructions: str,
     codebook: list[dict[str, Any]],
     provider: str,
     model: str = "",
@@ -21,7 +21,7 @@ def generate_encoding_script(
 
     # Escape triple-quotes inside user text so they don't break the script
     exp_instr = experiment_instructions.replace('"""', '\\"\\"\\"')
-    enc_instr = encoding_instructions.replace('"""', '\\"\\"\\"')
+    enc_instr = coding_instructions.replace('"""', '\\"\\"\\"')
 
     # Build the codebook description block for the prompt
     codebook_lines = []
@@ -29,7 +29,7 @@ def generate_encoding_script(
         codebook_lines.append(
             f"- {entry['label']} (type: {entry['type']}): "
             f"{entry['definition']}. "
-            f"Allowed values: {entry.get('encoded_values', 'any')}"
+            f"Allowed values: {entry.get('coded_values', 'any')}"
         )
     codebook_prompt_block = "\\n".join(codebook_lines)
 
@@ -42,7 +42,7 @@ def generate_encoding_script(
 
     script = f'''#!/usr/bin/env python3
 """
-Auto-generated LLM Encoding Script
+Auto-generated LLM Coding Script
 ====================================
 File: {file_name}
 Provider: {provider}
@@ -71,7 +71,7 @@ CODEBOOK = {codebook_json}
 
 EXPERIMENT_INSTRUCTIONS = """{exp_instr}"""
 
-ENCODING_INSTRUCTIONS = """{enc_instr}"""
+CODING_INSTRUCTIONS = """{enc_instr}"""
 
 CODEBOOK_LABELS = {labels_json}
 
@@ -102,26 +102,26 @@ def load_dataset(file_path: str) -> pd.DataFrame:
 
 
 def build_prompt(message_text: str) -> str:
-    """Construct the full prompt for encoding one row."""
+    """Construct the full prompt for coding one row."""
     codebook_block = ""
     for var in CODEBOOK:
         codebook_block += (
             f"- {{var['label']}} (type: {{var['type']}}): "
             f"{{var['definition']}}. "
-            f"Allowed values: {{var.get('encoded_values', 'any')}}\\n"
+            f"Allowed values: {{var.get('coded_values', 'any')}}\\n"
         )
 
-    prompt = f"""You are encoding one row of data. One row = one unit of observation.
+    prompt = f"""You are coding one row of data. One row = one unit of observation.
 
 ## Experiment Instructions
 {{EXPERIMENT_INSTRUCTIONS}}
 
-## Encoding Instructions
-{{ENCODING_INSTRUCTIONS}}
+## Coding Instructions
+{{CODING_INSTRUCTIONS}}
 
 ## Codebook Variables
 {{codebook_block}}
-## Message to Encode
+## Message to Code
 {{message_text}}
 
 ## Output Requirements
@@ -165,8 +165,8 @@ def call_llm(prompt: str, max_retries: int = 3) -> dict:
     return {{{", ".join(f'{json.dumps(l)}: None' for l in labels)}}}
 
 
-def encode_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Encode every row in the DataFrame using the LLM."""
+def code_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Code every row in the DataFrame using the LLM."""
     results = []
     total = len(df)
 
@@ -177,14 +177,14 @@ def encode_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             result = {{{", ".join(f'{json.dumps(l)}: None' for l in labels)}}}
             result["_error"] = "empty_message"
         else:
-            print(f"  [{{idx + 1}}/{{total}}] Encoding: {{message[:80]}}...")
+            print(f"  [{{idx + 1}}/{{total}}] Coding: {{message[:80]}}...")
             prompt = build_prompt(message)
             result = call_llm(prompt)
 
         result["_raw_response"] = json.dumps(result)
         results.append(result)
 
-    # Add encoded columns to original DataFrame
+    # Add coded columns to original DataFrame
     result_df = df.copy()
     for label in CODEBOOK_LABELS:
         result_df[label] = [r.get(label) for r in results]
@@ -195,9 +195,9 @@ def encode_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def save_results(df: pd.DataFrame, input_path: str) -> str:
-    """Save encoded results to a new CSV file."""
+    """Save coded results to a new CSV file."""
     base = input_path.rsplit(".", 1)[0]
-    output_path = f"{{base}}_encoded.csv"
+    output_path = f"{{base}}_coded.csv"
     df.to_csv(output_path, index=False)
     return output_path
 
@@ -205,16 +205,16 @@ def save_results(df: pd.DataFrame, input_path: str) -> str:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="LLM-based encoding of dataset rows")
-    parser.add_argument("file", help="Path to CSV or Excel file to encode")
+    parser = argparse.ArgumentParser(description="LLM-based coding of dataset rows")
+    parser.add_argument("file", help="Path to CSV or Excel file to code")
     args = parser.parse_args()
 
     print(f"Loading dataset: {{args.file}}")
     df = load_dataset(args.file)
-    print(f"Loaded {{len(df)}} rows, encoding column: '{{MESSAGE_COLUMN}}'")
+    print(f"Loaded {{len(df)}} rows, coding column: '{{MESSAGE_COLUMN}}'")
 
-    print("Starting encoding...")
-    result_df = encode_dataframe(df)
+    print("Starting coding...")
+    result_df = code_dataframe(df)
 
     output_path = save_results(result_df, args.file)
     print(f"\\nDone! Results saved to: {{output_path}}")
@@ -240,7 +240,7 @@ def _get_provider_code(provider: str, model: str) -> tuple[str, str, str]:
             f'''            response = client.messages.create(
                 model={model_str},
                 max_tokens=2048,
-                system="You are a precise data encoder. Return only valid JSON.",
+                system="You are a precise data coder. Return only valid JSON.",
                 messages=[{{"role": "user", "content": prompt}}],
             )
             response_text = response.content[0].text''',
@@ -252,7 +252,7 @@ def _get_provider_code(provider: str, model: str) -> tuple[str, str, str]:
             f'''            response = client.models.generate_content(
                 model={model_str},
                 contents=prompt,
-                config={{"system_instruction": "You are a precise data encoder. Return only valid JSON."}},
+                config={{"system_instruction": "You are a precise data coder. Return only valid JSON."}},
             )
             response_text = response.text''',
         )
@@ -278,7 +278,7 @@ def _get_provider_code(provider: str, model: str) -> tuple[str, str, str]:
             f'''            response = client.chat.completions.create(
                 model={model_str},
                 messages=[
-                    {{"role": "system", "content": "You are a precise data encoder. Return only valid JSON."}},
+                    {{"role": "system", "content": "You are a precise data coder. Return only valid JSON."}},
                     {{"role": "user", "content": prompt}},
                 ],
                 temperature=0.1,{rf_line}

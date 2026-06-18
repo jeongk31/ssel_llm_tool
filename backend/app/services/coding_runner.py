@@ -1,4 +1,4 @@
-"""Runs LLM-based encoding row by row with multi-model voting support."""
+"""Runs LLM-based coding row by row with multi-model voting support."""
 
 import json
 from collections import Counter
@@ -43,31 +43,31 @@ def _get_provider_instance(provider_name: str, model_id: str, api_key: str) -> L
 def _build_prompt(
     message_text: str,
     experiment_instructions: str,
-    encoding_instructions: str,
+    coding_instructions: str,
     codebook: list[dict[str, Any]],
 ) -> str:
-    """Construct the full encoding prompt for one row."""
+    """Construct the full coding prompt for one row."""
     codebook_block = ""
     for var in codebook:
         codebook_block += (
             f"- {var['label']} (type: {var['type']}): "
             f"{var['definition']}. "
-            f"Allowed values: {var.get('encoded_values', 'any')}\n"
+            f"Allowed values: {var.get('coded_values', 'any')}\n"
         )
 
     labels = [v["label"] for v in codebook]
 
-    return f"""You are encoding one row of data. One row = one unit of observation.
+    return f"""You are coding one row of data. One row = one unit of observation.
 
 ## Experiment Instructions
 {experiment_instructions}
 
-## Encoding Instructions
-{encoding_instructions}
+## Coding Instructions
+{coding_instructions}
 
 ## Codebook Variables
 {codebook_block}
-## Message to Encode
+## Message to Code
 {message_text}
 
 ## Output Requirements
@@ -97,15 +97,15 @@ def _parse_llm_json(text: str) -> dict | None:
 
 
 def _aggregate_results(
-    all_encoded: list[dict[str, Any]],
+    all_coded: list[dict[str, Any]],
     labels: list[str],
     aggregation: str,
 ) -> dict[str, Any]:
-    """Aggregate multiple encoding results for one row using mode or mean."""
+    """Aggregate multiple coding results for one row using mode or mean."""
     result = {}
 
     for label in labels:
-        values = [e.get(label) for e in all_encoded if e.get(label) is not None and "_error" not in e]
+        values = [e.get(label) for e in all_coded if e.get(label) is not None and "_error" not in e]
 
         if not values:
             result[label] = None
@@ -137,12 +137,12 @@ def _aggregate_results(
     return result
 
 
-async def run_encoding(
+async def run_coding(
     *,
     df: pd.DataFrame,
     message_column: str,
     experiment_instructions: str,
-    encoding_instructions: str,
+    coding_instructions: str,
     codebook: list[dict[str, Any]],
     model_slots: list[dict[str, str]] | None = None,
     runs_per_model: int = 1,
@@ -155,7 +155,7 @@ async def run_encoding(
     max_retries: int = 3,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
-    Encode each row and yield progress messages.
+    Code each row and yield progress messages.
 
     Supports multiple models × runs_per_model with voting aggregation.
     """
@@ -173,7 +173,7 @@ async def run_encoding(
     total = len(df)
     total_calls = len(providers) * runs_per_model
     use_voting = total_calls > 1
-    encoded_count = 0
+    coded_count = 0
     all_results = []
 
     for row_idx in range(total):
@@ -192,29 +192,29 @@ async def run_encoding(
             if empty_message_handling == "ignore":
                 yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
                 continue
-            elif empty_message_handling == "encode":
+            elif empty_message_handling == "code":
                 pass
             else:
-                encoded = {**null_result, "_error": "empty_message"}
-                all_results.append({**original, **encoded})
+                coded = {**null_result, "_error": "empty_message"}
+                all_results.append({**original, **coded})
                 yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
-                yield {"type": "row", "index": row_idx, "original": original, "encoded": encoded}
+                yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
                 continue
 
         # Collect results from all models × runs
-        prompt = _build_prompt(message, experiment_instructions, encoding_instructions, codebook)
+        prompt = _build_prompt(message, experiment_instructions, coding_instructions, codebook)
         call_results: list[dict[str, Any]] = []
 
         for p_info in providers:
             provider_inst = p_info["instance"]
             for run_num in range(1, runs_per_model + 1):
-                encoder_label = f"{p_info['label']}__run{run_num}" if runs_per_model > 1 else p_info["label"]
+                coder_label = f"{p_info['label']}__run{run_num}" if runs_per_model > 1 else p_info["label"]
                 parsed = None
                 for attempt in range(1, max_retries + 1):
                     try:
                         result = await provider_inst.complete(
                             prompt,
-                            system_prompt="You are a precise data encoder. Return only valid JSON.",
+                            system_prompt="You are a precise data coder. Return only valid JSON.",
                             params={"temperature": 0.1, "max_tokens": 2048},
                         )
                         parsed = _parse_llm_json(result["response"])
@@ -222,53 +222,53 @@ async def run_encoding(
                             break
                         if attempt == max_retries:
                             yield {"type": "error", "index": row_idx,
-                                   "message": f"Row {row_idx + 1} [{encoder_label}]: JSON parse failed after {max_retries} retries"}
+                                   "message": f"Row {row_idx + 1} [{coder_label}]: JSON parse failed after {max_retries} retries"}
                     except Exception as e:
                         if attempt == max_retries:
                             yield {"type": "error", "index": row_idx,
-                                   "message": f"Row {row_idx + 1} [{encoder_label}]: {e}"}
+                                   "message": f"Row {row_idx + 1} [{coder_label}]: {e}"}
 
                 if parsed:
                     call_results.append(parsed)
-                    all_results.append({**original, "encoder": encoder_label, **parsed})
+                    all_results.append({**original, "coder": coder_label, **parsed})
                 else:
-                    all_results.append({**original, "encoder": encoder_label, **null_result, "_error": "api_failed"})
+                    all_results.append({**original, "coder": coder_label, **null_result, "_error": "api_failed"})
 
         # Aggregate for the streamed row (what the UI shows)
         if call_results:
             if use_voting:
-                encoded = _aggregate_results(call_results, labels, aggregation)
-                encoded["_votes"] = len(call_results)
-                encoded["_total_calls"] = total_calls
+                coded = _aggregate_results(call_results, labels, aggregation)
+                coded["_votes"] = len(call_results)
+                coded["_total_calls"] = total_calls
             else:
-                encoded = call_results[0]
-            encoded_count += 1
+                coded = call_results[0]
+            coded_count += 1
 
             # Add aggregated row to output
             if use_voting:
-                all_results.append({**original, "encoder": f"__aggregated ({aggregation})", **{k: v for k, v in encoded.items() if not k.startswith("_")}})
+                all_results.append({**original, "coder": f"__aggregated ({aggregation})", **{k: v for k, v in coded.items() if not k.startswith("_")}})
         else:
-            encoded = {**null_result, "_error": "all_calls_failed"}
+            coded = {**null_result, "_error": "all_calls_failed"}
 
         yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
-        yield {"type": "row", "index": row_idx, "original": original, "encoded": encoded}
+        yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
 
     # Save results
     result_df = pd.DataFrame(all_results)
-    # Reorder columns: original cols, encoder, codebook labels, then any extra
+    # Reorder columns: original cols, coder, codebook labels, then any extra
     orig_cols = list(df.columns)
-    ordered_cols = orig_cols + ["encoder"] + labels
+    ordered_cols = orig_cols + ["coder"] + labels
     extra_cols = [c for c in result_df.columns if c not in ordered_cols]
     result_df = result_df[[c for c in ordered_cols + extra_cols if c in result_df.columns]]
 
     import tempfile, os
-    output_dir = tempfile.mkdtemp(prefix="llm_encoding_")
-    output_path = os.path.join(output_dir, "encoded_results.csv")
+    output_dir = tempfile.mkdtemp(prefix="llm_coding_")
+    output_path = os.path.join(output_dir, "coded_results.csv")
     result_df.to_csv(output_path, index=False)
 
     yield {
         "type": "complete",
         "total_rows": total,
-        "encoded_rows": encoded_count,
+        "coded_rows": coded_count,
         "file_path": output_path,
     }

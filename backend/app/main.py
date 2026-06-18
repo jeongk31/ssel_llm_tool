@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import files, generate, pipeline, encoding, agreement
+from app.routes import files, generate, pipeline, coding, agreement
 
 from fastapi import Request
 
@@ -30,7 +30,7 @@ app.add_middleware(
 app.include_router(files.router, prefix="/api")
 app.include_router(generate.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
-app.include_router(encoding.router, prefix="/api")
+app.include_router(coding.router, prefix="/api")
 app.include_router(agreement.router, prefix="/api")
 
 

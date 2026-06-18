@@ -14,10 +14,10 @@ interface CodebookEntry {
   label: string;
   type: string;
   definition: string;
-  encoded_values: string;
+  coded_values: string;
 }
 
-const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", encoded_values: "" };
+const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", coded_values: "" };
 
 
 interface Category {
@@ -85,7 +85,7 @@ export default function CategoryGenerator({ providers }: Props) {
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
   const [experimentInstructions, setExperimentInstructions] = useState("");  //get rid of
-  const [encodingInstructions, setEncodingInstructions] = useState("");    //get ride of
+  const [codingInstructions, setCodingInstructions] = useState("");    //get ride of
   const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);   //change to object types -> not codebook naming
 
   
@@ -99,7 +99,7 @@ export default function CategoryGenerator({ providers }: Props) {
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/encoding/upload", {
+      const res = await fetch("/api/coding/upload", {
         method: "POST",
         body: formData,
       });
@@ -291,7 +291,7 @@ export default function CategoryGenerator({ providers }: Props) {
               <div className="panel-content">
                 {uploadResult ? (
                   <div className="f">
-                    <label>Select the column containing the text to encode</label>
+                    <label>Select the column containing the text to code</label>
                     <select value={messageColumn} onChange={(e) => setMessageColumn(e.target.value)}>
                       <option value="">— Choose column —</option>
                       {uploadResult.columns.map((col) => (

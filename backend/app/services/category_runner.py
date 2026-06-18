@@ -3,7 +3,7 @@
 import json
 from typing import Any, AsyncGenerator
 
-from app.services.encoding_runner import _get_provider_instance
+from app.services.coding_runner import _get_provider_instance
 
 import asyncio
 
@@ -60,7 +60,7 @@ def _build_category_prompt(
             schema = """Each must include:
 - label (string): the dimension being rated
 - definition (string): what this dimension measures
-- values (string): the numeric scale used to encode this dimension (e.g. 1-5, 1-7, 1-10), or can be an ordinal scale (e.g. weak, moderate, strong)
+- values (string): the numeric scale used to code this dimension (e.g. 1-5, 1-7, 1-10), or can be an ordinal scale (e.g. weak, moderate, strong)
 - anchor_low (string): what a low score looks like
 - anchor_high (string): what a high score looks like
 - example (string): a sample text and what numeric value it would receive"""
@@ -69,8 +69,8 @@ def _build_category_prompt(
             schema = """Each must include:
 - label (string): the tag name
 - definition (string): what this tag captures
-- values (string): the values used to encode this tag (e.g. 0/1, true/false, present/absent)
-- example (string): a sample text and what value it would be encoded as"""
+- values (string): the values used to code this tag (e.g. 0/1, true/false, present/absent)
+- example (string): a sample text and what value it would be coded as"""
 
         elif output_type == "extract":
             schema = """Each must include:
@@ -84,15 +84,15 @@ def _build_category_prompt(
             schema = """Each must include:
 - label (string)
 - definition (string)
-- values (string): the exact values used to encode this category (e.g. 0/1, yes/no, or a list of ordinal named labels like positive/neutral/negative)
-- example (string): a sample text and what value it would be encoded as
+- values (string): the exact values used to code this category (e.g. 0/1, yes/no, or a list of ordinal named labels like positive/neutral/negative)
+- example (string): a sample text and what value it would be coded as
 Note: categories should be mutually exclusive."""
 
         values_guide = """
-## Encoding Value Types
-The 'values' field describes how THIS SINGLE CATEGORY will be encoded on its own — not the relationship between all categories.
+## Coding Value Types
+The 'values' field describes how THIS SINGLE CATEGORY will be coded on its own — not the relationship between all categories.
 
-Each category is encoded independently. Choose the encoding scheme for that individual category:
+Each category is coded independently. Choose the coding scheme for that individual category:
 - Binary: 0/1 or true/false or yes/no (use when this category is either present or absent in a message)
 - Ordinal: ordered labels (e.g. low/medium/high, never/sometimes/always)
 - Scale: numeric range (e.g. 1-5, 1-7, 1-10, use for rate output type)
@@ -159,7 +159,7 @@ async def run_category_generation(
 
 # If a file was uploaded, sample rows from it
     if file_id and message_column:
-        from app.routes.encoding import _uploaded_files
+        from app.routes.coding import _uploaded_files
         import pandas as pd
         import random
 

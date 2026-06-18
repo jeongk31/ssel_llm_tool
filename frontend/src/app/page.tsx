@@ -3,6 +3,39 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
 import Instructions from "@/app/tools/HowToPage";
+import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
+
+// Guided walkthrough for the LLM Coding page (mirrors the Learn the Toolkit content).
+const CODING_TOUR_STEPS: TourStep[] = [
+  {
+    targetId: "coding-panel-1", panel: 1, title: "Upload your dataset",
+    body: (<p>Upload a CSV or Excel file. Include an ID column and the column that holds the text to code. Don&apos;t add columns for the variables you want coded — you&apos;ll define those in the Codebook.</p>),
+  },
+  {
+    targetId: "coding-panel-2", panel: 2, title: "Pick the column & rows",
+    body: (<p>Choose the column containing the text to code. Optionally restrict the run to specific rows like <code>1-5, 8, 12-15</code> — leave blank to code the whole dataset.</p>),
+  },
+  {
+    targetId: "coding-panel-3", panel: 3, title: "Experiment instructions",
+    body: (<p>Give the model full context: the task, roles, decisions, payoffs, and communication rules. Missing context here is the most common cause of inconsistent coding.</p>),
+  },
+  {
+    targetId: "coding-panel-4", panel: 4, title: "Coding instructions",
+    body: (<><p>Tell the model exactly how to apply the codebook. The key decision: <strong>single-label</strong> (one category per row) vs <strong>multi-label</strong> (mark every category that applies).</p><p>Define each category and how to treat empty messages.</p></>),
+  },
+  {
+    targetId: "coding-panel-5", panel: 5, title: "Build the codebook",
+    body: (<p>List the variables to code. Each needs a label, a type (binary, categorical, ordinal, numeric, text), a definition, and allowed values. Keep names and values in sync with your instructions.</p>),
+  },
+  {
+    targetId: "coding-panel-6", panel: 6, title: "Models & voting",
+    body: (<p>Add one or more provider/model pairs, each with its own API key. Run each model multiple times and aggregate by majority vote (mode) or average (mean) to enable voting.</p>),
+  },
+  {
+    targetId: "coding-run-bar", title: "Run it",
+    body: (<><p><strong>Script only</strong> downloads a ready-to-run Python script without calling any model.</p><p><strong>Run Coding</strong> validates your keys, streams results live, then flags out-of-range or failed rows so you can re-run just those.</p></>),
+  },
+];
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -11,7 +44,7 @@ interface CodebookEntry {
   label: string;
   type: string;
   definition: string;
-  encoded_values: string;
+  coded_values: string;
 }
 
 interface UploadResult {
@@ -27,10 +60,10 @@ interface GenerateResult {
   filename: string;
 }
 
-interface EncodedRow {
+interface CodedRow {
   index: number;
   original: Record<string, unknown>;
-  encoded: Record<string, unknown>;
+  coded: Record<string, unknown>;
 }
 
 interface RunProgress {
@@ -75,11 +108,11 @@ interface VariableMetrics {
 }
 
 
-function validateEncodedRows(rows: EncodedRow[], codebook: CodebookEntry[]): ValidationReport {
+function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): ValidationReport {
   const issues: ValidationIssue[] = [];
 
   for (const row of rows) {
-    const enc = row.encoded;
+    const enc = row.coded;
 
     if (enc._error) {
       issues.push({ rowIndex: row.index, variable: "_error", value: enc._error, expected: "", issueType: "api_error" });
@@ -90,11 +123,11 @@ function validateEncodedRows(rows: EncodedRow[], codebook: CodebookEntry[]): Val
       if (!entry.label.trim()) continue;
       const value = enc[entry.label];
 
-      if (entry.encoded_values.trim()) {
-        const allowed = entry.encoded_values.split(",").map((v) => v.trim().toLowerCase());
+      if (entry.coded_values.trim()) {
+        const allowed = entry.coded_values.split(",").map((v) => v.trim().toLowerCase());
         const actual = String(value ?? "").trim().toLowerCase();
         if (!allowed.includes(actual)) {
-          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: entry.encoded_values, issueType: "out_of_range" });
+          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: entry.coded_values, issueType: "out_of_range" });
         }
       }
 
@@ -204,7 +237,7 @@ const CODEBOOK_TYPES = [
   { value: "text", label: "Text" },
 ];
 
-const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", encoded_values: "" };
+const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", coded_values: "" };
 
 function TagInput({ value, onChange, type }: { value: string; onChange: (v: string) => void; type: string }) {
   const [input, setInput] = useState("");
@@ -264,9 +297,9 @@ interface ModelSlot {
 
 const EMPTY_SLOT: ModelSlot = { provider: "openai", model: "gpt-4.1-mini", apiKey: "", showKey: false };
 
-type Tool = "encoding" | "catgen" | "newtool1" | "newtool2";
+type Tool = "coding" | "catgen" | "newtool1" | "newtool2";
 const TOOLS: { value: Tool; label: string }[] = [
-  { value: "encoding", label: "LLM Encoding" },
+  { value: "coding", label: "LLM Coding" },
   { value: "catgen", label: "Category Generator" },
 ];
 
@@ -275,7 +308,8 @@ const TOOLS: { value: Tool; label: string }[] = [
 
 export default function Home() {
     // Tool switching
-  const [activeTool, setActiveTool] = useState<"encoding" | "catgen" | "analysis" | "instructions">("encoding");
+  const [activeTool, setActiveTool] = useState<"coding" | "catgen" | "analysis" | "instructions">("coding");
+  const [tourOpen, setTourOpen] = useState(false);
 
   // File upload state
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -288,7 +322,7 @@ export default function Home() {
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
   const [experimentInstructions, setExperimentInstructions] = useState("");
-  const [encodingInstructions, setEncodingInstructions] = useState("");
+  const [codingInstructions, setCodingInstructions] = useState("");
   const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);
 
   // Row filter
@@ -313,14 +347,14 @@ export default function Home() {
   // Run state
   const [running, setRunning] = useState(false);
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
-  const [encodedRows, setEncodedRows] = useState<EncodedRow[]>([]);
+  const [codedRows, setCodedRows] = useState<CodedRow[]>([]);
   const [runErrors, setRunErrors] = useState<string[]>([]);
-  const [runComplete, setRunComplete] = useState<{ total_rows: number; encoded_rows: number; file_path: string } | null>(null);
+  const [runComplete, setRunComplete] = useState<{ total_rows: number; coded_rows: number; file_path: string } | null>(null);
   const [runError, setRunError] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [hasRerun, setHasRerun] = useState(false);
-  const encodedRowsRef = useRef<EncodedRow[]>([]);
+  const codedRowsRef = useRef<CodedRow[]>([]);
 
   // Analysis page state
   const [analysisRaters, setAnalysisRaters] = useState<{ name: string; type: "human" | "llm"; uploadResult: UploadResult | null; uploading: boolean }[]>([]);
@@ -336,8 +370,8 @@ export default function Home() {
   const [consoleLogs, setConsoleLogs] = useState<{ time: string; level: "info" | "warn" | "error"; msg: string }[]>([]);
   const consoleRef = useRef<HTMLDivElement>(null);
 
-  // Empty-message handling for encoding
-  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "encode">("ignore");
+  // Empty-message handling for coding
+  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "code">("ignore");
 
   // Right panel view: "script" | "run"
   const [rightView, setRightView] = useState<"script" | "run">("script");
@@ -374,12 +408,12 @@ export default function Home() {
   };
 
   // Keep ref in sync for use in useEffect
-  useEffect(() => { encodedRowsRef.current = encodedRows; }, [encodedRows]);
+  useEffect(() => { codedRowsRef.current = codedRows; }, [codedRows]);
 
-  // Validate results when encoding completes
+  // Validate results when coding completes
   useEffect(() => {
-    if (runComplete && encodedRowsRef.current.length > 0) {
-      const report = validateEncodedRows(encodedRowsRef.current, codebook);
+    if (runComplete && codedRowsRef.current.length > 0) {
+      const report = validateCodedRows(codedRowsRef.current, codebook);
       setValidationReport(report);
       if (report.problematicIndices.length === 0) {
         log("info", "Validation passed: all rows within expected ranges.");
@@ -402,7 +436,7 @@ export default function Home() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/encoding/upload", {
+      const res = await fetch("/api/coding/upload", {
         method: "POST",
         body: formData,
       });
@@ -452,7 +486,7 @@ export default function Home() {
     uploadResult &&
     messageColumn &&
     experimentInstructions.trim() &&
-    encodingInstructions.trim() &&
+    codingInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type && e.definition.trim()) &&
     modelSlots.length > 0 &&
     modelSlots.every((s) => s.provider && s.model && s.apiKey.trim()) &&
@@ -467,14 +501,14 @@ export default function Home() {
     setRightView("script");
 
     try {
-      const res = await fetch("/api/encoding/generate-script", {
+      const res = await fetch("/api/coding/generate-script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           file_name: uploadResult.file_name,
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
-          encoding_instructions: encodingInstructions,
+          coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
           codebook,
           provider,
@@ -517,7 +551,7 @@ export default function Home() {
     setTimeout(() => consoleRef.current?.scrollTo({ top: consoleRef.current.scrollHeight }), 50);
   };
 
-  // ── Run encoding via WebSocket ──────────────────────────────────────────────
+  // ── Run coding via WebSocket ──────────────────────────────────────────────
 
   const handleRun = async () => {
     if (!canGenerate || !uploadResult) return;
@@ -525,7 +559,7 @@ export default function Home() {
     // Reset state
     setRunning(true);
     setRunProgress(null);
-    setEncodedRows([]);
+    setCodedRows([]);
     setRunErrors([]);
     setRunComplete(null);
     setRunError("");
@@ -538,16 +572,16 @@ export default function Home() {
     setRightView("run");
 
     // Step 1: Generate the script first
-    log("info", "Generating encoding script...");
+    log("info", "Generating coding script...");
     try {
-      const res = await fetch("/api/encoding/generate-script", {
+      const res = await fetch("/api/coding/generate-script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           file_name: uploadResult.file_name,
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
-          encoding_instructions: encodingInstructions,
+          coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
           codebook,
           provider,
@@ -575,7 +609,7 @@ export default function Home() {
     // Step 2: Validate all model slots
     log("info", "Validating API keys and models...");
     try {
-      const valRes = await fetch("/api/encoding/validate", {
+      const valRes = await fetch("/api/coding/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -614,8 +648,8 @@ export default function Home() {
       return;
     }
 
-    // Step 3: Connect WebSocket and run encoding
-    log("info", `Connecting to encoding service...`);
+    // Step 3: Connect WebSocket and run coding
+    log("info", `Connecting to coding service...`);
     const modelNames = modelSlots.map((s) => {
       const p = PROVIDERS.find((p) => p.value === s.provider);
       const m = p?.models.find((m) => m.value === s.model);
@@ -627,18 +661,18 @@ export default function Home() {
 
     const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
-    const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/encoding/run`;
+    const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/coding/run`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      log("info", "Connected. Starting encoding...");
+      log("info", "Connected. Starting coding...");
       ws.send(
         JSON.stringify({
           file_id: uploadResult.file_id,
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
-          encoding_instructions: encodingInstructions,
+          coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
 
           codebook,
@@ -661,9 +695,9 @@ export default function Home() {
         setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
         log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
       } else if (msg.type === "row") {
-        setEncodedRows((prev) => [...prev, { index: msg.index, original: msg.original, encoded: msg.encoded }]);
-        if (msg.encoded._error) {
-          log("warn", `Row ${msg.index + 1}: ${msg.encoded._error}`);
+        setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
+        if (msg.coded._error) {
+          log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
         }
       } else if (msg.type === "error" && msg.index !== undefined) {
         setRunErrors((prev) => [...prev, msg.message]);
@@ -675,10 +709,10 @@ export default function Home() {
       } else if (msg.type === "complete") {
         setRunComplete({
           total_rows: msg.total_rows,
-          encoded_rows: msg.encoded_rows,
+          coded_rows: msg.coded_rows,
           file_path: msg.file_path,
         });
-        log("info", `Encoding complete. ${msg.total_rows} rows processed, ${msg.encoded_rows} encoded.`);
+        log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
         setRunning(false);
       }
     };
@@ -702,24 +736,24 @@ export default function Home() {
       wsRef.current.close();
       wsRef.current = null;
     }
-    log("warn", "Encoding stopped by user.");
+    log("warn", "Coding stopped by user.");
     setRunning(false);
   };
 
   const handleDownloadResults = () => {
     if (!runComplete) return;
-    window.open(`/api/encoding/download?path=${encodeURIComponent(runComplete.file_path)}`, "_blank");
+    window.open(`/api/coding/download?path=${encodeURIComponent(runComplete.file_path)}`, "_blank");
     showToast("Download started");
   };
 
   const handleDownloadMerged = () => {
-    if (encodedRows.length === 0) return;
+    if (codedRows.length === 0) return;
     const labels = codebook.filter((e) => e.label.trim()).map((e) => e.label);
-    const origCols = Object.keys(encodedRows[0].original);
+    const origCols = Object.keys(codedRows[0].original);
     const headers = [...origCols, ...labels];
-    const csvRows = encodedRows.map((r) => {
+    const csvRows = codedRows.map((r) => {
       return headers.map((h) => {
-        const val = origCols.includes(h) ? r.original[h] : r.encoded[h];
+        const val = origCols.includes(h) ? r.original[h] : r.coded[h];
         const str = String(val ?? "");
         return str.includes(",") || str.includes('"') || str.includes("\n")
           ? `"${str.replace(/"/g, '""')}"` : str;
@@ -729,7 +763,7 @@ export default function Home() {
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "encoded_results.csv"; a.click();
+    a.href = url; a.download = "coded_results.csv"; a.click();
     URL.revokeObjectURL(url);
     showToast("Download started");
   };
@@ -741,7 +775,7 @@ export default function Home() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("/api/encoding/upload", { method: "POST", body: formData });
+      const res = await fetch("/api/coding/upload", { method: "POST", body: formData });
       if (!res.ok) throw new Error("Upload failed");
       const data: UploadResult = await res.json();
       setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, uploadResult: data, uploading: false } : r));
@@ -826,25 +860,25 @@ export default function Home() {
       setHasRerun(true);
       log("info", `Re-running ${indices.length} problematic rows...`);
     } else {
-      setEncodedRows([]);
+      setCodedRows([]);
       setHasRerun(false);
       log("info", "Re-running all rows from scratch...");
     }
 
     const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
-    const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/encoding/run`;
+    const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/coding/run`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      log("info", "Connected. Starting re-encoding...");
+      log("info", "Connected. Starting re-coding...");
       ws.send(
         JSON.stringify({
           file_id: uploadResult.file_id,
           message_column: messageColumn,
           experiment_instructions: experimentInstructions,
-          encoding_instructions: encodingInstructions,
+          coding_instructions: codingInstructions,
           codebook,
           model_slots: modelSlots.map((s) => ({
             provider: s.provider,
@@ -867,18 +901,18 @@ export default function Home() {
       } else if (msg.type === "row") {
         if (indices) {
           // Merge: replace existing row at this index
-          setEncodedRows((prev) =>
+          setCodedRows((prev) =>
             prev.map((r) =>
               r.index === msg.index
-                ? { index: msg.index, original: msg.original, encoded: msg.encoded }
+                ? { index: msg.index, original: msg.original, coded: msg.coded }
                 : r
             )
           );
         } else {
-          setEncodedRows((prev) => [...prev, { index: msg.index, original: msg.original, encoded: msg.encoded }]);
+          setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
         }
-        if (msg.encoded._error) {
-          log("warn", `Row ${msg.index + 1}: ${msg.encoded._error}`);
+        if (msg.coded._error) {
+          log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
         }
       } else if (msg.type === "error" && msg.index !== undefined) {
         setRunErrors((prev) => [...prev, msg.message]);
@@ -890,10 +924,10 @@ export default function Home() {
       } else if (msg.type === "complete") {
         setRunComplete({
           total_rows: msg.total_rows,
-          encoded_rows: msg.encoded_rows,
+          coded_rows: msg.coded_rows,
           file_path: msg.file_path,
         });
-        log("info", `Re-encoding complete. ${msg.total_rows} rows processed, ${msg.encoded_rows} encoded.`);
+        log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
         setRunning(false);
       }
     };
@@ -922,7 +956,7 @@ export default function Home() {
     setDragOver(false);
     setMessageColumn("");
     setExperimentInstructions("");
-    setEncodingInstructions("");
+    setCodingInstructions("");
     setCodebook([{ ...EMPTY_ENTRY }]);
     setRowFilter("");
     setRowFilterError("");
@@ -934,7 +968,7 @@ export default function Home() {
     setResult(null);
     setRunning(false);
     setRunProgress(null);
-    setEncodedRows([]);
+    setCodedRows([]);
     setRunErrors([]);
     setRunComplete(null);
     setRunError("");
@@ -1019,7 +1053,7 @@ export default function Home() {
   // ── Derived values ──────────────────────────────────────────────────────────
 
   const codebookLabels = codebook.filter((e) => e.label.trim()).map((e) => e.label);
-  const visibleRows = encodedRows.slice(-5);
+  const visibleRows = codedRows.slice(-5);
   const parsedFilter = uploadResult ? parseRowFilter(rowFilter, uploadResult.row_count) : { indices: [], error: "" };
   const filterActive = rowFilter.trim() !== "" && !parsedFilter.error;
   const filteredRowCount = filterActive ? parsedFilter.indices.length : (uploadResult?.row_count ?? 0);
@@ -1052,7 +1086,7 @@ export default function Home() {
           <span className="topbar-badge">beta</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
-            <button className={`topbar-tab ${activeTool === "encoding" ? "active" : ""}`} onClick={() => setActiveTool("encoding")}>Encoding</button>
+            <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
             <button className={`topbar-tab ${activeTool === "catgen" ? "active" : ""}`} onClick={() => setActiveTool("catgen")}>Category Generator</button>
             <button className={`topbar-tab ${activeTool === "analysis" ? "active" : ""}`} onClick={() => setActiveTool("analysis")}>Results Analysis</button>
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn the Toolkit</button>
@@ -1069,15 +1103,23 @@ export default function Home() {
 
       <div className="layout">
         <main className="main">
-          <div className={`tool-page ${activeTool === "encoding" ? "active" : ""}`}>
+          <div className={`tool-page ${activeTool === "coding" ? "active" : ""}`}>
 
             <div className="tool-header">
               <div>
-                <h1>LLM Encoding</h1>
+                <h1>LLM Coding</h1>
                 <p className="tool-desc">
-                  Upload data, configure codebook variables, and encode with one or more LLMs.
+                  Upload data, configure codebook variables, and code with one or more LLMs.
                 </p>
               </div>
+              <button
+                className="tour-help-btn"
+                onClick={() => setTourOpen(true)}
+                title="Guided walkthrough"
+                aria-label="Start guided walkthrough"
+              >
+                ?
+              </button>
             </div>
 
             <div className="pipeline-layout split">
@@ -1086,7 +1128,7 @@ export default function Home() {
                 <div className="config-scroll">
 
                   {/* Panel 1: Upload Dataset */}
-                  <div className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(1)}>
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
@@ -1159,7 +1201,7 @@ export default function Home() {
                   </div>
 
                   {/* Panel 2: Select Message Column */}
-                  <div className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(2)}>
                       <div className="panel-head-left">
                         <span className="step-badge">2</span>
@@ -1173,7 +1215,7 @@ export default function Home() {
                       {uploadResult ? (
                         <>
                           <div className="f">
-                            <label>Select the column containing the text to encode</label>
+                            <label>Select the column containing the text to code</label>
                             <select value={messageColumn} onChange={(e) => setMessageColumn(e.target.value)}>
                               <option value="">— Choose column —</option>
                               {uploadResult.columns.map((col) => (
@@ -1196,7 +1238,7 @@ export default function Home() {
                                 {parsedFilter.indices.length} of {uploadResult.row_count} rows selected
                               </p>
                             )}
-                            {!rowFilter.trim() && <p className="hint">Leave empty to encode all rows. Use commas and dashes: 1-5, 8, 12-15</p>}
+                            {!rowFilter.trim() && <p className="hint">Leave empty to code all rows. Use commas and dashes: 1-5, 8, 12-15</p>}
                           </div>
                         </>
                       ) : (
@@ -1206,7 +1248,7 @@ export default function Home() {
                   </div>
 
                   {/* Panel 3: Experiment Instructions */}
-                  <div className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(3)}>
                       <div className="panel-head-left">
                         <span className="step-badge">3</span>
@@ -1229,23 +1271,23 @@ export default function Home() {
                     </div></div></div>
                   </div>
 
-                  {/* Panel 4: Encoding Instructions */}
-                  <div className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  {/* Panel 4: Coding Instructions */}
+                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(4)}>
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
-                        <span className="panel-label">Encoding Instructions</span>
-                        {encodingInstructions.trim() && <span className="tag">set</span>}
+                        <span className="panel-label">Coding Instructions</span>
+                        {codingInstructions.trim() && <span className="tag">set</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div className="f">
-                        <label>Describe how encoding should be performed</label>
+                        <label>Describe how coding should be performed</label>
                         <textarea
                           rows={5}
-                          value={encodingInstructions}
-                          onChange={(e) => setEncodingInstructions(e.target.value)}
+                          value={codingInstructions}
+                          onChange={(e) => setCodingInstructions(e.target.value)}
                           placeholder="E.g., Read each message carefully. Classify the tone, intent, and strategy used by the sender..."
                         />
                         <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row.</p>
@@ -1254,15 +1296,15 @@ export default function Home() {
                         <label>Empty message handling</label>
                         <select
                           value={emptyMessageHandling}
-                          onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "encode")}
+                          onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "code")}
                         >
                           <option value="error">Flag as error</option>
                           <option value="ignore">Ignore (skip row)</option>
-                          <option value="encode">Encode as value</option>
+                          <option value="code">Code as value</option>
                         </select>
                         <p className="hint">
                           {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
-                          {emptyMessageHandling === "encode" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
+                          {emptyMessageHandling === "code" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
                           {emptyMessageHandling === "error" && "Empty rows will be flagged with an error in the output."}
                         </p>
                       </div>
@@ -1270,7 +1312,7 @@ export default function Home() {
                   </div>
 
                   {/* Panel 5: Codebook */}
-                  <div className={`panel ${openPanels.has(5) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-5" className={`panel ${openPanels.has(5) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(5)}>
                       <div className="panel-head-left">
                         <span className="step-badge">5</span>
@@ -1289,7 +1331,7 @@ export default function Home() {
                               <th>Label</th>
                               <th>Type</th>
                               <th>Definition</th>
-                              <th>Encoded Values</th>
+                              <th>Coded Values</th>
                               <th className="th-narrow" />
                             </tr>
                           </thead>
@@ -1324,8 +1366,8 @@ export default function Home() {
                                 </td>
                                 <td>
                                   <TagInput
-                                    value={entry.encoded_values}
-                                    onChange={(v) => updateCodebook(idx, "encoded_values", v)}
+                                    value={entry.coded_values}
+                                    onChange={(v) => updateCodebook(idx, "coded_values", v)}
                                     type={entry.type}
                                   />
                                 </td>
@@ -1354,7 +1396,7 @@ export default function Home() {
                   </div>
 
                   {/* Panel 6: Models + Voting */}
-                  <div className={`panel ${openPanels.has(6) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-6" className={`panel ${openPanels.has(6) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(6)}>
                       <div className="panel-head-left">
                         <span className="step-badge">6</span>
@@ -1489,7 +1531,7 @@ export default function Home() {
                 </div>
 
                 {/* Run bar */}
-                <div className="run-bar">
+                <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
                   <button
                     className="btn btn-outline btn-sm"
@@ -1508,7 +1550,7 @@ export default function Home() {
                       disabled={!canGenerate || generating}
                       onClick={handleRun}
                     >
-                      Run Encoding
+                      Run Coding
                       {modelSlots.length * runsPerModel > 1 && (
                         <span className="run-calls-hint">
                           ({modelSlots.length}×{runsPerModel})
@@ -1523,10 +1565,10 @@ export default function Home() {
               <div className="results-col">
 
                 {/* Tab strip to switch views */}
-                {(result || encodedRows.length > 0 || running || consoleLogs.length > 0) && (
+                {(result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
                   <div className="tab-strip tab-strip-gap">
                     <button className={`tab ${rightView === "run" ? "active" : ""}`} onClick={() => setRightView("run")}>
-                      Live Encoding
+                      Live Coding
                       {running && <span className="enc-pulse" />}
                     </button>
                     <button className={`tab ${rightView === "script" ? "active" : ""}`} onClick={() => setRightView("script")}>
@@ -1536,7 +1578,7 @@ export default function Home() {
                 )}
 
                 {/* ── Run View ── */}
-                {rightView === "run" && (running || encodedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
+                {rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
                   <div className="tab-pane">
                     {/* Progress bar */}
                     {(runProgress || running) && (
@@ -1544,9 +1586,9 @@ export default function Home() {
                         <div className="enc-progress-header">
                           <span className="enc-progress-label">
                             {runComplete
-                              ? "Encoding complete"
+                              ? "Coding complete"
                               : running
-                                ? `Encoding row ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...`
+                                ? `Coding row ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...`
                                 : "Ready"}
                           </span>
                           <span className="enc-progress-pct">{runProgress?.percent ?? 0}%</span>
@@ -1582,7 +1624,7 @@ export default function Home() {
                     {visibleRows.length > 0 && (
                       <div className="res-section mt-12">
                         <div className="res-section-h">
-                          Live Results (last {Math.min(5, encodedRows.length)} of {encodedRows.length} rows)
+                          Live Results (last {Math.min(5, codedRows.length)} of {codedRows.length} rows)
                         </div>
                         <div className="enc-live-table-wrap table-clickable" onClick={() => setExpandedTable("live")} title="Click to expand">
                           <table className="tbl tbl-compact">
@@ -1591,7 +1633,7 @@ export default function Home() {
                                 <th>#</th>
                                 <th>{messageColumn || "Message"}</th>
                                 {codebookLabels.map((l) => (
-                                  <th key={l} className="enc-encoded-col">{l}</th>
+                                  <th key={l} className="enc-coded-col">{l}</th>
                                 ))}
                               </tr>
                             </thead>
@@ -1603,9 +1645,9 @@ export default function Home() {
                                     {String(row.original[messageColumn] ?? "")}
                                   </td>
                                   {codebookLabels.map((label) => (
-                                    <td key={label} className="enc-encoded-col">
-                                      <span className={`pill ${row.encoded._error ? "bad" : "lbl"}`}>
-                                        {row.encoded._error ? "err" : String(row.encoded[label] ?? "—")}
+                                    <td key={label} className="enc-coded-col">
+                                      <span className={`pill ${row.coded._error ? "bad" : "lbl"}`}>
+                                        {row.coded._error ? "err" : String(row.coded[label] ?? "—")}
                                       </span>
                                     </td>
                                   ))}
@@ -1644,7 +1686,7 @@ export default function Home() {
                               All <strong>{validationReport.totalRows}</strong> rows valid
                             </div>
                             <button className="btn btn-primary" onClick={hasRerun ? handleDownloadMerged : handleDownloadResults}>
-                              Download encoded_results.csv
+                              Download coded_results.csv
                             </button>
                           </>
                         ) : (
@@ -1728,7 +1770,7 @@ export default function Home() {
                       <rect x="14" y="14" width="7" height="7" rx="1" />
                     </svg>
                     <p>No results yet</p>
-                    <span className="text-sm">Configure the left panel, then press Run Encoding</span>
+                    <span className="text-sm">Configure the left panel, then press Run Coding</span>
                   </div>
                 ) : null}
 
@@ -2062,7 +2104,7 @@ export default function Home() {
               <span className="fw-600">
                 {expandedTable === "preview" && `Dataset (${uploadResult?.preview.length ?? 0} rows)`}
                 {expandedTable === "codebook" && "Codebook"}
-                {expandedTable === "live" && `Encoded Results (${encodedRows.length} rows)`}
+                {expandedTable === "live" && `Coded Results (${codedRows.length} rows)`}
               </span>
               <button className="btn btn-ghost btn-sm" onClick={() => setExpandedTable(null)}>✕</button>
             </div>
@@ -2099,7 +2141,7 @@ export default function Home() {
                       <th className="col-label">Label</th>
                       <th className="col-type">Type</th>
                       <th className="col-def">Definition</th>
-                      <th className="col-values">Encoded Values</th>
+                      <th className="col-values">Coded Values</th>
                       <th className="th-narrow" />
                     </tr>
                   </thead>
@@ -2135,8 +2177,8 @@ export default function Home() {
                         </td>
                         <td>
                           <TagInput
-                            value={entry.encoded_values}
-                            onChange={(v) => updateCodebook(idx, "encoded_values", v)}
+                            value={entry.coded_values}
+                            onChange={(v) => updateCodebook(idx, "coded_values", v)}
                             type={entry.type}
                           />
                         </td>
@@ -2162,7 +2204,7 @@ export default function Home() {
               )}
 
               {/* Live results table — all rows */}
-              {expandedTable === "live" && encodedRows.length > 0 && (
+              {expandedTable === "live" && codedRows.length > 0 && (
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -2174,7 +2216,7 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {encodedRows.map((row) => (
+                    {codedRows.map((row) => (
                       <tr key={row.index}>
                         <td className="mono text-muted">{row.index + 1}</td>
                         <td>
@@ -2182,8 +2224,8 @@ export default function Home() {
                         </td>
                         {codebookLabels.map((label) => (
                           <td key={label} className="tc">
-                            <span className={`pill ${row.encoded._error ? "bad" : "lbl"}`}>
-                              {row.encoded._error ? "err" : String(row.encoded[label] ?? "—")}
+                            <span className={`pill ${row.coded._error ? "bad" : "lbl"}`}>
+                              {row.coded._error ? "err" : String(row.coded[label] ?? "—")}
                             </span>
                           </td>
                         ))}
@@ -2198,6 +2240,15 @@ export default function Home() {
       )}
 
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+
+      <GuidedTour
+        open={tourOpen}
+        steps={CODING_TOUR_STEPS}
+        onClose={() => setTourOpen(false)}
+        onStepEnter={(s) => {
+          if (s.panel) setOpenPanels((prev) => new Set(prev).add(s.panel as number));
+        }}
+      />
     </>
   );
 }
