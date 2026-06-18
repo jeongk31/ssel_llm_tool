@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.routes.encoding import _uploaded_files
+from app.routes.coding import _uploaded_files
 from app.services.agreement_service import cross_check, compute_agreement
 
 router = APIRouter()

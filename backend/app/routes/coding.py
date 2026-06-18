@@ -8,8 +8,8 @@ from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDi
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app.services.script_generator import generate_encoding_script
-from app.services.encoding_runner import run_encoding
+from app.services.script_generator import generate_coding_script
+from app.services.coding_runner import run_coding
 
 router = APIRouter()
 
@@ -19,8 +19,8 @@ _uploaded_files: dict[str, dict] = {}
 
 # ── File upload + column discovery ─────────────────────────────────────────────
 
-@router.post("/encoding/upload")
-async def upload_encoding_file(file: UploadFile):
+@router.post("/coding/upload")
+async def upload_coding_file(file: UploadFile):
     """Upload a CSV/Excel file, save temporarily, return columns + preview."""
     if not file.filename:
         raise HTTPException(400, "No file provided")
@@ -76,33 +76,33 @@ class CodebookEntry(BaseModel):
     label: str
     type: str
     definition: str
-    encoded_values: str = ""
+    coded_values: str = ""
 
 
 class GenerateScriptRequest(BaseModel):
     file_name: str
     message_column: str
     experiment_instructions: str
-    encoding_instructions: str
+    coding_instructions: str
     codebook: list[CodebookEntry]
     provider: str
     model: str = ""
     api_key: str
 
 
-@router.post("/encoding/generate-script")
+@router.post("/coding/generate-script")
 async def generate_script(req: GenerateScriptRequest):
-    """Validate config and generate a ready-to-run Python encoding script."""
+    """Validate config and generate a ready-to-run Python coding script."""
 
     _validate_config(req)
 
     codebook_dicts = [entry.model_dump() for entry in req.codebook]
 
-    script_text = generate_encoding_script(
+    script_text = generate_coding_script(
         file_name=req.file_name,
         message_column=req.message_column,
         experiment_instructions=req.experiment_instructions,
-        encoding_instructions=req.encoding_instructions,
+        coding_instructions=req.coding_instructions,
         codebook=codebook_dicts,
         provider=req.provider,
         model=req.model,
@@ -110,7 +110,7 @@ async def generate_script(req: GenerateScriptRequest):
     )
 
     base_name = req.file_name.rsplit(".", 1)[0] if "." in req.file_name else req.file_name
-    filename = f"encode_{base_name}.py"
+    filename = f"code_{base_name}.py"
 
     return {
         "script": script_text,
@@ -118,12 +118,12 @@ async def generate_script(req: GenerateScriptRequest):
     }
 
 
-# ── WebSocket: Run encoding with live progress ────────────────────────────────
+# ── WebSocket: Run coding with live progress ────────────────────────────────
 
-@router.websocket("/ws/encoding/run")
-async def ws_run_encoding(ws: WebSocket):
+@router.websocket("/ws/coding/run")
+async def ws_run_coding(ws: WebSocket):
     """
-    WebSocket endpoint for running encoding with live progress.
+    WebSocket endpoint for running coding with live progress.
 
     Client sends JSON config, server streams back progress + rows.
     """
@@ -189,12 +189,12 @@ async def ws_run_encoding(ws: WebSocket):
         else:
             valid_indices = None
 
-        # Stream encoding progress
-        async for update in run_encoding(
+        # Stream coding progress
+        async for update in run_coding(
             df=df,
             message_column=message_column,
             experiment_instructions=config.get("experiment_instructions", ""),
-            encoding_instructions=config.get("encoding_instructions", ""),
+            coding_instructions=config.get("coding_instructions", ""),
             codebook=codebook,
             model_slots=model_slots,
             runs_per_model=runs_per_model,
@@ -232,10 +232,10 @@ class ValidateRequest(BaseModel):
     model_slots: list[ValidateSlot]
 
 
-@router.post("/encoding/validate")
+@router.post("/coding/validate")
 async def validate_models(req: ValidateRequest):
     """Test each model slot with a tiny prompt to verify API key + model work."""
-    from app.services.encoding_runner import _get_provider_instance
+    from app.services.coding_runner import _get_provider_instance
 
     results = []
     for slot in req.model_slots:
@@ -259,11 +259,11 @@ async def validate_models(req: ValidateRequest):
     return {"ok": all_ok, "results": results}
 
 
-# ── Download encoded results ──────────────────────────────────────────────────
+# ── Download coded results ──────────────────────────────────────────────────
 
-@router.get("/encoding/download")
+@router.get("/coding/download")
 async def download_results(path: str):
-    """Download encoded results — single CSV or structured zip."""
+    """Download coded results — single CSV or structured zip."""
     if not os.path.exists(path):
         raise HTTPException(404, "File not found")
 
@@ -274,27 +274,27 @@ async def download_results(path: str):
 
     df = pd.read_csv(path)
 
-    if "encoder" not in df.columns:
-        return FileResponse(path, filename="encoded_results.csv", media_type="text/csv")
+    if "coder" not in df.columns:
+        return FileResponse(path, filename="coded_results.csv", media_type="text/csv")
 
-    encoders = [e for e in df["encoder"].unique() if not str(e).startswith("__")]
-    aggregated = [e for e in df["encoder"].unique() if str(e).startswith("__")]
+    coders = [e for e in df["coder"].unique() if not str(e).startswith("__")]
+    aggregated = [e for e in df["coder"].unique() if str(e).startswith("__")]
 
     # Single model, single run → plain CSV
-    if len(encoders) <= 1 and len(aggregated) == 0:
-        return FileResponse(path, filename="encoded_results.csv", media_type="text/csv")
+    if len(coders) <= 1 and len(aggregated) == 0:
+        return FileResponse(path, filename="coded_results.csv", media_type="text/csv")
 
     # Multiple → build structured zip
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         # Overall aggregate (aggregated rows, or all if no aggregation)
         if aggregated:
-            agg_df = df[df["encoder"].isin(aggregated)].drop(columns=["encoder"], errors="ignore")
+            agg_df = df[df["coder"].isin(aggregated)].drop(columns=["coder"], errors="ignore")
             zf.writestr("aggregate.csv", agg_df.to_csv(index=False))
 
-        # Group encoders by model (split on __run suffix)
+        # Group coders by model (split on __run suffix)
         model_runs: dict[str, list[str]] = {}
-        for enc in encoders:
+        for enc in coders:
             if "__run" in enc:
                 model_name = enc.rsplit("__run", 1)[0]
             else:
@@ -306,36 +306,36 @@ async def download_results(path: str):
 
             if len(runs) == 1:
                 # Single run for this model — just one CSV
-                run_df = df[df["encoder"] == runs[0]].drop(columns=["encoder"], errors="ignore")
+                run_df = df[df["coder"] == runs[0]].drop(columns=["coder"], errors="ignore")
                 zf.writestr(f"{safe_name}.csv", run_df.to_csv(index=False))
             else:
                 # Multiple runs — per-model aggregate + individual runs in folder
-                all_runs_df = df[df["encoder"].isin(runs)]
+                all_runs_df = df[df["coder"].isin(runs)]
                 # Per-model aggregate: take mode across runs for each row
-                orig_cols = [c for c in df.columns if c != "encoder" and not c.startswith("_")]
+                orig_cols = [c for c in df.columns if c != "coder" and not c.startswith("_")]
                 id_cols = [c for c in orig_cols if c not in [e.rsplit("__run", 1)[0] for e in runs]]
 
                 # Write per-model aggregate (mode across runs per original row)
                 # Group by original row position (every len(runs) consecutive rows = same original row)
                 run_dfs = []
                 for run_enc in sorted(runs):
-                    run_df = df[df["encoder"] == run_enc].reset_index(drop=True)
+                    run_df = df[df["coder"] == run_enc].reset_index(drop=True)
                     run_dfs.append(run_df)
 
                 # Simple aggregate: take first run as base, use mode across all
-                base = run_dfs[0].drop(columns=["encoder"], errors="ignore").copy()
+                base = run_dfs[0].drop(columns=["coder"], errors="ignore").copy()
                 zf.writestr(f"{safe_name}.csv", base.to_csv(index=False))
 
                 # Individual runs in subfolder
                 for i, run_enc in enumerate(sorted(runs)):
-                    run_df = df[df["encoder"] == run_enc].drop(columns=["encoder"], errors="ignore")
+                    run_df = df[df["coder"] == run_enc].drop(columns=["coder"], errors="ignore")
                     zf.writestr(f"{safe_name}/run{i + 1}.csv", run_df.to_csv(index=False))
 
     buf.seek(0)
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=encoded_results.zip"},
+        headers={"Content-Disposition": "attachment; filename=coded_results.zip"},
     )
 
 
@@ -357,8 +357,8 @@ def _validate_config(req: GenerateScriptRequest):
         raise HTTPException(400, "Message column is required")
     if not req.experiment_instructions.strip():
         raise HTTPException(400, "Experiment instructions are required")
-    if not req.encoding_instructions.strip():
-        raise HTTPException(400, "Encoding instructions are required")
+    if not req.coding_instructions.strip():
+        raise HTTPException(400, "Coding instructions are required")
     if not req.provider.strip():
         raise HTTPException(400, "Provider is required")
     if not req.api_key.strip():

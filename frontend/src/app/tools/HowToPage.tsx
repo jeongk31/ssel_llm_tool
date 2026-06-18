@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 
-type Section = "overview" | "encoding" | "catgen" | "analysis" | "faq";
+type Section = "overview" | "coding" | "catgen" | "analysis" | "faq";
 
 interface Props {
-  onNavigate?: (tool: "encoding" | "catgen" | "analysis") => void;
+  onNavigate?: (tool: "coding" | "catgen" | "analysis") => void;
 }
 
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "overview", label: "Overview" },
-  { value: "encoding", label: "LLM Encoding" },
+  { value: "coding", label: "LLM Coding" },
   { value: "catgen", label: "Category Generator" },
   { value: "analysis", label: "Results Analysis" },
   { value: "faq", label: "FAQ" },
@@ -335,9 +335,9 @@ export default function HowToPage({ onNavigate }: Props) {
                   goals and hypothesis, and get a draft set of categories to review and refine.
                 </div>
                 <div className="catgen-field">
-                  <span className="catgen-label">LLM Encoding:</span>
+                  <span className="catgen-label">LLM Coding:</span>
                   The core tool. Upload your dataset, attach a codebook — your own or one from
-                  Category Generator — and have one or more LLMs encode every row.
+                  Category Generator — and have one or more LLMs code every row.
                 </div>
                 <div className="catgen-field">
                   <span className="catgen-label">Results Analysis:</span>
@@ -352,7 +352,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="tool-desc">
                 <p>
                   No codebook yet? Draft one in <strong>Category Generator</strong>. Bring it
-                  into <strong>LLM Encoding</strong> with your dataset and run the coding. If you
+                  into <strong>LLM Coding</strong> with your dataset and run the coding. If you
                   also have human-coded data, or want to compare multiple models, send the
                   outputs to <strong>Results Analysis</strong> to measure agreement.
                 </p>
@@ -361,21 +361,21 @@ export default function HowToPage({ onNavigate }: Props) {
           </>
         )}
 
-        {/* ── LLM Encoding ── */}
-        {activeSection === "encoding" && (
+        {/* ── LLM Coding ── */}
+        {activeSection === "coding" && (
           <>
             <div className="ana-section mt-16">
               <div className="ana-section-h">What this tool does</div>
               <div className="tool-desc">
                 <p>
                   Upload a dataset, describe your experiment, define a codebook, and have one or
-                  more LLMs encode every row according to your instructions.
+                  more LLMs code every row according to your instructions.
                 </p>
                 <AtAGlance
                   items={[
                     { label: "Input", value: "CSV or Excel file" },
                     { label: "You configure", value: "Instructions, codebook, models" },
-                    { label: "Output", value: "Encoded CSV + Python script" },
+                    { label: "Output", value: "Coded CSV + Python script" },
                   ]}
                 />
               </div>
@@ -396,19 +396,19 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <StepSection n={2} title="Column & Rows">
               <p>
-                Pick the column that contains the text to encode from the dropdown of column names.
+                Pick the column that contains the text to code from the dropdown of column names.
               </p>
               <p>
                 Optionally restrict the run to specific rows, e.g. <code>1-5, 8, 12-15</code>.
                 Use a dash for ranges and commas to separate ranges or single rows. Leave this
-                blank to encode the whole dataset.
+                blank to code the whole dataset.
               </p>
             </StepSection>
 
             <StepSection n={3} title="Experiment Instructions">
               <p>
                 Give the model full context for what it's reading. Missing pieces here are the
-                most common cause of inconsistent encoding, so work through each item below.
+                most common cause of inconsistent coding, so work through each item below.
               </p>
 
               <div className="howto-checklist">
@@ -432,7 +432,7 @@ export default function HowToPage({ onNavigate }: Props) {
               </Collapsible>
             </StepSection>
 
-            <StepSection n={4} title="Encoding Instructions">
+            <StepSection n={4} title="Coding Instructions">
             <p>
                 Tell the model exactly how to apply the codebook to each message. The two examples below
                 show the same task structured two different ways (multi-label and single-label) which is
@@ -465,10 +465,10 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <div className="catgen-field mt-12">
                 <span className="catgen-label">Empty message handling:</span>
-                Set in the Encoding Instructions step above, but it depends on what you define here.
+                Set in the Coding Instructions step above, but it depends on what you define here.
                 The default is <strong>ignore</strong> — empty rows are skipped entirely and excluded from
                 the output. <strong>Error</strong> flags empty rows without attempting to code them.
-                <strong> Encode as value</strong> sends the empty row to the model anyway, so the value it
+                <strong> Code as value</strong> sends the empty row to the model anyway, so the value it
                 assigns must already exist as one of this variable's allowed values — for example, a
                 No_Message category with value <code>N</code> defined right here in the codebook.
             </div>
@@ -478,7 +478,7 @@ export default function HowToPage({ onNavigate }: Props) {
             <StepSection n={5} title="Codebook">
             <p>
                 The list of variables to code. Each entry needs a label, a type, a definition, and (for
-                every type except text) a set of allowed encoded values.
+                every type except text) a set of allowed coded values.
             </p>
 
             <div className="howto-checklist">
@@ -499,8 +499,8 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <div className="howto-warning mt-12">
                 <strong>Keep names and values in sync.</strong> The label, type, and allowed values you set
-                here must match what you described in Experiment Instructions and Encoding Instructions
-                word-for-word. If your encoding instructions say a category encodes as <code>P/E/N</code>
+                here must match what you described in Experiment Instructions and Coding Instructions
+                word-for-word. If your coding instructions say a category codes as <code>P/E/N</code>
                 but the codebook lists <code>0,1</code>, the model has conflicting rules to follow and
                 results will be inconsistent.
             </div>
@@ -526,7 +526,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="tool-desc">
                 <p>
                   <strong>Script only</strong> generates a downloadable Python script without
-                  running anything. <strong>Run Encoding</strong> validates your API keys, then
+                  running anything. <strong>Run Coding</strong> validates your API keys, then
                   streams results live as each row is processed. When it finishes, a validation
                   report flags out-of-range or failed rows so you can re-run just those rows.
                 </p>
@@ -537,14 +537,14 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Demo video</div>
               <div className="tool-desc">
                 <video controls className="howto-video">
-                  <source src="/demos/encoding-demo.mp4" type="video/mp4" />
+                  <source src="/demos/coding-demo.mp4" type="video/mp4" />
                 </video>
               </div>
             </div>
 
             {onNavigate && (
-            <button className="btn btn-primary mt-16 mb-16" onClick={() => onNavigate("encoding")}>
-                Go to LLM Encoding
+            <button className="btn btn-primary mt-16 mb-16" onClick={() => onNavigate("coding")}>
+                Go to LLM Coding
             </button>
             )}
           </>
