@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
+import Instructions from "@/app/tools/HowToPage";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -274,7 +275,7 @@ const TOOLS: { value: Tool; label: string }[] = [
 
 export default function Home() {
     // Tool switching
-  const [activeTool, setActiveTool] = useState<"encoding" | "catgen" | "analysis">("encoding");
+  const [activeTool, setActiveTool] = useState<"encoding" | "catgen" | "analysis" | "instructions">("encoding");
 
   // File upload state
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -1054,6 +1055,7 @@ export default function Home() {
             <button className={`topbar-tab ${activeTool === "encoding" ? "active" : ""}`} onClick={() => setActiveTool("encoding")}>Encoding</button>
             <button className={`topbar-tab ${activeTool === "catgen" ? "active" : ""}`} onClick={() => setActiveTool("catgen")}>Category Generator</button>
             <button className={`topbar-tab ${activeTool === "analysis" ? "active" : ""}`} onClick={() => setActiveTool("analysis")}>Results Analysis</button>
+            <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn the Toolkit</button>
           </div>
         </div>
         <div className="topbar-right">
@@ -1780,6 +1782,7 @@ export default function Home() {
           </div>
           {activeTool === "catgen" && (<CategoryGenerator providers={PROVIDERS}/>)}
 
+
           {/* ── Results Analysis Page ── */}
           <div className={`tool-page ${activeTool === "analysis" ? "active" : ""}`}>
             <div className="tool-header">
@@ -2045,6 +2048,9 @@ export default function Home() {
               )}
             </div>
           </div>
+          {activeTool === "instructions" && (
+            <Instructions onNavigate={(tool) => setActiveTool(tool)} />
+          )}
         </main>
       </div>
 
