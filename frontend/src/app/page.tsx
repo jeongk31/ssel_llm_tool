@@ -313,25 +313,22 @@ export default function Home() {
   const [tourOpen, setTourOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  // First-visit welcome prompt offering the guided tour. Respects a localStorage
-  // snooze: "never" = dismissed forever, otherwise a timestamp to stay hidden until.
+  // First-visit welcome prompt offering the guided tour. Only "Don't show again"
+  // persists ("never"); every other dismissal shows again on the next refresh.
   useEffect(() => {
     try {
-      const v = localStorage.getItem("coding_welcome_dismissed");
-      if (v === "never") return;
-      if (v && Date.now() < Number(v)) return;
+      if (localStorage.getItem("coding_welcome_dismissed") === "never") return;
     } catch {}
     const t = setTimeout(() => setShowWelcome(true), 600);
     return () => clearTimeout(t);
   }, []);
 
-  const dismissWelcome = (mode: "tour" | "day" | "never" | "guide") => {
-    try {
-      localStorage.setItem(
-        "coding_welcome_dismissed",
-        mode === "never" ? "never" : String(Date.now() + 24 * 60 * 60 * 1000),
-      );
-    } catch {}
+  const dismissWelcome = (mode: "tour" | "later" | "never" | "guide") => {
+    if (mode === "never") {
+      try {
+        localStorage.setItem("coding_welcome_dismissed", "never");
+      } catch {}
+    }
     setShowWelcome(false);
     if (mode === "tour") {
       setActiveTool("coding");
@@ -1112,13 +1109,23 @@ export default function Home() {
         <div className="topbar-left">
           <img src="/ssel_logo.png" alt="SSELab" className="topbar-logo" />
           <div className="topbar-sep" />
-          <span className="topbar-title">LLM Measurement Toolkit</span>
+          <span
+            className="topbar-title topbar-title-link"
+            onClick={() => setActiveTool("coding")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveTool("coding"); }}
+          >
+            LLM Measurement Toolkit
+          </span>
           <span className="topbar-badge">beta</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
+            {/* Hidden for now — pages still exist, just no nav buttons.
             <button className={`topbar-tab ${activeTool === "catgen" ? "active" : ""}`} onClick={() => setActiveTool("catgen")}>Category Generator</button>
             <button className={`topbar-tab ${activeTool === "analysis" ? "active" : ""}`} onClick={() => setActiveTool("analysis")}>Results Analysis</button>
+            */}
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn the Toolkit</button>
           </div>
         </div>
@@ -2287,7 +2294,7 @@ export default function Home() {
       />
 
       {showWelcome && (
-        <div className="welcome-overlay" onClick={() => dismissWelcome("day")}>
+        <div className="welcome-overlay" onClick={() => dismissWelcome("later")}>
           <div className="welcome-modal" onClick={(e) => e.stopPropagation()}>
             <div className="welcome-emoji">👋</div>
             <h2 className="welcome-title">First time here?</h2>
@@ -2297,7 +2304,7 @@ export default function Home() {
             </p>
             <div className="welcome-actions">
               <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the tour</button>
-              <button className="btn btn-outline" onClick={() => dismissWelcome("day")}>Maybe later</button>
+              <button className="btn btn-outline" onClick={() => dismissWelcome("later")}>Maybe later</button>
             </div>
             <button className="welcome-link" onClick={() => dismissWelcome("guide")}>
               Or read the full guide →
