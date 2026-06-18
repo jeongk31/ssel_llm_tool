@@ -1532,6 +1532,29 @@ td.cm-off:hover{background:var(--bg)}
 .tour-card-actions{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:8px}
 .tour-card-nav{display:flex;gap:8px}
 
+/* First-visit welcome prompt */
+.welcome-overlay{
+  position:fixed;inset:0;z-index:2100;
+  background:rgba(15,23,42,.5);
+  display:flex;align-items:center;justify-content:center;
+  animation:tourCardIn .2s ease;
+}
+.welcome-modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:28px 28px 18px;max-width:420px;width:calc(100% - 40px);text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);
+}
+.welcome-emoji{font-size:40px;line-height:1;margin-bottom:8px}
+.welcome-title{margin:0 0 8px;font-size:20px;font-weight:700;color:var(--text)}
+.welcome-text{margin:0 0 20px;font-size:14px;line-height:1.55;color:var(--text-3)}
+.welcome-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.welcome-actions .btn{min-width:120px}
+.welcome-never{
+  margin-top:14px;border:none;background:none;cursor:pointer;
+  font-size:12px;color:var(--text-3);text-decoration:underline;
+}
+.welcome-never:hover{color:var(--text)}
+
 /* "?" walkthrough button on the Coding page header */
 .tour-help-btn{
   flex-shrink:0;width:28px;height:28px;border-radius:50%;
