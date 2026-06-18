@@ -310,6 +310,33 @@ export default function Home() {
     // Tool switching
   const [activeTool, setActiveTool] = useState<"coding" | "catgen" | "analysis" | "instructions">("coding");
   const [tourOpen, setTourOpen] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  // First-visit welcome prompt offering the guided tour. Respects a localStorage
+  // snooze: "never" = dismissed forever, otherwise a timestamp to stay hidden until.
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("coding_welcome_dismissed");
+      if (v === "never") return;
+      if (v && Date.now() < Number(v)) return;
+    } catch {}
+    const t = setTimeout(() => setShowWelcome(true), 600);
+    return () => clearTimeout(t);
+  }, []);
+
+  const dismissWelcome = (mode: "tour" | "day" | "never") => {
+    try {
+      localStorage.setItem(
+        "coding_welcome_dismissed",
+        mode === "never" ? "never" : String(Date.now() + 24 * 60 * 60 * 1000),
+      );
+    } catch {}
+    setShowWelcome(false);
+    if (mode === "tour") {
+      setActiveTool("coding");
+      setTourOpen(true);
+    }
+  };
 
   // File upload state
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -2249,6 +2276,26 @@ export default function Home() {
           if (s.panel) setOpenPanels((prev) => new Set(prev).add(s.panel as number));
         }}
       />
+
+      {showWelcome && (
+        <div className="welcome-overlay" onClick={() => dismissWelcome("day")}>
+          <div className="welcome-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="welcome-emoji">👋</div>
+            <h2 className="welcome-title">First time here?</h2>
+            <p className="welcome-text">
+              Take a quick guided walkthrough of the LLM Coding page — we&apos;ll highlight
+              each step, from uploading your data to running the models.
+            </p>
+            <div className="welcome-actions">
+              <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the tour</button>
+              <button className="btn btn-outline" onClick={() => dismissWelcome("day")}>Maybe later</button>
+            </div>
+            <button className="welcome-never" onClick={() => dismissWelcome("never")}>
+              Don&apos;t show again
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
