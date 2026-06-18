@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
 import Instructions from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
+import HelpTip from "@/app/tools/HelpTip";
 
 // Guided walkthrough for the LLM Coding page (mirrors the Learn the Toolkit content).
 const CODING_TOUR_STEPS: TourStep[] = [
@@ -324,7 +325,7 @@ export default function Home() {
     return () => clearTimeout(t);
   }, []);
 
-  const dismissWelcome = (mode: "tour" | "day" | "never") => {
+  const dismissWelcome = (mode: "tour" | "day" | "never" | "guide") => {
     try {
       localStorage.setItem(
         "coding_welcome_dismissed",
@@ -335,6 +336,8 @@ export default function Home() {
     if (mode === "tour") {
       setActiveTool("coding");
       setTourOpen(true);
+    } else if (mode === "guide") {
+      setActiveTool("instructions");
     }
   };
 
@@ -1160,6 +1163,7 @@ export default function Home() {
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
                         <span className="panel-label">Upload Dataset</span>
+                        <HelpTip text="Upload a CSV or Excel file. Include an ID column and the column containing the text to code." />
                         {uploadResult && <span className="tag">uploaded</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -1233,6 +1237,7 @@ export default function Home() {
                       <div className="panel-head-left">
                         <span className="step-badge">2</span>
                         <span className="panel-label">Column &amp; Rows</span>
+                        <HelpTip text="Pick the column with the text to code. Optionally limit to rows like 1-5, 8 — leave blank to code all rows." />
                         {messageColumn && <span className="tag">{messageColumn}</span>}
                         {filterActive && <span className="tag">{parsedFilter.indices.length} rows</span>}
                       </div>
@@ -1280,6 +1285,7 @@ export default function Home() {
                       <div className="panel-head-left">
                         <span className="step-badge">3</span>
                         <span className="panel-label">Experiment Instructions</span>
+                        <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
                         {experimentInstructions.trim() && <span className="tag">set</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -1304,6 +1310,7 @@ export default function Home() {
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
                         <span className="panel-label">Coding Instructions</span>
+                        <HelpTip text="Tell the model how to apply the codebook — single-label vs multi-label, and how to handle empty messages." />
                         {codingInstructions.trim() && <span className="tag">set</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -1344,6 +1351,7 @@ export default function Home() {
                       <div className="panel-head-left">
                         <span className="step-badge">5</span>
                         <span className="panel-label">Codebook</span>
+                        <HelpTip text="Define each variable: label, type, definition, and allowed values. Keep them in sync with your instructions." />
                         {codebook.some((e) => e.label.trim()) && (
                           <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
                         )}
@@ -1428,6 +1436,7 @@ export default function Home() {
                       <div className="panel-head-left">
                         <span className="step-badge">6</span>
                         <span className="panel-label">Models &amp; Voting</span>
+                        <HelpTip text="Add model + API key pairs. Run each multiple times and aggregate (mode/mean) to enable voting." />
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
@@ -2290,6 +2299,9 @@ export default function Home() {
               <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the tour</button>
               <button className="btn btn-outline" onClick={() => dismissWelcome("day")}>Maybe later</button>
             </div>
+            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>
+              Or read the full guide →
+            </button>
             <button className="welcome-never" onClick={() => dismissWelcome("never")}>
               Don&apos;t show again
             </button>
