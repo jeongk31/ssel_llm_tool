@@ -1532,6 +1532,24 @@ td.cm-off:hover{background:var(--bg)}
 .tour-card-actions{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:8px}
 .tour-card-nav{display:flex;gap:8px}
 
+/* Per-section "?" hover hint */
+.help-tip{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:15px;height:15px;border-radius:50%;border:1px solid var(--border);
+  color:var(--text-3);font-size:10px;font-weight:700;cursor:help;flex-shrink:0;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.help-tip:hover{background:var(--purple-bg);border-color:var(--purple-lt);color:var(--purple)}
+.help-tip-bubble{
+  position:fixed;transform:translateX(-50%);
+  width:240px;max-width:calc(100vw - 24px);
+  background:var(--text);color:var(--surface);
+  font-size:11px;font-weight:400;line-height:1.45;text-align:left;
+  padding:8px 10px;border-radius:8px;z-index:2200;
+  box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none;
+  animation:tourCardIn .12s ease;
+}
+
 /* First-visit welcome prompt */
 .welcome-overlay{
   position:fixed;inset:0;z-index:2100;
@@ -1548,9 +1566,14 @@ td.cm-off:hover{background:var(--bg)}
 .welcome-title{margin:0 0 8px;font-size:20px;font-weight:700;color:var(--text)}
 .welcome-text{margin:0 0 20px;font-size:14px;line-height:1.55;color:var(--text-3)}
 .welcome-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-.welcome-actions .btn{min-width:120px}
+.welcome-actions .btn{min-width:120px;justify-content:center;text-align:center}
+.welcome-link{
+  display:block;margin:14px auto 0;border:none;background:none;cursor:pointer;
+  font-size:13px;font-weight:500;color:var(--purple);
+}
+.welcome-link:hover{text-decoration:underline}
 .welcome-never{
-  margin-top:14px;border:none;background:none;cursor:pointer;
+  margin-top:8px;border:none;background:none;cursor:pointer;
   font-size:12px;color:var(--text-3);text-decoration:underline;
 }
 .welcome-never:hover{color:var(--text)}
