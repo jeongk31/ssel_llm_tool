@@ -108,6 +108,41 @@ interface VariableMetrics {
   error?: string;
 }
 
+// ── Single-row validation (used live during the run AND in the final report) ──
+
+function checkRow(
+  rowIndex: number,
+  coded: Record<string, unknown>,
+  codebook: CodebookEntry[]
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+
+  if (coded._error) {
+    issues.push({ rowIndex, variable: "_error", value: coded._error, expected: "", issueType: "api_error" });
+    return issues; // a fatal/flagged row doesn't need further field checks
+  }
+
+  for (const entry of codebook) {
+    if (!entry.label.trim()) continue;
+    const value = coded[entry.label];
+
+    if (entry.coded_values.trim()) {
+      const allowed = entry.coded_values.split(",").map((v) => v.trim().toLowerCase());
+      const actual = String(value ?? "").trim().toLowerCase();
+      if (!allowed.includes(actual)) {
+        issues.push({ rowIndex, variable: entry.label, value, expected: entry.coded_values, issueType: "out_of_range" });
+      }
+    }
+
+    if (entry.type === "numeric" && value != null && value !== "") {
+      if (isNaN(Number(value))) {
+        issues.push({ rowIndex, variable: entry.label, value, expected: "numeric value", issueType: "not_numeric" });
+      }
+    }
+  }
+
+  return issues;
+}
 
 function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): ValidationReport {
   const issues: ValidationIssue[] = [];
@@ -138,6 +173,7 @@ function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): Validat
         }
       }
     }
+    issues.push(...checkRow(row.index, row.coded, codebook));
   }
 
   const problematicIndices = [...new Set(issues.map((i) => i.rowIndex))];
@@ -722,17 +758,27 @@ export default function Home() {
         setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
         log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
       } else if (msg.type === "row") {
+
+        // setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
+        // if (msg.coded._error) {
+        //   log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
+
         setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
-        if (msg.coded._error) {
-          log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
+        const issues = checkRow(msg.index, msg.coded, codebook);
+        for (const issue of issues) {
+          const detail = issue.issueType === "api_error"
+            ? `Row ${msg.index + 1}: ${issue.value}`
+            : `Row ${msg.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+          setRunErrors((prev) => [...prev, detail]);
+          log("warn", detail);
         }
-      } else if (msg.type === "error" && msg.index !== undefined) {
-        setRunErrors((prev) => [...prev, msg.message]);
-        log("error", msg.message);
-      } else if (msg.type === "error") {
-        setRunError(msg.message);
-        log("error", `Fatal: ${msg.message}`);
-        setRunning(false);
+      // } else if (msg.type === "error" && msg.index !== undefined) {
+      //   setRunErrors((prev) => [...prev, msg.message]);
+      //   log("error", msg.message);
+      // } else if (msg.type === "error") {
+      //   setRunError(msg.message);
+      //   log("error", `Fatal: ${msg.message}`);
+      //   setRunning(false);
       } else if (msg.type === "complete") {
         setRunComplete({
           total_rows: msg.total_rows,
@@ -938,8 +984,17 @@ export default function Home() {
         } else {
           setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
         }
-        if (msg.coded._error) {
-          log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
+
+        // if (msg.coded._error) {
+        //   log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
+
+        const issues = checkRow(msg.index, msg.coded, codebook);
+        for (const issue of issues) {
+          const detail = issue.issueType === "api_error"
+            ? `Row ${msg.index + 1}: ${issue.value}`
+            : `Row ${msg.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+          setRunErrors((prev) => [...prev, detail]);
+          log("warn", detail);
         }
       } else if (msg.type === "error" && msg.index !== undefined) {
         setRunErrors((prev) => [...prev, msg.message]);

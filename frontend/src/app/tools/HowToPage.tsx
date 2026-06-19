@@ -9,10 +9,10 @@ interface Props {
 }
 
 const SECTIONS: { value: Section; label: string }[] = [
-  { value: "overview", label: "Overview" },
+  // { value: "overview", label: "Overview" },
   { value: "coding", label: "LLM Coding" },
-  { value: "catgen", label: "Category Generator" },
-  { value: "analysis", label: "Results Analysis" },
+  // { value: "catgen", label: "Category Generator" },
+  // { value: "analysis", label: "Results Analysis" },
   { value: "faq", label: "FAQ" },
 ];
 
@@ -282,7 +282,7 @@ function Collapsible({ label, children }: { label: string; children: React.React
 }
 
 export default function HowToPage({ onNavigate }: Props) {
-  const [activeSection, setActiveSection] = useState<Section>("overview");
+  const [activeSection, setActiveSection] = useState<Section>("coding");
 
   return (
     <div className="tool-page active">
