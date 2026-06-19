@@ -148,31 +148,9 @@ function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): Validat
   const issues: ValidationIssue[] = [];
 
   for (const row of rows) {
-    const enc = row.coded;
-
-    if (enc._error) {
-      issues.push({ rowIndex: row.index, variable: "_error", value: enc._error, expected: "", issueType: "api_error" });
-      continue;
-    }
-
-    for (const entry of codebook) {
-      if (!entry.label.trim()) continue;
-      const value = enc[entry.label];
-
-      if (entry.coded_values.trim()) {
-        const allowed = entry.coded_values.split(",").map((v) => v.trim().toLowerCase());
-        const actual = String(value ?? "").trim().toLowerCase();
-        if (!allowed.includes(actual)) {
-          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: entry.coded_values, issueType: "out_of_range" });
-        }
-      }
-
-      if (entry.type === "numeric" && value != null && value !== "") {
-        if (isNaN(Number(value))) {
-          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: "numeric value", issueType: "not_numeric" });
-        }
-      }
-    }
+    // checkRow handles both flagged (_error) rows and per-variable checks —
+    // call it once per row (previously this also ran an inline copy of the
+    // same checks, which duplicated every out-of-range issue).
     issues.push(...checkRow(row.index, row.coded, codebook));
   }
 
