@@ -1515,11 +1515,14 @@ td.cm-off:hover{background:var(--bg)}
   transition:top .25s ease,left .25s ease,width .25s ease,height .25s ease;
   pointer-events:none;
 }
+
 .tour-card{
   position:fixed;z-index:2001;
   background:var(--surface);border:1px solid var(--border);border-radius:12px;
   padding:16px 18px;box-shadow:0 16px 50px rgba(0,0,0,.35);
   animation:tourCardIn .18s ease;
+  max-height: 360px;
+  overflow-y: auto;
 }
 @keyframes tourCardIn{from{opacity:0}to{opacity:1}}
 .tour-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -1589,3 +1592,85 @@ td.cm-off:hover{background:var(--bg)}
   transition:background .15s,border-color .15s,box-shadow .15s;
 }
 .tour-help-btn:hover{background:var(--purple-bg);border-color:var(--purple-lt);box-shadow:0 0 0 3px rgba(91,45,142,.1)}
+
+
+/* ═══════════════════════════════════════════════════ */
+/* MODEL TUNING FEATURES.                              */
+/* ═══════════════════════════════════════════════════ */
+
+
+.tuning-params-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.tuning-param {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tuning-param-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.slot-tuning-label {
+  font-size: 0.85rem;
+  font-weight: 450;
+}
+
+.tuning-param-header label {
+  font-size: 0.65rem;        /* smaller — was 0.8rem */
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #888);
+}
+
+.tuning-param-val {
+  font-size: 0.70rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #bbb);  /* darker — was #eee */
+}
+
+.slot-tuning-note {
+  font-style: italic;
+}
+
+
+.tuning-param input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent, #6366f1);
+}
+
+.tuning-param-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-muted, #555);
+}
+
+.tuning-tokens-input {
+  width: 100%;
+  padding: 4px 8px;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  color: var(--text-primary, #eee);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.text-muted {
+  opacity: 0.4;
+}

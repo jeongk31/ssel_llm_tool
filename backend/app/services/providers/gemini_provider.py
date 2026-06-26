@@ -22,6 +22,7 @@ class GeminiProvider(LLMProvider):
             config=genai.types.GenerateContentConfig(
                 system_instruction=system_prompt or None,
                 temperature=params.get("temperature", 0.7),
+                top_p=params.get("top_p", 1.0),
                 max_output_tokens=params.get("max_tokens", 2048),
             ),
         )
