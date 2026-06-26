@@ -6,35 +6,64 @@ import Instructions from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 
-// Guided walkthrough for the LLM Coding page (mirrors the Learn the Toolkit content).
 const CODING_TOUR_STEPS: TourStep[] = [
+  // {
+  //   targetId: "coding-panel-1", panel: 1, title: "Coding Instructions & Codebook",
+  //   body: (<><p>Tell the model exactly how to apply the codebook. The key decision: <strong>single-label</strong> (one category per row) vs <strong>multi-label</strong> (mark every category that applies).</p><p>Define each category and how to treat empty messages.</p></>),
+  // },
+  // {
+  //   targetId: "coding-panel-2", panel: 2, title: "Experiment instructions",
+  //   body: (<p>Provide the complete instructions that participants received during the experiment. This should include all task details, roles, decisions, payoffs, communication rules, and any other information available to subjects. If participants received additional information beyond the written instructions (e.g., examples, clarifications, training materials, or on-screen prompts), include that as well so the model has the same information as the subjects. Missing context here is the most common cause of inconsistent coding.</p>),
+  // },
+  // {
+  //   targetId: "coding-panel-3", panel: 3, title: "Upload your dataset",
+  //   body: (<p> Upload a CSV or Excel file. Include an <strong>ID column(s)</strong> that uniquely
+  //   identifies each unit of text to be coded. This can be a row ID, session ID,
+  //   round ID, message ID, or any other unique identifier. If no single column is
+  //   unique, a combination of multiple columns (e.g., <code>session_id</code> +{" "}
+  //   <code>round</code>) can serve as the unique identifier. Also include the
+  //   column containing the text to code. <strong>Do not</strong> add columns for
+  //   the variables you want coded—you&apos;ll define those later in the Codebook. </p>),
+  // },
+  // {
+  //   targetId: "coding-panel-4", panel: 4, title: "Pick the column",
+  //   body: (<p>Choose the column containing the text (messages) to code.</p>),
+  // },
+  // {
+  //   targetId: "coding-panel-5", panel: 5, title: "Models & Aggregation",
+  //   body: (<p>Add one or more provider/model pairs, each with its own API key. Run each model multiple times and aggregate by majority vote (mode) or average (mean) to enable voting. Expand tuning to control temperature, top-p, max tokens, and system prompt per model.</p>),
+  // },
+  // {
+  //   targetId: "coding-run-bar", title: "Run it",
+  //   body: (<><p><strong>Script only</strong> downloads a ready-to-run Python script without calling any model.</p><p><strong>Run Coding</strong> validates your keys, streams results live, then flags out-of-range or failed rows so you can re-run just those.</p></>),
+  // },
   {
-    targetId: "coding-panel-1", panel: 1, title: "Upload your dataset",
-    body: (<p>Upload a CSV or Excel file. Include an ID column and the column that holds the text to code. Don&apos;t add columns for the variables you want coded — you&apos;ll define those in the Codebook.</p>),
+    targetId: "coding-panel-1", panel: 1, title: "Coding Instructions & Codebook",
+    body: (<p>Tell the model how to apply the codebook: <strong>single-label</strong> (one category per row) or <strong>multi-label</strong> (all that apply). Define each category and how to handle empty messages.</p>),
   },
   {
-    targetId: "coding-panel-2", panel: 2, title: "Pick the column & rows",
-    body: (<p>Choose the column containing the text to code. Optionally restrict the run to specific rows like <code>1-5, 8, 12-15</code> — leave blank to code the whole dataset.</p>),
+    targetId: "coding-panel-2", panel: 2, title: "Experiment Instructions",
+    body: (<p>Paste the full experiment instructions participants received — tasks, roles, payoffs, and communication rules. Include any extra context (examples, clarifications, on-screen prompts) that you also provided to participants.</p>),
   },
   {
-    targetId: "coding-panel-3", panel: 3, title: "Experiment instructions",
-    body: (<p>Give the model full context: the task, roles, decisions, payoffs, and communication rules. Missing context here is the most common cause of inconsistent coding.</p>),
+    targetId: "coding-panel-3", panel: 3, title: "Upload your dataset",
+    body: (<p>Upload a CSV or Excel file with an <strong>ID column</strong> that uniquely
+  identifies each row or observation. This may be a single column (e.g. a row ID,
+  session ID, or message ID) or a combination of columns that together form a
+  unique key (e.g. <code>session_id</code> + <code>round</code>). Also include
+  the text column to code.</p>),
   },
   {
-    targetId: "coding-panel-4", panel: 4, title: "Coding instructions",
-    body: (<><p>Tell the model exactly how to apply the codebook. The key decision: <strong>single-label</strong> (one category per row) vs <strong>multi-label</strong> (mark every category that applies).</p><p>Define each category and how to treat empty messages.</p></>),
+    targetId: "coding-panel-4", panel: 4, title: "Pick the column",
+    body: (<p>Select the column containing the text to code.</p>),
   },
   {
-    targetId: "coding-panel-5", panel: 5, title: "Build the codebook",
-    body: (<p>List the variables to code. Each needs a label, a type (binary, categorical, ordinal, numeric, text), a definition, and allowed values. Keep names and values in sync with your instructions.</p>),
-  },
-  {
-    targetId: "coding-panel-6", panel: 6, title: "Models & voting",
-    body: (<p>Add one or more provider/model pairs, each with its own API key. Run each model multiple times and aggregate by majority vote (mode) or average (mean) to enable voting.</p>),
+    targetId: "coding-panel-5", panel: 5, title: "Models & Aggregation",
+    body: (<p>Add one or more model + API key pairs. Run each model multiple times and aggregate by majority vote or average. Expand tuning to adjust temperature, top-p, and max tokens per model.</p>),
   },
   {
     targetId: "coding-run-bar", title: "Run it",
-    body: (<><p><strong>Script only</strong> downloads a ready-to-run Python script without calling any model.</p><p><strong>Run Coding</strong> validates your keys, streams results live, then flags out-of-range or failed rows so you can re-run just those.</p></>),
+    body: (<><p><strong>Script only</strong> downloads a ready-to-run Python script. <strong>Run Coding</strong> validates your keys, streams results live, and flags any out-of-range or failed rows for re-running.</p></>),
   },
 ];
 
@@ -108,7 +137,7 @@ interface VariableMetrics {
   error?: string;
 }
 
-// ── Single-row validation (used live during the run AND in the final report) ──
+// ── Single-row validation ─────────────────────────────────────────────────────
 
 function checkRow(
   rowIndex: number,
@@ -119,7 +148,7 @@ function checkRow(
 
   if (coded._error) {
     issues.push({ rowIndex, variable: "_error", value: coded._error, expected: "", issueType: "api_error" });
-    return issues; // a fatal/flagged row doesn't need further field checks
+    return issues;
   }
 
   for (const entry of codebook) {
@@ -148,9 +177,26 @@ function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): Validat
   const issues: ValidationIssue[] = [];
 
   for (const row of rows) {
-    // checkRow handles both flagged (_error) rows and per-variable checks —
-    // call it once per row (previously this also ran an inline copy of the
-    // same checks, which duplicated every out-of-range issue).
+    const enc = row.coded;
+
+    for (const entry of codebook) {
+      if (!entry.label.trim()) continue;
+      const value = enc[entry.label];
+
+      if (entry.coded_values.trim()) {
+        const allowed = entry.coded_values.split(",").map((v) => v.trim().toLowerCase());
+        const actual = String(value ?? "").trim().toLowerCase();
+        if (!allowed.includes(actual)) {
+          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: entry.coded_values, issueType: "out_of_range" });
+        }
+      }
+
+      if (entry.type === "numeric" && value != null && value !== "") {
+        if (isNaN(Number(value))) {
+          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: "numeric value", issueType: "not_numeric" });
+        }
+      }
+    }
     issues.push(...checkRow(row.index, row.coded, codebook));
   }
 
@@ -168,7 +214,9 @@ function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): Validat
   };
 }
 
-const PROVIDERS: { value: string; label: string; models: { value: string; label: string }[] }[] = [
+// ── Providers ─────────────────────────────────────────────────────────────────
+
+const PROVIDERS: { value: string; label: string; models: { value: string; label: string; noTemperature?: boolean }[] }[] = [
   {
     value: "openai", label: "OpenAI", models: [
       { value: "gpt-4.1", label: "GPT-4.1" },
@@ -209,7 +257,7 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
   {
     value: "deepseek", label: "DeepSeek", models: [
       { value: "deepseek-chat", label: "DeepSeek V3" },
-      { value: "deepseek-reasoner", label: "DeepSeek R1" },
+      { value: "deepseek-reasoner", label: "DeepSeek R1", noTemperature: true },
     ],
   },
   {
@@ -232,7 +280,7 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
       { value: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo", label: "Llama 3.1 405B" },
       { value: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", label: "Llama 3.1 70B" },
       { value: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", label: "Llama 3.1 8B" },
-      { value: "deepseek-ai/DeepSeek-R1", label: "DeepSeek R1 (via Together)" },
+      { value: "deepseek-ai/DeepSeek-R1", label: "DeepSeek R1 (via Together)", noTemperature: true },
       { value: "deepseek-ai/DeepSeek-V3", label: "DeepSeek V3 (via Together)" },
       { value: "Qwen/Qwen2.5-72B-Instruct-Turbo", label: "Qwen 2.5 72B" },
       { value: "Qwen/QwQ-32B", label: "QwQ 32B" },
@@ -253,6 +301,8 @@ const CODEBOOK_TYPES = [
 ];
 
 const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", coded_values: "" };
+
+// ── TagInput ──────────────────────────────────────────────────────────────────
 
 function TagInput({ value, onChange, type }: { value: string; onChange: (v: string) => void; type: string }) {
   const [input, setInput] = useState("");
@@ -303,14 +353,74 @@ function TagInput({ value, onChange, type }: { value: string; onChange: (v: stri
   );
 }
 
+// ── ModelSlot type ────────────────────────────────────────────────────────────
+
 interface ModelSlot {
   provider: string;
   model: string;
   apiKey: string;
   showKey?: boolean;
+  tuningEnabled?: boolean;
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
 }
 
-const EMPTY_SLOT: ModelSlot = { provider: "openai", model: "gpt-4.1-mini", apiKey: "", showKey: false };
+const EMPTY_SLOT: ModelSlot = {
+  provider: "openai",
+  model: "gpt-4.1-mini",
+  apiKey: "",
+  showKey: false,
+  tuningEnabled: false,
+  temperature: 0.2,
+  topP: 1.0,
+  maxTokens: 1024,
+};
+
+function modelIgnoresTemperature(provider: string, model: string): boolean {
+  const provInfo = PROVIDERS.find((p) => p.value === provider);
+  const modelInfo = provInfo?.models.find((m) => m.value === model);
+  return modelInfo?.noTemperature === true;
+}
+
+function buildSlotPayload(slot: ModelSlot) {
+  const base = {
+    provider: slot.provider,
+    model: slot.model,
+    api_key: slot.apiKey,
+  };
+
+  if (!slot.tuningEnabled) return base;
+
+  const noTemp = modelIgnoresTemperature(slot.provider, slot.model);
+
+  if (slot.provider === "gemini") {
+    return {
+      ...base,
+      generation_config: {
+        ...(noTemp ? {} : { temperature: slot.temperature }),
+        topP: slot.topP,
+        maxOutputTokens: slot.maxTokens,
+      },
+    };
+  }
+
+  if (slot.provider === "deepseek") {
+    return {
+      ...base,
+      ...(noTemp ? {} : { temperature: slot.temperature }),
+      top_p: slot.topP,
+      max_tokens: slot.maxTokens,
+    };
+  }
+
+  return {
+    ...base,
+    ...(noTemp ? {} : { temperature: slot.temperature }),
+    top_p: slot.topP,
+    max_completion_tokens: slot.maxTokens,
+  };
+}
 
 type Tool = "coding" | "catgen" | "newtool1" | "newtool2";
 const TOOLS: { value: Tool; label: string }[] = [
@@ -322,13 +432,10 @@ const TOOLS: { value: Tool; label: string }[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-    // Tool switching
   const [activeTool, setActiveTool] = useState<"coding" | "catgen" | "analysis" | "instructions">("coding");
   const [tourOpen, setTourOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  // First-visit welcome prompt offering the guided tour. Only "Don't show again"
-  // persists ("never"); every other dismissal shows again on the next refresh.
   useEffect(() => {
     try {
       if (localStorage.getItem("coding_welcome_dismissed") === "never") return;
@@ -339,18 +446,15 @@ export default function Home() {
 
   const dismissWelcome = (mode: "tour" | "later" | "never" | "guide") => {
     if (mode === "never") {
-      try {
-        localStorage.setItem("coding_welcome_dismissed", "never");
-      } catch {}
+      try { localStorage.setItem("coding_welcome_dismissed", "never"); } catch {}
     }
     setShowWelcome(false);
-    if (mode === "tour") {
-      setActiveTool("coding");
-      setTourOpen(true);
-    } else if (mode === "guide") {
-      setActiveTool("instructions");
-    }
+    if (mode === "tour") { setActiveTool("coding"); setTourOpen(true); }
+    else if (mode === "guide") { setActiveTool("instructions"); }
   };
+
+  const [splitPct, setSplitPct] = useState(45);
+  const isDragging = useRef(false);
 
   // File upload state
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -358,7 +462,6 @@ export default function Home() {
   const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
@@ -375,7 +478,7 @@ export default function Home() {
   const [runsPerModel, setRunsPerModel] = useState(1);
   const [aggregation, setAggregation] = useState<"mode" | "mean">("mode");
 
-  // Legacy aliases for compatibility with generate/run code
+  // Legacy aliases
   const provider = modelSlots[0]?.provider ?? "openai";
   const model = modelSlots[0]?.model ?? "gpt-4o";
   const apiKey = modelSlots[0]?.apiKey ?? "";
@@ -397,7 +500,7 @@ export default function Home() {
   const [hasRerun, setHasRerun] = useState(false);
   const codedRowsRef = useRef<CodedRow[]>([]);
 
-  // Analysis page state
+  // Analysis state
   const [analysisRaters, setAnalysisRaters] = useState<{ name: string; type: "human" | "llm"; uploadResult: UploadResult | null; uploading: boolean }[]>([]);
   const [episodeColumns, setEpisodeColumns] = useState<string[]>([]);
   const [analysisVariables, setAnalysisVariables] = useState<string[]>([]);
@@ -407,17 +510,12 @@ export default function Home() {
   const [analysisError, setAnalysisError] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  // Console log state
+  // Console
   const [consoleLogs, setConsoleLogs] = useState<{ time: string; level: "info" | "warn" | "error"; msg: string }[]>([]);
   const consoleRef = useRef<HTMLDivElement>(null);
 
-  // Empty-message handling for coding
   const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "code">("ignore");
-
-  // Right panel view: "script" | "run"
   const [rightView, setRightView] = useState<"script" | "run">("script");
-
-  // Table expand modal: null | "preview" | "codebook" | "live"
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
 
   // Toast
@@ -429,7 +527,7 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(""), 3000);
   };
 
-  // Panel open/close state
+  // Panel state
   const [openPanels, setOpenPanels] = useState<Set<number>>(new Set([1]));
   const [skipPanelAnim, setSkipPanelAnim] = useState(false);
 
@@ -437,21 +535,18 @@ export default function Home() {
     setSkipPanelAnim(false);
     setOpenPanels((prev) => {
       const next = new Set(prev);
-      if (next.has(n)) next.delete(n);
-      else next.add(n);
+      if (next.has(n)) next.delete(n); else next.add(n);
       return next;
     });
   };
 
   const openAllPanels = () => {
     setSkipPanelAnim(true);
-    setOpenPanels(new Set([1, 2, 3, 4, 5, 6]));
+    setOpenPanels(new Set([1, 2, 3, 4, 5]));
   };
 
-  // Keep ref in sync for use in useEffect
   useEffect(() => { codedRowsRef.current = codedRows; }, [codedRows]);
 
-  // Validate results when coding completes
   useEffect(() => {
     if (runComplete && codedRowsRef.current.length > 0) {
       const report = validateCodedRows(codedRowsRef.current, codebook);
@@ -465,35 +560,34 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runComplete]);
 
-  // ── File upload ─────────────────────────────────────────────────────────────
+  // ── File upload ───────────────────────────────────────────────────────────
 
   const handleUpload = useCallback(async (file: File) => {
     setUploading(true);
     setUploadError("");
     setUploadResult(null);
     setMessageColumn("");
-
     const formData = new FormData();
     formData.append("file", file);
-
     try {
-      const res = await fetch("/api/coding/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("/api/coding/upload", { method: "POST", body: formData });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(body.detail || res.statusText);
       }
       const data: UploadResult = await res.json();
       setUploadResult(data);
-      setOpenPanels((prev) => new Set([...prev, 2]));
+      setOpenPanels((prev) => new Set([...prev, 4]));
       showToast(`Uploaded ${data.file_name} (${data.row_count} rows)`);
     } catch (e: unknown) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
     }
+  }, []);
+
+  const handleStepEnter = useCallback((s: TourStep) => {
+    if (s.panel) setOpenPanels((prev) => new Set(prev).add(s.panel as number));
   }, []);
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -507,7 +601,7 @@ export default function Home() {
     if (file) handleUpload(file);
   };
 
-  // ── Codebook management ─────────────────────────────────────────────────────
+  // ── Codebook management ───────────────────────────────────────────────────
 
   const updateCodebook = (idx: number, field: keyof CodebookEntry, value: string) => {
     setCodebook((prev) => prev.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry)));
@@ -520,8 +614,13 @@ export default function Home() {
     setCodebook((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // ── Model slot helpers ────────────────────────────────────────────────────
 
-  // ── Script generation ───────────────────────────────────────────────────────
+  const updateSlot = (idx: number, patch: Partial<ModelSlot>) => {
+    setModelSlots((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  };
+
+  // ── Script generation ─────────────────────────────────────────────────────
 
   const canGenerate =
     uploadResult &&
@@ -535,12 +634,10 @@ export default function Home() {
 
   const handleGenerate = async () => {
     if (!canGenerate || !uploadResult) return;
-
     setGenerating(true);
     setGenerateError("");
     setResult(null);
     setRightView("script");
-
     try {
       const res = await fetch("/api/coding/generate-script", {
         method: "POST",
@@ -555,14 +652,13 @@ export default function Home() {
           provider,
           model,
           api_key: apiKey,
+          model_slots: modelSlots.map(buildSlotPayload),
         }),
       });
-
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(body.detail || res.statusText);
       }
-
       const data: GenerateResult = await res.json();
       setResult(data);
     } catch (e: unknown) {
@@ -577,27 +673,43 @@ export default function Home() {
     const blob = new Blob([result.script], { type: "text/x-python" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = result.filename;
-    a.click();
+    a.href = url; a.download = result.filename; a.click();
     URL.revokeObjectURL(url);
   };
 
-  // ── Console logging helper ───────────────────────────────────────────────────
+  // ── Console ───────────────────────────────────────────────────────────────
 
   const log = (level: "info" | "warn" | "error", msg: string) => {
     const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     setConsoleLogs((prev) => [...prev, { time, level, msg }]);
-    // Auto-scroll console
     setTimeout(() => consoleRef.current?.scrollTo({ top: consoleRef.current.scrollHeight }), 50);
   };
 
-  // ── Run coding via WebSocket ──────────────────────────────────────────────
+  const onDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const layout = document.querySelector(".pipeline-layout");
+      if (!layout) return;
+      const rect = layout.getBoundingClientRect();
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPct(Math.min(Math.max(pct, 20), 80));
+    };
+    const onUp = () => {
+      isDragging.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
     if (!canGenerate || !uploadResult) return;
 
-    // Reset state
     setRunning(true);
     setRunProgress(null);
     setCodedRows([]);
@@ -612,7 +724,6 @@ export default function Home() {
     setConsoleLogs([]);
     setRightView("run");
 
-    // Step 1: Generate the script first
     log("info", "Generating coding script...");
     try {
       const res = await fetch("/api/coding/generate-script", {
@@ -628,14 +739,13 @@ export default function Home() {
           provider,
           model,
           api_key: apiKey,
+          model_slots: modelSlots.map(buildSlotPayload),
         }),
       });
-
       if (!res.ok) {
         const body = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(body.detail || res.statusText);
       }
-
       const data: GenerateResult = await res.json();
       setResult(data);
       log("info", `Script generated: ${data.filename}`);
@@ -647,7 +757,6 @@ export default function Home() {
       return;
     }
 
-    // Step 2: Validate all model slots
     log("info", "Validating API keys and models...");
     try {
       const valRes = await fetch("/api/coding/validate", {
@@ -661,26 +770,17 @@ export default function Home() {
           })),
         }),
       });
-
-      if (!valRes.ok) {
-        throw new Error("Validation request failed");
-      }
-
+      if (!valRes.ok) throw new Error("Validation request failed");
       const valData = await valRes.json();
       for (const r of valData.results) {
-        if (r.ok) {
-          log("info", `  ${r.label} — OK`);
-        } else {
-          log("error", `  ${r.label} — FAILED: ${r.error}`);
-        }
+        if (r.ok) log("info", `  ${r.label} — OK`);
+        else log("error", `  ${r.label} — FAILED: ${r.error}`);
       }
-
       if (!valData.ok) {
         log("error", "Validation failed. Fix the errors above before running.");
         setRunning(false);
         return;
       }
-
       log("info", "All models validated successfully.");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Validation failed";
@@ -689,15 +789,14 @@ export default function Home() {
       return;
     }
 
-    // Step 3: Connect WebSocket and run coding
-    log("info", `Connecting to coding service...`);
+    log("info", "Connecting to coding service...");
     const modelNames = modelSlots.map((s) => {
       const p = PROVIDERS.find((p) => p.value === s.provider);
       const m = p?.models.find((m) => m.value === s.model);
       return `${p?.label}/${m?.label}`;
     });
     log("info", `Models: ${modelNames.join(", ")} × ${runsPerModel} run${runsPerModel > 1 ? "s" : ""} each`);
-    log("info", `Aggregation: ${aggregation} · File: ${uploadResult.file_name} (${filterActive ? `${parsedFilter.indices.length} of ` : ""}${uploadResult.row_count} rows)`);
+    log("info", `Aggregation: ${aggregation} · File: ${uploadResult.file_name} (${uploadResult.row_count} rows)`);
     log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
 
     const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -708,39 +807,26 @@ export default function Home() {
 
     ws.onopen = () => {
       log("info", "Connected. Starting coding...");
-      ws.send(
-        JSON.stringify({
-          file_id: uploadResult.file_id,
-          message_column: messageColumn,
-          experiment_instructions: experimentInstructions,
-          coding_instructions: codingInstructions,
-          empty_message_handling: emptyMessageHandling,
-
-          codebook,
-          model_slots: modelSlots.map((s) => ({
-            provider: s.provider,
-            model: s.model,
-            api_key: s.apiKey,
-          })),
-          runs_per_model: runsPerModel,
-          aggregation,
-          row_indices: filterActive ? parsedFilter.indices : null,
-        })
-      );
+      ws.send(JSON.stringify({
+        file_id: uploadResult.file_id,
+        message_column: messageColumn,
+        experiment_instructions: experimentInstructions,
+        coding_instructions: codingInstructions,
+        empty_message_handling: emptyMessageHandling,
+        codebook,
+        model_slots: modelSlots.map(buildSlotPayload),
+        runs_per_model: runsPerModel,
+        aggregation,
+        row_indices: null,
+      }));
     };
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-
       if (msg.type === "progress") {
         setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
         log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
       } else if (msg.type === "row") {
-
-        // setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
-        // if (msg.coded._error) {
-        //   log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
-
         setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
         const issues = checkRow(msg.index, msg.coded, codebook);
         for (const issue of issues) {
@@ -750,19 +836,15 @@ export default function Home() {
           setRunErrors((prev) => [...prev, detail]);
           log("warn", detail);
         }
-      // } else if (msg.type === "error" && msg.index !== undefined) {
-      //   setRunErrors((prev) => [...prev, msg.message]);
-      //   log("error", msg.message);
-      // } else if (msg.type === "error") {
-      //   setRunError(msg.message);
-      //   log("error", `Fatal: ${msg.message}`);
-      //   setRunning(false);
+      } else if (msg.type === "error" && msg.index !== undefined) {
+        setRunErrors((prev) => [...prev, msg.message]);
+        log("error", msg.message);
+      } else if (msg.type === "error") {
+        setRunError(msg.message);
+        log("error", `Fatal: ${msg.message}`);
+        setRunning(false);
       } else if (msg.type === "complete") {
-        setRunComplete({
-          total_rows: msg.total_rows,
-          coded_rows: msg.coded_rows,
-          file_path: msg.file_path,
-        });
+        setRunComplete({ total_rows: msg.total_rows, coded_rows: msg.coded_rows, file_path: msg.file_path });
         log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
         setRunning(false);
       }
@@ -775,18 +857,13 @@ export default function Home() {
     };
 
     ws.onclose = (event) => {
-      if (event.code !== 1000 && event.code !== 1005) {
-        log("warn", `WebSocket closed (code: ${event.code})`);
-      }
+      if (event.code !== 1000 && event.code !== 1005) log("warn", `WebSocket closed (code: ${event.code})`);
       setRunning(false);
     };
   };
 
   const handleStop = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     log("warn", "Coding stopped by user.");
     setRunning(false);
   };
@@ -819,7 +896,7 @@ export default function Home() {
     showToast("Download started");
   };
 
-  // ── Analysis page handlers ──────────────────────────────────────────────────
+  // ── Analysis handlers ─────────────────────────────────────────────────────
 
   const handleAnalysisRaterUpload = async (idx: number, file: File) => {
     setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, uploading: true } : r));
@@ -885,7 +962,6 @@ export default function Home() {
     }
   };
 
-  // All columns from uploaded rater files (intersection)
   const allRaterColumns = (() => {
     const uploaded = analysisRaters.filter((r) => r.uploadResult);
     if (uploaded.length === 0) return [];
@@ -898,7 +974,6 @@ export default function Home() {
 
   const handleRerun = (indices: number[] | null) => {
     if (!uploadResult) return;
-
     setRunning(true);
     setRunProgress(null);
     setRunErrors([]);
@@ -924,48 +999,32 @@ export default function Home() {
 
     ws.onopen = () => {
       log("info", "Connected. Starting re-coding...");
-      ws.send(
-        JSON.stringify({
-          file_id: uploadResult.file_id,
-          message_column: messageColumn,
-          experiment_instructions: experimentInstructions,
-          coding_instructions: codingInstructions,
-          codebook,
-          model_slots: modelSlots.map((s) => ({
-            provider: s.provider,
-            model: s.model,
-            api_key: s.apiKey,
-          })),
-          runs_per_model: runsPerModel,
-          aggregation,
-          row_indices: indices,
-        })
-      );
+      ws.send(JSON.stringify({
+        file_id: uploadResult.file_id,
+        message_column: messageColumn,
+        experiment_instructions: experimentInstructions,
+        coding_instructions: codingInstructions,
+        codebook,
+        model_slots: modelSlots.map(buildSlotPayload),
+        runs_per_model: runsPerModel,
+        aggregation,
+        row_indices: indices,
+      }));
     };
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-
       if (msg.type === "progress") {
         setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
         log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
       } else if (msg.type === "row") {
         if (indices) {
-          // Merge: replace existing row at this index
-          setCodedRows((prev) =>
-            prev.map((r) =>
-              r.index === msg.index
-                ? { index: msg.index, original: msg.original, coded: msg.coded }
-                : r
-            )
-          );
+          setCodedRows((prev) => prev.map((r) =>
+            r.index === msg.index ? { index: msg.index, original: msg.original, coded: msg.coded } : r
+          ));
         } else {
           setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
         }
-
-        // if (msg.coded._error) {
-        //   log("warn", `Row ${msg.index + 1}: ${msg.coded._error}`);
-
         const issues = checkRow(msg.index, msg.coded, codebook);
         for (const issue of issues) {
           const detail = issue.issueType === "api_error"
@@ -982,11 +1041,7 @@ export default function Home() {
         log("error", `Fatal: ${msg.message}`);
         setRunning(false);
       } else if (msg.type === "complete") {
-        setRunComplete({
-          total_rows: msg.total_rows,
-          coded_rows: msg.coded_rows,
-          file_path: msg.file_path,
-        });
+        setRunComplete({ total_rows: msg.total_rows, coded_rows: msg.coded_rows, file_path: msg.file_path });
         log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
         setRunning(false);
       }
@@ -999,126 +1054,75 @@ export default function Home() {
     };
 
     ws.onclose = (event) => {
-      if (event.code !== 1000 && event.code !== 1005) {
-        log("warn", `WebSocket closed (code: ${event.code})`);
-      }
+      if (event.code !== 1000 && event.code !== 1005) log("warn", `WebSocket closed (code: ${event.code})`);
       setRunning(false);
     };
   };
 
-  // ── Reset everything ─────────────────────────────────────────────────────────
+  // ── Reset ─────────────────────────────────────────────────────────────────
 
   const handleReset = () => {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    setUploadResult(null);
-    setUploading(false);
-    setUploadError("");
-    setDragOver(false);
-    setMessageColumn("");
-    setExperimentInstructions("");
-    setCodingInstructions("");
-    setCodebook([{ ...EMPTY_ENTRY }]);
-    setRowFilter("");
-    setRowFilterError("");
-    setModelSlots([{ ...EMPTY_SLOT }]);
-    setRunsPerModel(1);
-    setAggregation("mode");
-    setGenerating(false);
-    setGenerateError("");
-    setResult(null);
-    setRunning(false);
-    setRunProgress(null);
-    setCodedRows([]);
-    setRunErrors([]);
-    setRunComplete(null);
-    setRunError("");
-    setValidationReport(null);
-    setHasRerun(false);
-    setAnalysisRaters([]);
-    setAnalysisResults(null);
-    setAnalysisError("");
-    setCrossCheckResult(null);
-    setEpisodeColumns([]);
-    setAnalysisVariables([]);
-    setConsoleLogs([]);
-    setRightView("script");
-    setExpandedTable(null);
+    setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
+    setMessageColumn(""); setExperimentInstructions(""); setCodingInstructions("");
+    setCodebook([{ ...EMPTY_ENTRY }]); setRowFilter(""); setRowFilterError("");
+    setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1); setAggregation("mode");
+    setGenerating(false); setGenerateError(""); setResult(null);
+    setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
+    setRunComplete(null); setRunError(""); setValidationReport(null); setHasRerun(false);
+    setAnalysisRaters([]); setAnalysisResults(null); setAnalysisError("");
+    setCrossCheckResult(null); setEpisodeColumns([]); setAnalysisVariables([]);
+    setConsoleLogs([]); setRightView("script"); setExpandedTable(null);
     setOpenPanels(new Set([1]));
     if (fileRef.current) fileRef.current.value = "";
     showToast("All fields cleared");
   };
 
-  // ── Row filter parsing ───────────────────────────────────────────────────────
+  // ── Row filter ────────────────────────────────────────────────────────────
 
   const parseRowFilter = (input: string, maxRow: number): { indices: number[]; error: string } => {
     const trimmed = input.trim();
-    if (!trimmed) return { indices: [], error: "" }; // empty = all rows
-
-    // Validate format: only digits, commas, dashes, spaces
-    if (!/^[\d,\-\s]+$/.test(trimmed)) {
-      return { indices: [], error: "Invalid characters. Use numbers, commas, and dashes (e.g. 1-5, 8, 12-15)." };
-    }
-
+    if (!trimmed) return { indices: [], error: "" };
+    if (!/^[\d,\-\s]+$/.test(trimmed)) return { indices: [], error: "Invalid characters. Use numbers, commas, and dashes (e.g. 1-5, 8, 12-15)." };
     const parts = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
     const indices: Set<number> = new Set();
-
     for (const part of parts) {
       if (part.includes("-")) {
         const [startStr, endStr, ...rest] = part.split("-");
-        if (rest.length > 0 || !startStr || !endStr) {
-          return { indices: [], error: `Invalid range: "${part}". Use format like 1-5.` };
-        }
-        const start = parseInt(startStr, 10);
-        const end = parseInt(endStr, 10);
-        if (isNaN(start) || isNaN(end)) {
-          return { indices: [], error: `Invalid range: "${part}".` };
-        }
-        if (start > end) {
-          return { indices: [], error: `Invalid range: "${part}". Start must be ≤ end.` };
-        }
-        if (start < 1 || end > maxRow) {
-          return { indices: [], error: `Range ${part} is out of bounds (1–${maxRow}).` };
-        }
-        for (let i = start; i <= end; i++) indices.add(i - 1); // 0-indexed
+        if (rest.length > 0 || !startStr || !endStr) return { indices: [], error: `Invalid range: "${part}". Use format like 1-5.` };
+        const start = parseInt(startStr, 10); const end = parseInt(endStr, 10);
+        if (isNaN(start) || isNaN(end)) return { indices: [], error: `Invalid range: "${part}".` };
+        if (start > end) return { indices: [], error: `Invalid range: "${part}". Start must be ≤ end.` };
+        if (start < 1 || end > maxRow) return { indices: [], error: `Range ${part} is out of bounds (1–${maxRow}).` };
+        for (let i = start; i <= end; i++) indices.add(i - 1);
       } else {
         const num = parseInt(part, 10);
-        if (isNaN(num)) {
-          return { indices: [], error: `Invalid number: "${part}".` };
-        }
-        if (num < 1 || num > maxRow) {
-          return { indices: [], error: `Row ${num} is out of bounds (1–${maxRow}).` };
-        }
+        if (isNaN(num)) return { indices: [], error: `Invalid number: "${part}".` };
+        if (num < 1 || num > maxRow) return { indices: [], error: `Row ${num} is out of bounds (1–${maxRow}).` };
         indices.add(num - 1);
       }
     }
-
     return { indices: Array.from(indices).sort((a, b) => a - b), error: "" };
   };
 
   const handleRowFilterChange = (value: string) => {
     setRowFilter(value);
-    if (!value.trim()) {
-      setRowFilterError("");
-      return;
-    }
+    if (!value.trim()) { setRowFilterError(""); return; }
     const maxRow = uploadResult?.row_count ?? 0;
-    if (maxRow === 0) {
-      setRowFilterError("Upload a file first.");
-      return;
-    }
+    if (maxRow === 0) { setRowFilterError("Upload a file first."); return; }
     const { error } = parseRowFilter(value, maxRow);
     setRowFilterError(error);
   };
 
-  // ── Derived values ──────────────────────────────────────────────────────────
+  // ── Derived values ────────────────────────────────────────────────────────
 
   const codebookLabels = codebook.filter((e) => e.label.trim()).map((e) => e.label);
   const visibleRows = codedRows.slice(-5);
   const parsedFilter = uploadResult ? parseRowFilter(rowFilter, uploadResult.row_count) : { indices: [], error: "" };
   const filterActive = rowFilter.trim() !== "" && !parsedFilter.error;
-  const filteredRowCount = filterActive ? parsedFilter.indices.length : (uploadResult?.row_count ?? 0);
 
-  // ── Agreement helpers ───────────────────────────────────────────────────────
+  // ── Agreement helpers ─────────────────────────────────────────────────────
+
   const _metricColor = (v: number | null) => {
     if (v == null) return "";
     if (v >= 0.8) return "metric-good";
@@ -1128,13 +1132,11 @@ export default function Home() {
   const _fmtMetric = (m: MetricResult) => {
     if (m.estimate == null) return "—";
     const est = m.estimate.toFixed(3);
-    if (m.ci_lower != null && m.ci_upper != null) {
-      return `${est} (${m.ci_lower.toFixed(2)}–${m.ci_upper.toFixed(2)})`;
-    }
+    if (m.ci_lower != null && m.ci_upper != null) return `${est} (${m.ci_lower.toFixed(2)}–${m.ci_upper.toFixed(2)})`;
     return est;
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -1145,8 +1147,7 @@ export default function Home() {
           <span
             className="topbar-title topbar-title-link"
             onClick={() => setActiveTool("coding")}
-            role="button"
-            tabIndex={0}
+            role="button" tabIndex={0}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveTool("coding"); }}
           >
             LLM Measurement Toolkit
@@ -1155,10 +1156,6 @@ export default function Home() {
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
-            {/* Hidden for now — pages still exist, just no nav buttons.
-            <button className={`topbar-tab ${activeTool === "catgen" ? "active" : ""}`} onClick={() => setActiveTool("catgen")}>Category Generator</button>
-            <button className={`topbar-tab ${activeTool === "analysis" ? "active" : ""}`} onClick={() => setActiveTool("analysis")}>Results Analysis</button>
-            */}
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn the Toolkit</button>
           </div>
         </div>
@@ -1174,34 +1171,125 @@ export default function Home() {
       <div className="layout">
         <main className="main">
           <div className={`tool-page ${activeTool === "coding" ? "active" : ""}`}>
-
             <div className="tool-header">
               <div>
                 <h1>LLM Coding</h1>
-                <p className="tool-desc">
-                  Upload data, configure codebook variables, and code with one or more LLMs.
-                </p>
+                <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
               </div>
-              <button
-                className="tour-help-btn"
-                onClick={() => setTourOpen(true)}
-                title="Guided walkthrough"
-                aria-label="Start guided walkthrough"
-              >
-                ?
-              </button>
+              <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">?</button>
             </div>
 
-            <div className="pipeline-layout split">
+            <div className="pipeline-layout split" style={{ display: "flex", gap: 0 }}>
               {/* ── Left: Config Column ── */}
-              <div className="config-col">
+              <div className="config-col" style={{ width: `${splitPct}%`, minWidth: 0 }}>
                 <div className="config-scroll">
 
-                  {/* Panel 1: Upload Dataset */}
+                  {/* Panel 1: Coding Instructions & Codebook */}
                   <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(1)}>
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
+                        <span className="panel-label">Coding Instructions &amp; Codebook</span>
+                        <HelpTip text="Tell the model how to apply the codebook — single-label vs multi-label, and how to handle empty messages." />
+                        {codingInstructions.trim() && <span className="tag">set</span>}
+                        {codebook.some((e) => e.label.trim()) && (
+                          <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
+                        )}
+                      </div>
+                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
+                    </button>
+                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
+                      <div className="f">
+                        <label>Describe how coding should be performed</label>
+                        <textarea
+                          rows={5}
+                          value={codingInstructions}
+                          onChange={(e) => setCodingInstructions(e.target.value)}
+                          placeholder="E.g., Read each message carefully. Classify the tone, intent, and strategy used by the sender..."
+                        />
+                        <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row.</p>
+                      </div>
+                      <div className="f" style={{ marginTop: 12 }}>
+                        <label>Empty message handling</label>
+                        <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "code")}>
+                          <option value="error">Flag as error</option>
+                          <option value="ignore">Ignore (skip row)</option>
+                          <option value="code">Code as value</option>
+                        </select>
+                        <p className="hint">
+                          {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
+                          {emptyMessageHandling === "code" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
+                          {emptyMessageHandling === "error" && "Empty rows will be flagged with an error in the output."}
+                        </p>
+                      </div>
+                      <div className="f" style={{ marginTop: 12 }}>
+                        <label>Codebook</label>
+                        <div className="table-wrap table-clickable" onClick={() => setExpandedTable("codebook")} title="Click to expand">
+                          <table className="tbl editable">
+                            <thead>
+                              <tr>
+                                <th>Label</th><th>Type</th><th>Definition</th><th>Coded Values</th><th className="th-narrow" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {codebook.map((entry, idx) => (
+                                <tr key={idx}>
+                                  <td><input type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="e.g., sentiment" /></td>
+                                  <td>
+                                    <select value={entry.type} onChange={(e) => updateCodebook(idx, "type", e.target.value)}>
+                                      {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                  </td>
+                                  <td><input type="text" value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures" /></td>
+                                  <td>
+                                    <TagInput value={entry.coded_values} onChange={(v) => updateCodebook(idx, "coded_values", v)} type={entry.type} />
+                                  </td>
+                                  <td>
+                                    <button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove row" disabled={codebook.length <= 1}>×</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>+ Add Variable</button>
+                        <p className="hint mt-8">
+                          <code>binary</code>: 0/1 · <code>categorical</code>: named categories · <code>ordinal</code>: ordered scale · <code>numeric</code>: number · <code>text</code>: free text
+                        </p>
+                      </div>
+                    </div></div></div>
+                  </div>
+
+                  {/* Panel 2: Experiment Instructions */}
+                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                    <button className="panel-head" onClick={() => togglePanel(2)}>
+                      <div className="panel-head-left">
+                        <span className="step-badge">2</span>
+                        <span className="panel-label">Experiment Instructions</span>
+                        <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
+                        {experimentInstructions.trim() && <span className="tag">set</span>}
+                      </div>
+                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
+                    </button>
+                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
+                      <div className="f">
+                        <label>Describe the experiment context</label>
+                        <textarea
+                          rows={5}
+                          value={experimentInstructions}
+                          onChange={(e) => setExperimentInstructions(e.target.value)}
+                          placeholder="E.g., This dataset contains negotiation transcripts between pairs of participants. Each row is one message in a conversation..."
+                        />
+                        <p className="hint">Provide context about what the data represents and the research goals.</p>
+                      </div>
+                    </div></div></div>
+                  </div>
+
+                  {/* Panel 3: Upload Dataset */}
+                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                    <button className="panel-head" onClick={() => togglePanel(3)}>
+                      <div className="panel-head-left">
+                        <span className="step-badge">3</span>
                         <span className="panel-label">Upload Dataset</span>
                         <HelpTip text="Upload a CSV or Excel file. Include an ID column and the column containing the text to code." />
                         {uploadResult && <span className="tag">uploaded</span>}
@@ -1225,16 +1313,8 @@ export default function Home() {
                           {uploading ? <><span className="spinner" /> Uploading...</> : "Drop a CSV or Excel file here, or click to browse"}
                         </p>
                       </div>
-                      <input
-                        ref={fileRef}
-                        type="file"
-                        accept=".csv,.xlsx,.xls"
-                        onChange={onFileChange}
-                        className="input-hidden"
-                      />
-
+                      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={onFileChange} className="input-hidden" />
                       {uploadError && <p className="enc-error">{uploadError}</p>}
-
                       {uploadResult && (
                         <div className="mt-12">
                           <div className="file-chip">
@@ -1242,241 +1322,55 @@ export default function Home() {
                             {uploadResult.file_name}
                             <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
                           </div>
-
                           <div className="table-wrap table-clickable" onClick={() => setExpandedTable("preview")} title="Click to expand">
                             <table className="tbl tbl-compact">
-                              <thead>
-                                <tr>
-                                  {uploadResult.columns.map((col) => (
-                                    <th key={col}>{col}</th>
-                                  ))}
-                                </tr>
-                              </thead>
+                              <thead><tr>{uploadResult.columns.map((col) => <th key={col}>{col}</th>)}</tr></thead>
                               <tbody>
                                 {uploadResult.preview.slice(0, 5).map((row, i) => (
-                                  <tr key={i}>
-                                    {uploadResult.columns.map((col) => (
-                                      <td key={col} className="mono">{String(row[col] ?? "")}</td>
-                                    ))}
-                                  </tr>
+                                  <tr key={i}>{uploadResult.columns.map((col) => <td key={col} className="mono">{String(row[col] ?? "")}</td>)}</tr>
                                 ))}
                               </tbody>
                             </table>
-                            {uploadResult.preview.length > 5 && (
-                              <div className="table-more">Click to see all {uploadResult.preview.length} rows</div>
-                            )}
+                            {uploadResult.preview.length > 5 && <div className="table-more">Click to see all {uploadResult.preview.length} rows</div>}
                           </div>
                         </div>
                       )}
                     </div></div></div>
                   </div>
 
-                  {/* Panel 2: Select Message Column */}
-                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(2)}>
+                  {/* Panel 4: Column */}
+                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                    <button className="panel-head" onClick={() => togglePanel(4)}>
                       <div className="panel-head-left">
-                        <span className="step-badge">2</span>
-                        <span className="panel-label">Column &amp; Rows</span>
-                        <HelpTip text="Pick the column with the text to code. Optionally limit to rows like 1-5, 8 — leave blank to code all rows." />
+                        <span className="step-badge">4</span>
+                        <span className="panel-label">Select Column</span>
+                        <HelpTip text="Pick the column with the text to code." />
                         {messageColumn && <span className="tag">{messageColumn}</span>}
-                        {filterActive && <span className="tag">{parsedFilter.indices.length} rows</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       {uploadResult ? (
-                        <>
-                          <div className="f">
-                            <label>Select the column containing the text to code</label>
-                            <select value={messageColumn} onChange={(e) => setMessageColumn(e.target.value)}>
-                              <option value="">— Choose column —</option>
-                              {uploadResult.columns.map((col) => (
-                                <option key={col} value={col}>{col}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="f">
-                            <label>Row filter <span className="hint-inline">(optional)</span></label>
-                            <input
-                              type="text"
-                              value={rowFilter}
-                              onChange={(e) => handleRowFilterChange(e.target.value)}
-                              placeholder={`e.g. 1-10, 15, 20-25  (1–${uploadResult.row_count})`}
-                              className="mono-input"
-                            />
-                            {rowFilterError && <p className="enc-error mt-4">{rowFilterError}</p>}
-                            {filterActive && (
-                              <p className="hint text-accent">
-                                {parsedFilter.indices.length} of {uploadResult.row_count} rows selected
-                              </p>
-                            )}
-                            {!rowFilter.trim() && <p className="hint">Leave empty to code all rows. Use commas and dashes: 1-5, 8, 12-15</p>}
-                          </div>
-                        </>
+                        <div className="f">
+                          <label>Select the column containing the text to code</label>
+                          <select value={messageColumn} onChange={(e) => setMessageColumn(e.target.value)}>
+                            <option value="">— Choose column —</option>
+                            {uploadResult.columns.map((col) => <option key={col} value={col}>{col}</option>)}
+                          </select>
+                        </div>
                       ) : (
                         <p className="hint">Upload a file first to see available columns.</p>
                       )}
                     </div></div></div>
                   </div>
 
-                  {/* Panel 3: Experiment Instructions */}
-                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(3)}>
-                      <div className="panel-head-left">
-                        <span className="step-badge">3</span>
-                        <span className="panel-label">Experiment Instructions</span>
-                        <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
-                        {experimentInstructions.trim() && <span className="tag">set</span>}
-                      </div>
-                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-                    </button>
-                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="f">
-                        <label>Describe the experiment context</label>
-                        <textarea
-                          rows={5}
-                          value={experimentInstructions}
-                          onChange={(e) => setExperimentInstructions(e.target.value)}
-                          placeholder="E.g., This dataset contains negotiation transcripts between pairs of participants. Each row is one message in a conversation..."
-                        />
-                        <p className="hint">Provide context about what the data represents and the research goals.</p>
-                      </div>
-                    </div></div></div>
-                  </div>
-
-                  {/* Panel 4: Coding Instructions */}
-                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(4)}>
-                      <div className="panel-head-left">
-                        <span className="step-badge">4</span>
-                        <span className="panel-label">Coding Instructions</span>
-                        <HelpTip text="Tell the model how to apply the codebook — single-label vs multi-label, and how to handle empty messages." />
-                        {codingInstructions.trim() && <span className="tag">set</span>}
-                      </div>
-                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-                    </button>
-                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="f">
-                        <label>Describe how coding should be performed</label>
-                        <textarea
-                          rows={5}
-                          value={codingInstructions}
-                          onChange={(e) => setCodingInstructions(e.target.value)}
-                          placeholder="E.g., Read each message carefully. Classify the tone, intent, and strategy used by the sender..."
-                        />
-                        <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row.</p>
-                      </div>
-                      <div className="f" style={{ marginTop: 12 }}>
-                        <label>Empty message handling</label>
-                        <select
-                          value={emptyMessageHandling}
-                          onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "code")}
-                        >
-                          <option value="error">Flag as error</option>
-                          <option value="ignore">Ignore (skip row)</option>
-                          <option value="code">Code as value</option>
-                        </select>
-                        <p className="hint">
-                          {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
-                          {emptyMessageHandling === "code" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
-                          {emptyMessageHandling === "error" && "Empty rows will be flagged with an error in the output."}
-                        </p>
-                      </div>
-                    </div></div></div>
-                  </div>
-
-                  {/* Panel 5: Codebook */}
+                  {/* Panel 5: Models & Aggregation */}
                   <div id="coding-panel-5" className={`panel ${openPanels.has(5) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(5)}>
                       <div className="panel-head-left">
                         <span className="step-badge">5</span>
-                        <span className="panel-label">Codebook</span>
-                        <HelpTip text="Define each variable: label, type, definition, and allowed values. Keep them in sync with your instructions." />
-                        {codebook.some((e) => e.label.trim()) && (
-                          <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
-                        )}
-                      </div>
-                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-                    </button>
-                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="table-wrap table-clickable" onClick={() => setExpandedTable("codebook")} title="Click to expand">
-                        <table className="tbl editable">
-                          <thead>
-                            <tr>
-                              <th>Label</th>
-                              <th>Type</th>
-                              <th>Definition</th>
-                              <th>Coded Values</th>
-                              <th className="th-narrow" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {codebook.map((entry, idx) => (
-                              <tr key={idx}>
-                                <td>
-                                  <input
-                                    type="text"
-                                    value={entry.label}
-                                    onChange={(e) => updateCodebook(idx, "label", e.target.value)}
-                                    placeholder="e.g., sentiment"
-                                  />
-                                </td>
-                                <td>
-                                  <select
-                                    value={entry.type}
-                                    onChange={(e) => updateCodebook(idx, "type", e.target.value)}
-                                  >
-                                    {CODEBOOK_TYPES.map((t) => (
-                                      <option key={t.value} value={t.value}>{t.label}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td>
-                                  <input
-                                    type="text"
-                                    value={entry.definition}
-                                    onChange={(e) => updateCodebook(idx, "definition", e.target.value)}
-                                    placeholder="What this variable measures"
-                                  />
-                                </td>
-                                <td>
-                                  <TagInput
-                                    value={entry.coded_values}
-                                    onChange={(v) => updateCodebook(idx, "coded_values", v)}
-                                    type={entry.type}
-                                  />
-                                </td>
-                                <td>
-                                  <button
-                                    className="row-rm"
-                                    onClick={() => removeCodebookRow(idx)}
-                                    title="Remove row"
-                                    disabled={codebook.length <= 1}
-                                  >
-                                    ×
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>
-                        + Add Variable
-                      </button>
-                      <p className="hint mt-8">
-                        <code>binary</code>: 0/1 · <code>categorical</code>: named categories · <code>ordinal</code>: ordered scale · <code>numeric</code>: number · <code>text</code>: free text
-                      </p>
-                    </div></div></div>
-                  </div>
-
-                  {/* Panel 6: Models + Voting */}
-                  <div id="coding-panel-6" className={`panel ${openPanels.has(6) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(6)}>
-                      <div className="panel-head-left">
-                        <span className="step-badge">6</span>
-                        <span className="panel-label">Models &amp; Voting</span>
-                        <HelpTip text="Add model + API key pairs. Run each multiple times and aggregate (mode/mean) to enable voting." />
+                        <span className="panel-label">Models &amp; Aggregation</span>
+                        <HelpTip text="Add model + API key pairs. Expand tuning to set temperature, top-p, and max tokens per model." />
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
@@ -1485,25 +1379,34 @@ export default function Home() {
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
 
-                      {/* Model slots */}
                       <div className="model-slots">
                         {modelSlots.map((slot, idx) => {
                           const provInfo = PROVIDERS.find((p) => p.value === slot.provider);
                           const modelInfo = provInfo?.models.find((m) => m.value === slot.model);
+                          const noTemp = modelIgnoresTemperature(slot.provider, slot.model);
+
                           return (
                             <div className="model-slot" key={idx}>
                               <div className="slot-header">
                                 <span className="slot-num">{idx + 1}</span>
                                 <span className="slot-title">{provInfo?.label ?? slot.provider} — {modelInfo?.label ?? slot.model}</span>
                                 <div className="flex-1" />
+                                <button
+                                  className={`btn btn-ghost btn-xs slot-tune-toggle${slot.tuningEnabled ? " active" : ""}`}
+                                  onClick={() => updateSlot(idx, { tuningEnabled: !slot.tuningEnabled })}
+                                  title={slot.tuningEnabled ? "Hide tuning" : "Show tuning"}
+                                  type="button"
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}>
+                                    <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14" />
+                                  </svg>
+                                  {slot.tuningEnabled ? "Tuning on" : "Tuning off"}
+                                </button>
                                 {modelSlots.length > 1 && (
-                                  <button
-                                    className="row-rm"
-                                    onClick={() => setModelSlots((prev) => prev.filter((_, i) => i !== idx))}
-                                    title="Remove model"
-                                  >×</button>
+                                  <button className="row-rm" onClick={() => setModelSlots((prev) => prev.filter((_, i) => i !== idx))} title="Remove model">×</button>
                                 )}
                               </div>
+
                               <div className="slot-body">
                                 <div className="fg cols-3">
                                   <div className="f">
@@ -1513,23 +1416,16 @@ export default function Home() {
                                       onChange={(e) => {
                                         const np = e.target.value;
                                         const ms = PROVIDERS.find((p) => p.value === np)?.models ?? [];
-                                        setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, provider: np, model: ms[0]?.value ?? "" } : s));
+                                        updateSlot(idx, { provider: np, model: ms[0]?.value ?? "" });
                                       }}
                                     >
-                                      {PROVIDERS.map((p) => (
-                                        <option key={p.value} value={p.value}>{p.label}</option>
-                                      ))}
+                                      {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                                     </select>
                                   </div>
                                   <div className="f">
                                     <label>Model</label>
-                                    <select
-                                      value={slot.model}
-                                      onChange={(e) => setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, model: e.target.value } : s))}
-                                    >
-                                      {(provInfo?.models ?? []).map((m) => (
-                                        <option key={m.value} value={m.value}>{m.label}</option>
-                                      ))}
+                                    <select value={slot.model} onChange={(e) => updateSlot(idx, { model: e.target.value })}>
+                                      {(provInfo?.models ?? []).map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                                     </select>
                                   </div>
                                   <div className="f">
@@ -1538,12 +1434,12 @@ export default function Home() {
                                       <input
                                         type={slot.showKey ? "text" : "password"}
                                         value={slot.apiKey}
-                                        onChange={(e) => setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, apiKey: e.target.value } : s))}
+                                        onChange={(e) => updateSlot(idx, { apiKey: e.target.value })}
                                         placeholder="sk-..."
                                       />
                                       <button
                                         className="enc-key-toggle"
-                                        onClick={() => setModelSlots((prev) => prev.map((s, i) => i === idx ? { ...s, showKey: !s.showKey } : s))}
+                                        onClick={() => updateSlot(idx, { showKey: !slot.showKey })}
                                         title={slot.showKey ? "Hide key" : "Show key"}
                                         type="button"
                                       >
@@ -1556,6 +1452,76 @@ export default function Home() {
                                     </div>
                                   </div>
                                 </div>
+
+                                {slot.tuningEnabled && (
+                                  <div className="slot-tuning">
+                                    <div className="f">
+                                      <label>Model tuning</label>
+                                    </div>
+                                    {noTemp && (
+                                      <div className="slot-tuning-warn">
+                                        This model ignores temperature — the parameter will not be sent.
+                                      </div>
+                                    )}
+                                    {slot.provider === "openai" && (
+                                      <div className="slot-tuning-note">
+                                        OpenAI recommends altering only one of temperature or top-p at a time.
+                                      </div>
+                                    )}
+                                    <div className="tuning-params-grid">
+                                      <div className="tuning-param">
+                                        <div className="tuning-param-header">
+                                          <label className={noTemp ? "text-muted" : ""}>Temperature</label>
+                                          <span className={`tuning-param-val${noTemp ? " text-muted" : ""}`}>
+                                            {noTemp ? "N/A" : (slot.temperature ?? 0.2).toFixed(2)}
+                                          </span>
+                                        </div>
+                                        <input
+                                          type="range"
+                                          min={0} max={2} step={0.05}
+                                          value={slot.temperature ?? 0.2}
+                                          disabled={noTemp}
+                                          onChange={(e) => updateSlot(idx, { temperature: parseFloat(e.target.value) })}
+                                          className={noTemp ? "range-disabled" : ""}
+                                        />
+                                        <div className="tuning-param-bounds">
+                                          <span>0</span><span>2</span>
+                                        </div>
+                                      </div>
+                                      <div className="tuning-param">
+                                        <div className="tuning-param-header">
+                                          <label>Top-p</label>
+                                          <span className="tuning-param-val">{(slot.topP ?? 1.0).toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                          type="range"
+                                          min={0} max={1} step={0.05}
+                                          value={slot.topP ?? 1.0}
+                                          onChange={(e) => updateSlot(idx, { topP: parseFloat(e.target.value) })}
+                                        />
+                                        <div className="tuning-param-bounds">
+                                          <span>0</span><span>1</span>
+                                        </div>
+                                      </div>
+                                      <div className="tuning-param">
+                                        <div className="tuning-param-header">
+                                          <label>Max tokens</label>
+                                          <span className="tuning-param-val">{slot.maxTokens ?? 1024}</span>
+                                        </div>
+                                        <input
+                                          type="number"
+                                          min={64} max={8192} step={64}
+                                          value={slot.maxTokens ?? 1024}
+                                          onChange={(e) => updateSlot(idx, { maxTokens: parseInt(e.target.value, 10) })}
+                                          className="tuning-tokens-input"
+                                        />
+                                        <div className="tuning-param-bounds">
+                                          <span>64</span><span>8192</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -1569,16 +1535,12 @@ export default function Home() {
                         + Add Model
                       </button>
 
-                      {/* Voting settings */}
                       <div className="enc-voting-settings">
                         <div className="enc-voting-row">
                           <div className="f voting-runs">
                             <label>Runs per model <span className="fv">{runsPerModel}×</span></label>
                             <input
-                              type="range"
-                              min={1}
-                              max={10}
-                              value={runsPerModel}
+                              type="range" min={1} max={10} value={runsPerModel}
                               onChange={(e) => setRunsPerModel(Number(e.target.value))}
                             />
                           </div>
@@ -1595,9 +1557,7 @@ export default function Home() {
                             {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""} = <strong>{modelSlots.length * runsPerModel}</strong> calls/row
                           </span>
                           {modelSlots.length * runsPerModel > 1 && (
-                            <span className="enc-voting-agg">
-                              {aggregation === "mode" ? "Majority vote" : "Average"} across all calls
-                            </span>
+                            <span className="enc-voting-agg">{aggregation === "mode" ? "Majority vote" : "Average"} across all calls</span>
                           )}
                         </div>
                       </div>
@@ -1609,43 +1569,42 @@ export default function Home() {
                 {/* Run bar */}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  <button
-                    className="btn btn-outline btn-sm"
-                    disabled={!canGenerate || generating || running}
-                    onClick={handleGenerate}
-                  >
+                  <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running} onClick={handleGenerate}>
                     {generating ? <><span className="spinner" /> Generating</> : "Script only"}
                   </button>
                   {running ? (
-                    <button className="btn btn-sm btn-stop" onClick={handleStop}>
-                      Stop
-                    </button>
+                    <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
                   ) : (
-                    <button
-                      className="btn btn-run"
-                      disabled={!canGenerate || generating}
-                      onClick={handleRun}
-                    >
+                    <button className="btn btn-run" disabled={!canGenerate || generating} onClick={handleRun}>
                       Run Coding
                       {modelSlots.length * runsPerModel > 1 && (
-                        <span className="run-calls-hint">
-                          ({modelSlots.length}×{runsPerModel})
-                        </span>
+                        <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
                       )}
                     </button>
                   )}
                 </div>
               </div>
+              {/* Draggable divider */}
+              <div
+                className="split-divider"
+                onMouseDown={onDividerMouseDown}
+                style={{
+                  width: 6,
+                  flexShrink: 0,
+                  cursor: "col-resize",
+                  background: "var(--border)",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--accent)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "var(--border)")}
+              />
 
               {/* ── Right: Results Column ── */}
-              <div className="results-col">
-
-                {/* Tab strip to switch views */}
+              <div className="results-col" style={{ flex: 1, minWidth: 0 }}>
                 {(result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
                   <div className="tab-strip tab-strip-gap">
                     <button className={`tab ${rightView === "run" ? "active" : ""}`} onClick={() => setRightView("run")}>
-                      Live Coding
-                      {running && <span className="enc-pulse" />}
+                      Live Coding {running && <span className="enc-pulse" />}
                     </button>
                     <button className={`tab ${rightView === "script" ? "active" : ""}`} onClick={() => setRightView("script")}>
                       Script Preview
@@ -1653,73 +1612,47 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* ── Run View ── */}
+                {/* Run view */}
                 {rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
                   <div className="tab-pane">
-                    {/* Progress bar */}
                     {(runProgress || running) && (
                       <div className="enc-progress-wrap">
                         <div className="enc-progress-header">
                           <span className="enc-progress-label">
-                            {runComplete
-                              ? "Coding complete"
-                              : running
-                                ? `Coding row ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...`
-                                : "Ready"}
+                            {runComplete ? "Coding complete" : running ? `Coding row ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...` : "Ready"}
                           </span>
                           <span className="enc-progress-pct">{runProgress?.percent ?? 0}%</span>
                         </div>
                         <div className="enc-progress-track">
-                          <div
-                            className={`enc-progress-fill ${runComplete ? "complete" : ""}`}
-                            style={{ width: `${runProgress?.percent ?? 0}%` }}
-                          />
+                          <div className={`enc-progress-fill ${runComplete ? "complete" : ""}`} style={{ width: `${runProgress?.percent ?? 0}%` }} />
                         </div>
                       </div>
                     )}
 
-                    {/* Stats row */}
                     {(runProgress || runComplete) && (
                       <div className="stat-row mt-12">
-                        <div className="stat">
-                          <div className="stat-v">{runProgress?.current ?? 0}</div>
-                          <div className="stat-l">Processed</div>
-                        </div>
-                        <div className="stat">
-                          <div className="stat-v">{runProgress?.total ?? 0}</div>
-                          <div className="stat-l">Total</div>
-                        </div>
-                        <div className="stat">
-                          <div className="stat-v">{runErrors.length}</div>
-                          <div className="stat-l">Errors</div>
-                        </div>
+                        <div className="stat"><div className="stat-v">{runProgress?.current ?? 0}</div><div className="stat-l">Processed</div></div>
+                        <div className="stat"><div className="stat-v">{runProgress?.total ?? 0}</div><div className="stat-l">Total</div></div>
+                        <div className="stat"><div className="stat-v">{runErrors.length}</div><div className="stat-l">Errors</div></div>
                       </div>
                     )}
 
-                    {/* Live results table — last 5 rows */}
                     {visibleRows.length > 0 && (
                       <div className="res-section mt-12">
-                        <div className="res-section-h">
-                          Live Results (last {Math.min(5, codedRows.length)} of {codedRows.length} rows)
-                        </div>
+                        <div className="res-section-h">Live Results (last {Math.min(5, codedRows.length)} of {codedRows.length} rows)</div>
                         <div className="enc-live-table-wrap table-clickable" onClick={() => setExpandedTable("live")} title="Click to expand">
                           <table className="tbl tbl-compact">
                             <thead>
                               <tr>
-                                <th>#</th>
-                                <th>{messageColumn || "Message"}</th>
-                                {codebookLabels.map((l) => (
-                                  <th key={l} className="enc-coded-col">{l}</th>
-                                ))}
+                                <th>#</th><th>{messageColumn || "Message"}</th>
+                                {codebookLabels.map((l) => <th key={l} className="enc-coded-col">{l}</th>)}
                               </tr>
                             </thead>
                             <tbody>
                               {visibleRows.map((row) => (
                                 <tr key={row.index} className="enc-row-animate">
                                   <td className="mono text-muted">{row.index + 1}</td>
-                                  <td className="cell-truncate">
-                                    {String(row.original[messageColumn] ?? "")}
-                                  </td>
+                                  <td className="cell-truncate">{String(row.original[messageColumn] ?? "")}</td>
                                   {codebookLabels.map((label) => (
                                     <td key={label} className="enc-coded-col">
                                       <span className={`pill ${row.coded._error ? "bad" : "lbl"}`}>
@@ -1735,30 +1668,23 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Errors */}
                     {runErrors.length > 0 && (
                       <div className="res-section mt-12">
                         <div className="res-section-h text-bad">Errors ({runErrors.length})</div>
                         <div className="enc-errors-body">
-                          {runErrors.slice(-5).map((err, i) => (
-                            <div key={i} className="enc-error-line">{err}</div>
-                          ))}
+                          {runErrors.slice(-5).map((err, i) => <div key={i} className="enc-error-line">{err}</div>)}
                         </div>
                       </div>
                     )}
 
-                    {/* Run error */}
                     {runError && <p className="enc-error mt-12">{runError}</p>}
 
-                    {/* Validation report & actions */}
                     {runComplete && validationReport && (
                       <div className={`enc-validation-report ${validationReport.problematicIndices.length === 0 ? "valid" : "has-issues"}`}>
                         {validationReport.problematicIndices.length === 0 ? (
                           <>
                             <div className="enc-validation-header valid">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
                               All <strong>{validationReport.totalRows}</strong> rows valid
                             </div>
                             <button className="btn btn-primary" onClick={hasRerun ? handleDownloadMerged : handleDownloadResults}>
@@ -1771,12 +1697,8 @@ export default function Home() {
                               <strong>{validationReport.problematicIndices.length}</strong> of {validationReport.totalRows} rows have issues
                             </div>
                             <div className="enc-validation-summary">
-                              {validationReport.errorRows > 0 && (
-                                <span className="pill bad">{validationReport.errorRows} API errors</span>
-                              )}
-                              {validationReport.outOfRangeRows > 0 && (
-                                <span className="pill mid">{validationReport.outOfRangeRows} out-of-range</span>
-                              )}
+                              {validationReport.errorRows > 0 && <span className="pill bad">{validationReport.errorRows} API errors</span>}
+                              {validationReport.outOfRangeRows > 0 && <span className="pill mid">{validationReport.outOfRangeRows} out-of-range</span>}
                             </div>
                             <div className="enc-validation-details">
                               {validationReport.issues.slice(0, 10).map((issue, i) => (
@@ -1793,32 +1715,19 @@ export default function Home() {
                                   )}
                                 </div>
                               ))}
-                              {validationReport.issues.length > 10 && (
-                                <div className="enc-vi-more">...and {validationReport.issues.length - 10} more issues</div>
-                              )}
+                              {validationReport.issues.length > 10 && <div className="enc-vi-more">...and {validationReport.issues.length - 10} more issues</div>}
                             </div>
                             <div className="enc-validation-actions">
-                              <button className="btn btn-secondary" onClick={hasRerun ? handleDownloadMerged : handleDownloadResults}>
-                                Download as-is
-                              </button>
-                              <button className="btn btn-primary" onClick={() => handleRerun(validationReport.problematicIndices)}>
-                                Re-run {validationReport.problematicIndices.length} rows
-                              </button>
-                              <button className="btn btn-ghost" onClick={() => handleRerun(null)}>
-                                Re-run all
-                              </button>
+                              <button className="btn btn-secondary" onClick={hasRerun ? handleDownloadMerged : handleDownloadResults}>Download as-is</button>
+                              <button className="btn btn-primary" onClick={() => handleRerun(validationReport.problematicIndices)}>Re-run {validationReport.problematicIndices.length} rows</button>
+                              <button className="btn btn-ghost" onClick={() => handleRerun(null)}>Re-run all</button>
                             </div>
                           </>
                         )}
                       </div>
                     )}
-                    {runComplete && !validationReport && (
-                      <div className="enc-complete-bar">
-                        <div>Validating results...</div>
-                      </div>
-                    )}
+                    {runComplete && !validationReport && <div className="enc-complete-bar"><div>Validating results...</div></div>}
 
-                    {/* Console */}
                     {consoleLogs.length > 0 && (
                       <div className="enc-console mt-12">
                         <div className="enc-console-header">
@@ -1840,45 +1749,30 @@ export default function Home() {
                 ) : rightView === "run" ? (
                   <div className="results-empty">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <rect x="3" y="3" width="7" height="7" rx="1" />
-                      <rect x="14" y="3" width="7" height="7" rx="1" />
-                      <rect x="3" y="14" width="7" height="7" rx="1" />
-                      <rect x="14" y="14" width="7" height="7" rx="1" />
+                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
                     </svg>
                     <p>No results yet</p>
                     <span className="text-sm">Configure the left panel, then press Run Coding</span>
                   </div>
                 ) : null}
 
-                {/* ── Script View ── */}
+                {/* Script view */}
                 {rightView === "script" && result ? (
                   <div className="tab-pane">
                     <div className="res-head">
                       <h2>Generated Script</h2>
                       <span className="res-meta">{result.filename}</span>
                     </div>
-
                     <div className="stat-row">
-                      <div className="stat">
-                        <div className="stat-v">{uploadResult?.row_count ?? 0}</div>
-                        <div className="stat-l">Rows</div>
-                      </div>
-                      <div className="stat">
-                        <div className="stat-v">{codebookLabels.length}</div>
-                        <div className="stat-l">Variables</div>
-                      </div>
-                      <div className="stat">
-                        <div className="stat-v">{modelSlots.length} × {runsPerModel}</div>
-                        <div className="stat-l">Models × Runs</div>
-                      </div>
+                      <div className="stat"><div className="stat-v">{uploadResult?.row_count ?? 0}</div><div className="stat-l">Rows</div></div>
+                      <div className="stat"><div className="stat-v">{codebookLabels.length}</div><div className="stat-l">Variables</div></div>
+                      <div className="stat"><div className="stat-v">{modelSlots.length} × {runsPerModel}</div><div className="stat-l">Models × Runs</div></div>
                     </div>
-
                     <div className="res-section mb-12">
                       <div className="res-section-h">
                         <span>Script Preview</span>
-                        <button className="btn btn-primary btn-xs" onClick={handleDownload}>
-                          Download .py
-                        </button>
+                        <button className="btn btn-primary btn-xs" onClick={handleDownload}>Download .py</button>
                       </div>
                       <div className="script-preview">
                         <pre className="code-block">{result.script}</pre>
@@ -1898,10 +1792,10 @@ export default function Home() {
               </div>
             </div>
           </div>
-          {activeTool === "catgen" && (<CategoryGenerator providers={PROVIDERS}/>)}
 
+          {activeTool === "catgen" && <CategoryGenerator providers={PROVIDERS} />}
 
-          {/* ── Results Analysis Page ── */}
+          {/* Analysis page */}
           <div className={`tool-page ${activeTool === "analysis" ? "active" : ""}`}>
             <div className="tool-header">
               <div>
@@ -1909,13 +1803,10 @@ export default function Home() {
                 <p className="tool-desc">Upload rater files, configure episode matching, and compute inter-rater agreement.</p>
               </div>
             </div>
-
             <div className="tool-body">
-              {/* Upload raters */}
               <div className="ana-section">
                 <div className="ana-section-h">Upload Raters</div>
                 <div className="ana-groups">
-                  {/* Human coders */}
                   <div className="ana-group">
                     <div className="ana-group-head">
                       <span className="ana-group-label">Human Coders</span>
@@ -1929,9 +1820,7 @@ export default function Home() {
                           if (n > cur.length) {
                             const add = Array.from({ length: n - cur.length }, (_, i) => ({ name: `Human ${cur.length + i + 1}`, type: "human" as const, uploadResult: null, uploading: false }));
                             setAnalysisRaters([...others, ...cur, ...add]);
-                          } else {
-                            setAnalysisRaters([...others, ...cur.slice(0, n)]);
-                          }
+                          } else { setAnalysisRaters([...others, ...cur.slice(0, n)]); }
                           setCrossCheckResult(null); setAnalysisResults(null);
                         }}
                       >
@@ -1955,8 +1844,6 @@ export default function Home() {
                       );
                     })}
                   </div>
-
-                  {/* LLM results */}
                   <div className="ana-group">
                     <div className="ana-group-head">
                       <span className="ana-group-label">LLM Results</span>
@@ -1970,9 +1857,7 @@ export default function Home() {
                           if (n > cur.length) {
                             const add = Array.from({ length: n - cur.length }, (_, i) => ({ name: `LLM ${cur.length + i + 1}`, type: "llm" as const, uploadResult: null, uploading: false }));
                             setAnalysisRaters([...others, ...cur, ...add]);
-                          } else {
-                            setAnalysisRaters([...others, ...cur.slice(0, n)]);
-                          }
+                          } else { setAnalysisRaters([...others, ...cur.slice(0, n)]); }
                           setCrossCheckResult(null); setAnalysisResults(null);
                         }}
                       >
@@ -1999,7 +1884,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Configuration — episode columns + analysis variables */}
               {allRaterColumns.length > 0 && (
                 <div className="ana-section mt-16">
                   <div className="ana-section-h">Configuration</div>
@@ -2038,7 +1922,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Cross-check + Compute */}
               {episodeColumns.length > 0 && analysisVariables.length > 0 && analysisRaters.filter((r) => r.uploadResult).length >= 2 && (
                 <div className="ana-section mt-16">
                   <div className="ana-actions">
@@ -2049,34 +1932,21 @@ export default function Home() {
                       {analysisLoading && !crossCheckResult ? <><span className="spinner" /> Computing</> : "Compute Agreement"}
                     </button>
                   </div>
-
                   {analysisError && <p className="enc-error mt-8">{analysisError}</p>}
-
-                  {/* Cross-check results */}
                   {crossCheckResult && (
                     <div className={`ana-crosscheck mt-12 ${crossCheckResult.ok ? "ok" : "fail"}`}>
                       {crossCheckResult.ok ? (
                         <>
-                          <div className="ana-cc-line ok">
-                            <strong>{crossCheckResult.common_episodes}</strong> episodes in common across all raters
-                          </div>
-                          {crossCheckResult.warnings.map((w, i) => (
-                            <div key={i} className="ana-cc-line warn">{w}</div>
-                          ))}
+                          <div className="ana-cc-line ok"><strong>{crossCheckResult.common_episodes}</strong> episodes in common across all raters</div>
+                          {crossCheckResult.warnings.map((w, i) => <div key={i} className="ana-cc-line warn">{w}</div>)}
                         </>
                       ) : (
-                        <>
-                          {crossCheckResult.missing_columns.map((mc, i) => (
-                            <div key={i} className="ana-cc-line fail">
-                              {mc.rater}: {mc.error || `missing columns: ${mc.missing?.join(", ")}`}
-                            </div>
-                          ))}
-                        </>
+                        crossCheckResult.missing_columns.map((mc, i) => (
+                          <div key={i} className="ana-cc-line fail">{mc.rater}: {mc.error || `missing columns: ${mc.missing?.join(", ")}`}</div>
+                        ))
                       )}
                     </div>
                   )}
-
-                  {/* Results */}
                   {analysisResults && (() => {
                     const res = analysisResults as Record<string, unknown>;
                     const sections = [
@@ -2113,12 +1983,9 @@ export default function Home() {
                             );
                           })}
                         </div>
-
-                        {/* Details toggle */}
                         <button className="btn btn-ghost btn-xs mt-12" onClick={() => setDetailsOpen((p) => !p)}>
                           {detailsOpen ? "Hide details" : "Show details (per variable, per pair)"}
                         </button>
-
                         {detailsOpen && sections.map(({ key, label }) => {
                           const data = res[key] as { per_pair: Record<string, Record<string, { percent_agreement: MetricResult; cohens_kappa: MetricResult; gwets_ac1: MetricResult; n_items: number }>>; pairs: string[] } | null;
                           if (!data) return null;
@@ -2130,13 +1997,7 @@ export default function Home() {
                                   <div className="ana-detail-pair-label">{pair}</div>
                                   <table className="tbl tbl-compact">
                                     <thead>
-                                      <tr>
-                                        <th>Variable</th>
-                                        <th className="tc">Items</th>
-                                        <th className="tc">% Agree</th>
-                                        <th className="tc">Kappa</th>
-                                        <th className="tc">AC1</th>
-                                      </tr>
+                                      <tr><th>Variable</th><th className="tc">Items</th><th className="tc">% Agree</th><th className="tc">Kappa</th><th className="tc">AC1</th></tr>
                                     </thead>
                                     <tbody>
                                       {analysisVariables.map((v) => {
@@ -2166,13 +2027,12 @@ export default function Home() {
               )}
             </div>
           </div>
-          {activeTool === "instructions" && (
-            <Instructions onNavigate={(tool) => setActiveTool(tool)} />
-          )}
+
+          {activeTool === "instructions" && <Instructions onNavigate={(tool) => setActiveTool(tool)} />}
         </main>
       </div>
 
-      {/* ── Fullscreen Table Modal ── */}
+      {/* Fullscreen table modal */}
       {expandedTable && (
         <div className="modal-overlay" onClick={() => setExpandedTable(null)}>
           <div className="modal modal-table" onClick={(e) => e.stopPropagation()}>
@@ -2185,119 +2045,47 @@ export default function Home() {
               <button className="btn btn-ghost btn-sm" onClick={() => setExpandedTable(null)}>✕</button>
             </div>
             <div className="modal-body">
-              {/* Preview table */}
               {expandedTable === "preview" && uploadResult && (
                 <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th className="th-row-num">#</th>
-                      {uploadResult.columns.map((col) => (
-                        <th key={col} className={col === messageColumn ? "col-msg" : ""}>{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
+                  <thead><tr><th className="th-row-num">#</th>{uploadResult.columns.map((col) => <th key={col} className={col === messageColumn ? "col-msg" : ""}>{col}</th>)}</tr></thead>
                   <tbody>
                     {uploadResult.preview.map((row, i) => (
-                      <tr key={i}>
-                        <td className="mono text-muted">{i + 1}</td>
-                        {uploadResult.columns.map((col) => (
-                          <td key={col}>{String(row[col] ?? "")}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {/* Codebook table */}
-              {expandedTable === "codebook" && (
-                <table className="tbl editable">
-                  <thead>
-                    <tr>
-                      <th className="col-label">Label</th>
-                      <th className="col-type">Type</th>
-                      <th className="col-def">Definition</th>
-                      <th className="col-values">Coded Values</th>
-                      <th className="th-narrow" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {codebook.map((entry, idx) => (
-                      <tr key={idx}>
-                        <td>
-                          <input
-                            type="text"
-                            value={entry.label}
-                            onChange={(e) => updateCodebook(idx, "label", e.target.value)}
-                            placeholder="e.g., sentiment"
-                          />
-                        </td>
-                        <td>
-                          <select
-                            value={entry.type}
-                            onChange={(e) => updateCodebook(idx, "type", e.target.value)}
-                          >
-                            {CODEBOOK_TYPES.map((t) => (
-                              <option key={t.value} value={t.value}>{t.label}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <textarea
-                            rows={3}
-                            value={entry.definition}
-                            onChange={(e) => updateCodebook(idx, "definition", e.target.value)}
-                            placeholder="What this variable measures"
-                            className="cb-def-textarea"
-                          />
-                        </td>
-                        <td>
-                          <TagInput
-                            value={entry.coded_values}
-                            onChange={(v) => updateCodebook(idx, "coded_values", v)}
-                            type={entry.type}
-                          />
-                        </td>
-                        <td>
-                          <button
-                            className="row-rm"
-                            onClick={() => removeCodebookRow(idx)}
-                            title="Remove row"
-                            disabled={codebook.length <= 1}
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
+                      <tr key={i}><td className="mono text-muted">{i + 1}</td>{uploadResult.columns.map((col) => <td key={col}>{String(row[col] ?? "")}</td>)}</tr>
                     ))}
                   </tbody>
                 </table>
               )}
               {expandedTable === "codebook" && (
-                <div className="mt-8">
-                  <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>+ Add Variable</button>
-                </div>
+                <>
+                  <table className="tbl editable">
+                    <thead><tr><th className="col-label">Label</th><th className="col-type">Type</th><th className="col-def">Definition</th><th className="col-values">Coded Values</th><th className="th-narrow" /></tr></thead>
+                    <tbody>
+                      {codebook.map((entry, idx) => (
+                        <tr key={idx}>
+                          <td><input type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="e.g., sentiment" /></td>
+                          <td>
+                            <select value={entry.type} onChange={(e) => updateCodebook(idx, "type", e.target.value)}>
+                              {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
+                          </td>
+                          <td><textarea rows={3} value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures" className="cb-def-textarea" /></td>
+                          <td><TagInput value={entry.coded_values} onChange={(v) => updateCodebook(idx, "coded_values", v)} type={entry.type} /></td>
+                          <td><button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove row" disabled={codebook.length <= 1}>×</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-8"><button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>+ Add Variable</button></div>
+                </>
               )}
-
-              {/* Live results table — all rows */}
               {expandedTable === "live" && codedRows.length > 0 && (
                 <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th className="th-row-num">#</th>
-                      <th className="col-msg">{messageColumn || "Message"}</th>
-                      {codebookLabels.map((l) => (
-                        <th key={l}>{l}</th>
-                      ))}
-                    </tr>
-                  </thead>
+                  <thead><tr><th className="th-row-num">#</th><th className="col-msg">{messageColumn || "Message"}</th>{codebookLabels.map((l) => <th key={l}>{l}</th>)}</tr></thead>
                   <tbody>
                     {codedRows.map((row) => (
                       <tr key={row.index}>
                         <td className="mono text-muted">{row.index + 1}</td>
-                        <td>
-                          {String(row.original[messageColumn] ?? "")}
-                        </td>
+                        <td>{String(row.original[messageColumn] ?? "")}</td>
                         {codebookLabels.map((label) => (
                           <td key={label} className="tc">
                             <span className={`pill ${row.coded._error ? "bad" : "lbl"}`}>
@@ -2321,9 +2109,7 @@ export default function Home() {
         open={tourOpen}
         steps={CODING_TOUR_STEPS}
         onClose={() => setTourOpen(false)}
-        onStepEnter={(s) => {
-          if (s.panel) setOpenPanels((prev) => new Set(prev).add(s.panel as number));
-        }}
+        onStepEnter={handleStepEnter}
       />
 
       {showWelcome && (
@@ -2332,19 +2118,14 @@ export default function Home() {
             <div className="welcome-emoji">👋</div>
             <h2 className="welcome-title">First time here?</h2>
             <p className="welcome-text">
-              Take a quick guided walkthrough of the LLM Coding page — we&apos;ll highlight
-              each step, from uploading your data to running the models.
+              Take a quick guided walkthrough of the LLM Coding page — we&apos;ll highlight each step, from uploading your data to running the models.
             </p>
             <div className="welcome-actions">
               <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the tour</button>
               <button className="btn btn-outline" onClick={() => dismissWelcome("later")}>Maybe later</button>
             </div>
-            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>
-              Or read the full guide →
-            </button>
-            <button className="welcome-never" onClick={() => dismissWelcome("never")}>
-              Don&apos;t show again
-            </button>
+            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>Or read the full guide →</button>
+            <button className="welcome-never" onClick={() => dismissWelcome("never")}>Don&apos;t show again</button>
           </div>
         </div>
       )}

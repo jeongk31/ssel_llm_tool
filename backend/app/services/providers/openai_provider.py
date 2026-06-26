@@ -22,6 +22,7 @@ class OpenAICompatibleProvider(LLMProvider):
             model=self.model,
             messages=messages,
             temperature=params.get("temperature", 0.7),
+            top_p=params.get("top_p", 1.0),
             max_tokens=params.get("max_tokens", 2048),
         )
 

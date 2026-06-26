@@ -53,16 +53,22 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
         return;
       }
       const r = el.getBoundingClientRect();
-      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      setRect((prev) => {
+        if (prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height) return prev;
+        return { top: r.top, left: r.left, width: r.width, height: r.height };
+      });
     };
 
-    const el = document.getElementById(step.targetId);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Delay scroll until after panel open animation settles
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(step.targetId);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 400);
 
     measure();
-    // Re-measure after scroll + panel-open animations settle
     const t1 = setTimeout(measure, 140);
     const t2 = setTimeout(measure, 380);
+    const t3 = setTimeout(measure, 600);
 
     const onWin = () => {
       cancelAnimationFrame(raf);
@@ -72,13 +78,16 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
     window.addEventListener("scroll", onWin, true);
 
     return () => {
+      clearTimeout(scrollTimer);
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onWin);
       window.removeEventListener("scroll", onWin, true);
     };
-  }, [open, idx, step, onStepEnter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, idx, step]);
 
   // Keyboard: Esc closes, arrows navigate
   useEffect(() => {
@@ -90,7 +99,8 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, steps.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, steps.length]);
 
   if (!open || !step) return null;
 
@@ -104,16 +114,25 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
       }
     : null;
 
-  // Place the card below the spotlight if there's room, otherwise above;
-  // fall back to centered when the target can't be found.
+  const CARD_MAX_HEIGHT = 360;
+  const MARGIN = 16;
   let cardStyle: React.CSSProperties;
+
   if (spot) {
     const belowSpace = window.innerHeight - (spot.top + spot.height);
-    const placeBelow = belowSpace > 240 || belowSpace > spot.top;
-    const left = Math.max(16, Math.min(spot.left, window.innerWidth - CARD_WIDTH - 16));
-    cardStyle = placeBelow
-      ? { top: spot.top + spot.height + 12, left, width: CARD_WIDTH }
-      : { bottom: window.innerHeight - spot.top + 12, left, width: CARD_WIDTH };
+    const aboveSpace = spot.top;
+    const placeBelow = belowSpace >= CARD_MAX_HEIGHT || belowSpace >= aboveSpace;
+    const left = Math.max(MARGIN, Math.min(spot.left, window.innerWidth - CARD_WIDTH - MARGIN));
+
+    if (placeBelow) {
+      const rawTop = spot.top + spot.height + 12;
+      const maxTop = window.innerHeight - CARD_MAX_HEIGHT - MARGIN;
+      cardStyle = { top: Math.min(rawTop, maxTop), left, width: CARD_WIDTH };
+    } else {
+      const rawBottom = window.innerHeight - spot.top + 12;
+      const maxBottom = window.innerHeight - MARGIN;
+      cardStyle = { bottom: Math.min(rawBottom, maxBottom), left, width: CARD_WIDTH };
+    }
   } else {
     cardStyle = { top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: CARD_WIDTH };
   }

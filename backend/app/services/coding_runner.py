@@ -162,9 +162,37 @@ async def run_coding(
     # Build provider instances
     if model_slots and len(model_slots) > 0:
         providers = []
+        # for slot in model_slots:
+        #     p = _get_provider_instance(slot["provider"], slot["model"], slot["api_key"])
+        #     # providers.append({"instance": p, "label": f"{slot['provider']}/{slot['model']}"})
+        #     providers.append({
+        #         "instance": p,
+        #         "label": f"{slot['provider']}/{slot['model']}",
+        #         "params": {
+        #             "temperature":  slot.get("temperature"),
+        #             "top_p":        slot.get("top_p"),
+        #             "max_tokens":   slot.get("max_tokens") or slot.get("max_completion_tokens"),
+        #             # Gemini sends these nested — flatten them out here
+        #             **(slot.get("generation_config") or {}),
+        #         },
+        #     })
         for slot in model_slots:
             p = _get_provider_instance(slot["provider"], slot["model"], slot["api_key"])
-            providers.append({"instance": p, "label": f"{slot['provider']}/{slot['model']}"})
+            
+            gen_cfg = slot.get("generation_config") or {}
+            params = {
+                "temperature": slot.get("temperature") or gen_cfg.get("temperature"),
+                "top_p":       slot.get("top_p") or gen_cfg.get("topP"),
+                "max_tokens":  slot.get("max_tokens") or slot.get("max_completion_tokens") or gen_cfg.get("maxOutputTokens"),
+            }
+            # Strip Nones so defaults in complete() kick in for unset params
+            params = {k: v for k, v in params.items() if v is not None}
+
+            providers.append({
+                "instance": p,
+                "label": f"{slot['provider']}/{slot['model']}",
+                "params": params,
+            })
     else:
         providers = [{"instance": _get_provider_instance(provider_name, model_id, api_key), "label": f"{provider_name}/{model_id}"}]
 
@@ -210,12 +238,17 @@ async def run_coding(
             for run_num in range(1, runs_per_model + 1):
                 coder_label = f"{p_info['label']}__run{run_num}" if runs_per_model > 1 else p_info["label"]
                 parsed = None
+                slot_params = p_info.get("params", {})
                 for attempt in range(1, max_retries + 1):
                     try:
                         result = await provider_inst.complete(
                             prompt,
                             system_prompt="You are a precise data coder. Return only valid JSON.",
-                            params={"temperature": 0.1, "max_tokens": 2048},
+                            params={
+                                "temperature": slot_params.get("temperature", 0.1),
+                                "top_p":       slot_params.get("top_p", 1.0),
+                                "max_tokens":  slot_params.get("max_tokens", 2048),
+                            },
                         )
                         parsed = _parse_llm_json(result["response"])
                         if parsed:
