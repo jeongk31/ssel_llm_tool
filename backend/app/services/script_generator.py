@@ -14,31 +14,46 @@ def generate_coding_script(
     provider: str,
     model: str = "",
     api_key: str = "",
+    identifier_columns: list[str] | None = None,
+    identity_column: str | None = None,
+    order_column: str | None = None,
+    order_direction: str = "asc",
+    participants: list[str] | None = None,
+    context: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build a ready-to-run Python script from the user's configuration."""
 
+    identifier_columns = identifier_columns or []
+    participants = participants or []
+    context = context or []
     codebook_json = json.dumps(codebook, indent=2)
 
     # Escape triple-quotes inside user text so they don't break the script
     exp_instr = experiment_instructions.replace('"""', '\\"\\"\\"')
     enc_instr = coding_instructions.replace('"""', '\\"\\"\\"')
 
-    # Build the codebook description block for the prompt
+    # Build the codebook description block + expanded output keys.
+    # Sender-level variables expand into one key per participant: "Var [P]".
     codebook_lines = []
+    labels = []
     for entry in codebook:
+        line = f"- {entry['label']} (type: {entry['type']}). Allowed values: {entry.get('coded_values', 'any')}"
+        if entry.get("level") == "sender" and participants:
+            line += f"  -> code separately for each participant: {', '.join(participants)}"
+            labels.extend(f"{entry['label']}_{p}" for p in participants)
+        else:
+            labels.append(entry["label"])
+        codebook_lines.append(line)
+    if any(e.get("level") == "sender" for e in codebook) and participants:
         codebook_lines.append(
-            f"- {entry['label']} (type: {entry['type']}): "
-            f"{entry['definition']}. "
-            f"Allowed values: {entry.get('coded_values', 'any')}"
+            f'(For per-sender variables, output one value per participant using keys like '
+            f'"Variable_Participant"; participants: {", ".join(participants)}.)'
         )
-    codebook_prompt_block = "\\n".join(codebook_lines)
+    codebook_prompt_block = "\n".join(codebook_lines)
+    labels_json = json.dumps(labels)
 
     # Map provider to the right SDK setup
     provider_imports, provider_setup, provider_call = _get_provider_code(provider, model)
-
-    # Build the list of codebook labels for output columns
-    labels = [e["label"] for e in codebook]
-    labels_json = json.dumps(labels)
 
     script = f'''#!/usr/bin/env python3
 """
@@ -66,6 +81,10 @@ import pandas as pd
 
 API_KEY = {json.dumps(api_key)}
 MESSAGE_COLUMN = {json.dumps(message_column)}
+IDENTIFIER_COLUMNS = {json.dumps(identifier_columns)}
+IDENTITY_COLUMN = {json.dumps(identity_column)}
+ORDER_COLUMN = {json.dumps(order_column)}
+ORDER_DIRECTION = {json.dumps(order_direction)}
 
 CODEBOOK = {codebook_json}
 
@@ -74,6 +93,8 @@ EXPERIMENT_INSTRUCTIONS = """{exp_instr}"""
 CODING_INSTRUCTIONS = """{enc_instr}"""
 
 CODEBOOK_LABELS = {labels_json}
+CODEBOOK_PROMPT_BLOCK = {json.dumps(codebook_prompt_block)}
+CONTEXT = {json.dumps(context)}
 
 
 # ── Provider setup ─────────────────────────────────────────────────────────────
@@ -101,15 +122,54 @@ def load_dataset(file_path: str) -> pd.DataFrame:
     return df
 
 
-def build_prompt(message_text: str) -> str:
-    """Construct the full prompt for coding one row."""
-    codebook_block = ""
-    for var in CODEBOOK:
-        codebook_block += (
-            f"- {{var['label']}} (type: {{var['type']}}): "
-            f"{{var['definition']}}. "
-            f"Allowed values: {{var.get('coded_values', 'any')}}\\n"
+def group_units(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse rows sharing an identifier combination into one tagged unit."""
+    id_cols = [c for c in IDENTIFIER_COLUMNS if c in df.columns]
+    if not id_cols:
+        return df
+
+    work = df.copy()
+    if ORDER_COLUMN and ORDER_COLUMN in work.columns:
+        work = work.sort_values(
+            by=ORDER_COLUMN,
+            ascending=(ORDER_DIRECTION != "desc"),
+            kind="stable",
         )
+
+    use_identity = bool(IDENTITY_COLUMN) and IDENTITY_COLUMN in work.columns
+    units = []
+    for _, group in work.groupby(id_cols, sort=False, dropna=False):
+        parts = []
+        for _, r in group.iterrows():
+            msg = "" if pd.isna(r[MESSAGE_COLUMN]) else str(r[MESSAGE_COLUMN])
+            who = r[IDENTITY_COLUMN] if use_identity else None
+            if use_identity and pd.notna(who) and str(who).strip() != "":
+                parts.append(f"[{{who}}] {{msg}}")
+            else:
+                parts.append(msg)
+        unit = group.iloc[0].to_dict()
+        unit[MESSAGE_COLUMN] = "\\n".join(parts)
+        units.append(unit)
+
+    return pd.DataFrame(units, columns=list(df.columns)).reset_index(drop=True)
+
+
+def build_prompt(message_text: str, row=None) -> str:
+    """Construct the full prompt for coding one row."""
+    context_section = ""
+    if CONTEXT and row is not None:
+        lines = []
+        for spec in CONTEXT:
+            col = spec.get("column")
+            if not col or col not in row:
+                continue
+            val = row[col]
+            if pd.isna(val) or str(val).strip() == "":
+                continue
+            desc = (spec.get("description") or "").strip()
+            lines.append(f"- {{col}}: {{val}}" + (f"  ({{desc}})" if desc else ""))
+        if lines:
+            context_section = "\\n## Context\\n" + "\\n".join(lines) + "\\n"
 
     prompt = f"""You are coding one row of data. One row = one unit of observation.
 
@@ -120,13 +180,14 @@ def build_prompt(message_text: str) -> str:
 {{CODING_INSTRUCTIONS}}
 
 ## Codebook Variables
-{{codebook_block}}
+{{CODEBOOK_PROMPT_BLOCK}}
+{{context_section}}
 ## Message to Code
 {{message_text}}
 
 ## Output Requirements
 - Return ONLY valid JSON
-- Keys must exactly match the codebook labels: {{CODEBOOK_LABELS}}
+- Keys must exactly match: {{CODEBOOK_LABELS}}
 - Each value must conform to the type and allowed values specified above
 - Do not include any commentary, explanation, or markdown formatting
 """
@@ -178,7 +239,7 @@ def code_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             result["_error"] = "empty_message"
         else:
             print(f"  [{{idx + 1}}/{{total}}] Coding: {{message[:80]}}...")
-            prompt = build_prompt(message)
+            prompt = build_prompt(message, row)
             result = call_llm(prompt)
 
         result["_raw_response"] = json.dumps(result)
@@ -212,6 +273,10 @@ def main():
     print(f"Loading dataset: {{args.file}}")
     df = load_dataset(args.file)
     print(f"Loaded {{len(df)}} rows, coding column: '{{MESSAGE_COLUMN}}'")
+
+    if IDENTIFIER_COLUMNS:
+        df = group_units(df)
+        print(f"Grouped into {{len(df)}} units by: {{', '.join(IDENTIFIER_COLUMNS)}}")
 
     print("Starting coding...")
     result_df = code_dataframe(df)

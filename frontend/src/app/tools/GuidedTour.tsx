@@ -1,95 +1,104 @@
 'use client'
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export interface TourStep {
-  /** id of the DOM element to spotlight */
-  targetId: string;
+  /** id of the section/panel to brighten (dim everything else) */
+  sectionId: string;
+  /** id of the sub-element to ring within the section (optional) */
+  targetId?: string;
+  /** short eyebrow label naming the section */
+  section?: string;
   title: string;
   body: React.ReactNode;
   /** optional panel number to open when this step is entered */
   panel?: number;
+  /** screenshot or demo video (path under /public), shown in the floating panel */
+  media?: string;
+  /** region of the media to highlight (percent of the image), matching this sub-part */
+  mediaBox?: { x: number; y: number; w: number; h: number };
 }
 
 interface Props {
   open: boolean;
   steps: TourStep[];
   onClose: () => void;
-  /** called when a step becomes active — use it to open the relevant panel */
   onStepEnter?: (step: TourStep) => void;
 }
 
-interface Rect {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
+interface Rect { top: number; left: number; width: number; height: number; }
+const toRect = (r: DOMRect): Rect => ({ top: r.top, left: r.left, width: r.width, height: r.height });
+
+function TourMedia({ src }: { src: string }) {
+  const [err, setErr] = useState(false);
+  const isVideo = /\.(mp4|webm|mov)$/i.test(src);
+  if (err) return <div className="tour-media tour-media-missing"><span>Demo</span><code>{src}</code></div>;
+  return isVideo ? (
+    <video className="tour-media" src={src} autoPlay loop muted playsInline onError={() => setErr(true)} />
+  ) : (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className="tour-media" src={src} alt="" onError={() => setErr(true)} />
+  );
 }
 
-const CARD_WIDTH = 360;
-
 export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props) {
+  // Group consecutive steps that share a sectionId into sections.
+  const sections = useMemo(() => {
+    const out: TourStep[][] = [];
+    for (const s of steps) {
+      const last = out[out.length - 1];
+      if (last && last[0].sectionId === s.sectionId) last.push(s);
+      else out.push([s]);
+    }
+    return out;
+  }, [steps]);
+
   const [idx, setIdx] = useState(0);
-  const [rect, setRect] = useState<Rect | null>(null);
+  const [sectionRect, setSectionRect] = useState<Rect | null>(null);
+  const [subRect, setSubRect] = useState<Rect | null>(null);
 
   const step = steps[idx];
 
-  // Reset to first step each time the tour opens
-  useEffect(() => {
-    if (open) setIdx(0);
-  }, [open]);
+  // Locate this flat step within its section (for the part-dots).
+  let acc = 0, secIdx = 0, subIdx = 0, sectionStart = 0;
+  for (let s = 0; s < sections.length; s++) {
+    if (idx < acc + sections[s].length) { secIdx = s; subIdx = idx - acc; sectionStart = acc; break; }
+    acc += sections[s].length;
+  }
+  const subs = sections[secIdx] ?? [];
 
-  // Open the right panel, scroll the target into view, and measure it
+  useEffect(() => { if (open) setIdx(0); }, [open]);
+
+  // Open the panel, scroll the target into view, and measure both rects
   useEffect(() => {
     if (!open || !step) return;
-
     onStepEnter?.(step);
 
     let raf = 0;
     const measure = () => {
-      const el = document.getElementById(step.targetId);
-      if (!el) {
-        setRect(null);
-        return;
-      }
-      const r = el.getBoundingClientRect();
-      setRect((prev) => {
-        if (prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height) return prev;
-        return { top: r.top, left: r.left, width: r.width, height: r.height };
-      });
+      const secEl = document.getElementById(step.sectionId);
+      setSectionRect(secEl ? toRect(secEl.getBoundingClientRect()) : null);
+      const subEl = step.targetId ? document.getElementById(step.targetId) : null;
+      setSubRect(subEl ? toRect(subEl.getBoundingClientRect()) : null);
     };
 
-    // Delay scroll until after panel open animation settles
-    const scrollTimer = setTimeout(() => {
-      const el = document.getElementById(step.targetId);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 400);
+    const scrollT = setTimeout(() => {
+      document.getElementById(step.targetId || step.sectionId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 120);
 
     measure();
-    const t1 = setTimeout(measure, 140);
-    const t2 = setTimeout(measure, 380);
-    const t3 = setTimeout(measure, 600);
-
-    const onWin = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(measure);
-    };
+    const ts = [setTimeout(measure, 180), setTimeout(measure, 440), setTimeout(measure, 720)];
+    const onWin = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure); };
     window.addEventListener("resize", onWin);
     window.addEventListener("scroll", onWin, true);
-
     return () => {
-      clearTimeout(scrollTimer);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      cancelAnimationFrame(raf);
+      clearTimeout(scrollT); ts.forEach(clearTimeout); cancelAnimationFrame(raf);
       window.removeEventListener("resize", onWin);
       window.removeEventListener("scroll", onWin, true);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, idx, step]);
 
-  // Keyboard: Esc closes, arrows navigate
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -104,70 +113,70 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
 
   if (!open || !step) return null;
 
-  const PAD = 8;
-  const spot = rect
-    ? {
-        top: rect.top - PAD,
-        left: rect.left - PAD,
-        width: rect.width + PAD * 2,
-        height: rect.height + PAD * 2,
-      }
-    : null;
-
-  const CARD_MAX_HEIGHT = 360;
-  const MARGIN = 16;
-  let cardStyle: React.CSSProperties;
-
-  if (spot) {
-    const belowSpace = window.innerHeight - (spot.top + spot.height);
-    const aboveSpace = spot.top;
-    const placeBelow = belowSpace >= CARD_MAX_HEIGHT || belowSpace >= aboveSpace;
-    const left = Math.max(MARGIN, Math.min(spot.left, window.innerWidth - CARD_WIDTH - MARGIN));
-
-    if (placeBelow) {
-      const rawTop = spot.top + spot.height + 12;
-      const maxTop = window.innerHeight - CARD_MAX_HEIGHT - MARGIN;
-      cardStyle = { top: Math.min(rawTop, maxTop), left, width: CARD_WIDTH };
-    } else {
-      const rawBottom = window.innerHeight - spot.top + 12;
-      const maxBottom = window.innerHeight - MARGIN;
-      cardStyle = { bottom: Math.min(rawBottom, maxBottom), left, width: CARD_WIDTH };
-    }
-  } else {
-    cardStyle = { top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: CARD_WIDTH };
-  }
+  const SPAD = 8;
+  const sec = sectionRect ? {
+    top: sectionRect.top - SPAD, left: sectionRect.left - SPAD,
+    width: sectionRect.width + SPAD * 2, height: sectionRect.height + SPAD * 2,
+  } : null;
+  const hasSub = !!subRect && step.targetId && step.targetId !== step.sectionId;
+  const sub = hasSub ? {
+    top: subRect!.top - 4, left: subRect!.left - 4,
+    width: subRect!.width + 8, height: subRect!.height + 8,
+  } : null;
 
   const isLast = idx === steps.length - 1;
   const isFirst = idx === 0;
 
   return (
     <div className="tour-root">
-      {/* transparent layer that blocks interaction with the page behind */}
-      <div className="tour-blocker" />
-      {spot && (
-        <div
-          className="tour-spotlight"
-          style={{ top: spot.top, left: spot.left, width: spot.width, height: spot.height }}
-        />
+      {sec
+        ? <div className="tour-section-spot" style={{ top: sec.top, left: sec.left, width: sec.width, height: sec.height }} />
+        : <div className="tour-dim-full" />}
+
+      {sub && (
+        <div className="tour-sub-spot" style={{ top: sub.top, left: sub.left, width: sub.width, height: sub.height }} />
       )}
-      <div className="tour-card" style={cardStyle}>
-        <div className="tour-card-head">
-          <span className="tour-step-count">Step {idx + 1} of {steps.length}</span>
+
+      <div className="tour-panel">
+        <div className="tour-panel-head">
+          <span className="tour-step-count">{step.section ?? "Walkthrough"} · {idx + 1}/{steps.length}</span>
           <button className="tour-close" onClick={onClose} aria-label="Close walkthrough">×</button>
         </div>
-        <h3 className="tour-card-title">{step.title}</h3>
-        <div className="tour-card-body">{step.body}</div>
-        <div className="tour-card-actions">
-          <button className="btn btn-ghost btn-xs text-muted" onClick={onClose}>Skip</button>
-          <div className="tour-card-nav">
-            {!isFirst && (
-              <button className="btn btn-outline btn-sm" onClick={() => setIdx((i) => i - 1)}>Back</button>
-            )}
-            {isLast ? (
-              <button className="btn btn-primary btn-sm" onClick={onClose}>Done</button>
-            ) : (
-              <button className="btn btn-primary btn-sm" onClick={() => setIdx((i) => i + 1)}>Next</button>
-            )}
+        <h3 className="tour-panel-title">{step.title}</h3>
+        <div className="tour-panel-body">{step.body}</div>
+        {subs.length > 1 && (
+          <div className="tour-subdots">
+            {subs.map((s, i) => (
+              <button
+                key={i}
+                className={`tour-subdot ${i === subIdx ? "active" : ""}`}
+                onClick={() => setIdx(sectionStart + i)}
+                title={s.title}
+              />
+            ))}
+            <span className="tour-subdots-hint">part {subIdx + 1} of {subs.length}</span>
+          </div>
+        )}
+        {step.media && (
+          <div className="tour-panel-media">
+            <div className="tour-media-frame">
+              <TourMedia src={step.media} />
+              {step.mediaBox && (
+                <div
+                  className="tour-media-hl"
+                  style={{ left: `${step.mediaBox.x}%`, top: `${step.mediaBox.y}%`, width: `${step.mediaBox.w}%`, height: `${step.mediaBox.h}%` }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+        <div className="tour-panel-actions">
+          <button className="btn btn-ghost btn-xs text-muted" onClick={onClose}>Skip tour</button>
+          <div className="tour-panel-nav">
+            {!isFirst && <button className="btn btn-outline btn-sm" onClick={() => setIdx((i) => i - 1)}>Back</button>}
+            {isLast
+              ? <button className="btn btn-primary btn-sm" onClick={onClose}>Done</button>
+              : <button className="btn btn-primary btn-sm" onClick={() => setIdx((i) => i + 1)}>Next</button>}
           </div>
         </div>
       </div>

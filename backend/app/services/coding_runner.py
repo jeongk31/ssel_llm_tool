@@ -40,22 +40,45 @@ def _get_provider_instance(provider_name: str, model_id: str, api_key: str) -> L
     return OpenAICompatibleProvider(api_key=api_key, model=model_id, base_url=base_url)
 
 
+def _expanded_keys(codebook: list[dict[str, Any]], participants: list[str] | None) -> list[str]:
+    """Output keys: window variables stay as-is; sender variables expand to "Var [P]"."""
+    participants = participants or []
+    keys: list[str] = []
+    for var in codebook:
+        if var.get("level") == "sender" and participants:
+            for p in participants:
+                keys.append(f"{var['label']}_{p}")
+        else:
+            keys.append(var["label"])
+    return keys
+
+
 def _build_prompt(
     message_text: str,
     experiment_instructions: str,
     coding_instructions: str,
     codebook: list[dict[str, Any]],
+    participants: list[str] | None = None,
+    context_block: str = "",
 ) -> str:
     """Construct the full coding prompt for one row."""
+    participants = participants or []
+    context_section = f"\n## Context\n{context_block}" if context_block.strip() else ""
     codebook_block = ""
     for var in codebook:
-        codebook_block += (
-            f"- {var['label']} (type: {var['type']}): "
-            f"{var['definition']}. "
-            f"Allowed values: {var.get('coded_values', 'any')}\n"
-        )
+        line = f"- {var['label']} (type: {var['type']}). Allowed values: {var.get('coded_values', 'any')}"
+        if var.get("level") == "sender" and participants:
+            line += f"  → code separately for each participant: {', '.join(participants)}"
+        codebook_block += line + "\n"
 
-    labels = [v["label"] for v in codebook]
+    keys = _expanded_keys(codebook, participants)
+    sender_note = ""
+    if any(var.get("level") == "sender" for var in codebook) and participants:
+        sender_note = (
+            "\n- For per-sender variables, output one value per participant using keys of the form "
+            f'"Variable_Participant" (e.g. {keys[-1] if keys else "var_P"}; participants: {", ".join(participants)}). '
+            "Each participant's messages are tagged with [participant] in the text above."
+        )
 
     return f"""You are coding one row of data. One row = one unit of observation.
 
@@ -66,14 +89,14 @@ def _build_prompt(
 {coding_instructions}
 
 ## Codebook Variables
-{codebook_block}
+{codebook_block}{context_section}
 ## Message to Code
 {message_text}
 
 ## Output Requirements
 - Return ONLY valid JSON
-- Keys must exactly match the codebook labels: {labels}
-- Each value must conform to the type and allowed values specified above
+- Keys must exactly match: {keys}
+- Each value must conform to the type and allowed values specified above{sender_note}
 - Do not include any commentary, explanation, or markdown formatting
 """
 
@@ -144,6 +167,8 @@ async def run_coding(
     experiment_instructions: str,
     coding_instructions: str,
     codebook: list[dict[str, Any]],
+    participants: list[str] | None = None,
+    context: list[dict[str, str]] | None = None,
     model_slots: list[dict[str, str]] | None = None,
     runs_per_model: int = 1,
     aggregation: str = "mode",
@@ -196,7 +221,7 @@ async def run_coding(
     else:
         providers = [{"instance": _get_provider_instance(provider_name, model_id, api_key), "label": f"{provider_name}/{model_id}"}]
 
-    labels = [v["label"] for v in codebook]
+    labels = _expanded_keys(codebook, participants)
     null_result = {label: None for label in labels}
     total = len(df)
     total_calls = len(providers) * runs_per_model
@@ -229,8 +254,20 @@ async def run_coding(
                 yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
                 continue
 
+        # Build context block from this unit's context columns
+        context_block = ""
+        for spec in (context or []):
+            col = spec.get("column")
+            if not col or col not in original:
+                continue
+            val = original.get(col)
+            if val is None or str(val).strip() == "":
+                continue
+            desc = (spec.get("description") or "").strip()
+            context_block += f"- {col}: {val}" + (f"  ({desc})" if desc else "") + "\n"
+
         # Collect results from all models × runs
-        prompt = _build_prompt(message, experiment_instructions, coding_instructions, codebook)
+        prompt = _build_prompt(message, experiment_instructions, coding_instructions, codebook, participants, context_block)
         call_results: list[dict[str, Any]] = []
 
         for p_info in providers:
