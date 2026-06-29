@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="360" viewBox="0 0 560 360" font-family="Inter, -apple-system, Segoe UI, sans-serif">
+  <rect width="560" height="360" fill="#f5f6f8"/>
+  <rect x="16" y="16" width="528" height="328" rx="10" fill="#ffffff" stroke="#e3e5ea"/>
+  <text x="32" y="44" fill="#1b1f27" font-size="14" font-weight="700">Run it</text>
+  <!-- run bar -->
+  <rect x="32" y="64" width="496" height="48" rx="8" fill="#fafafe" stroke="#e3e5ea"/>
+  <rect x="320" y="76" width="96" height="26" rx="6" fill="#fff" stroke="#cfd2da"/>
+  <text x="368" y="93" text-anchor="middle" fill="#5f6577" font-size="11" font-weight="600">Script only</text>
+  <rect x="424" y="76" width="92" height="26" rx="6" fill="#5b2d8e"/>
+  <text x="470" y="93" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Run Coding</text>
+  <!-- live results preview -->
+  <text x="32" y="140" fill="#5f6577" font-size="11" font-weight="600">LIVE RESULTS</text>
+  <rect x="32" y="148" width="496" height="150" rx="6" fill="#fff" stroke="#e3e5ea"/>
+  <rect x="32" y="148" width="496" height="26" fill="#f5f6f8"/>
+  <text x="46" y="165" fill="#5f6577" font-size="10.5" font-weight="600">#</text>
+  <text x="80" y="165" fill="#5f6577" font-size="10.5" font-weight="600">Message</text>
+  <text x="389" y="165" text-anchor="middle" fill="#5f6577" font-size="10.5" font-weight="600">promise</text>
+  <text x="463" y="165" text-anchor="middle" fill="#5f6577" font-size="10.5" font-weight="600">cooperation_P</text>
+  <line x1="32" y1="174" x2="528" y2="174" stroke="#edeef1"/>
+  <text x="46" y="194" fill="#9197a6" font-size="10.5">1</text>
+  <text x="80" y="194" fill="#1b1f27" font-size="10.5">Please choose In so we can get…</text>
+  <rect x="372" y="184" width="34" height="16" rx="4" fill="#f3eef8"/><text x="389" y="196" text-anchor="middle" fill="#5b2d8e" font-size="10" font-weight="600">E</text>
+  <rect x="452" y="184" width="22" height="16" rx="4" fill="#f3eef8"/><text x="463" y="196" text-anchor="middle" fill="#5b2d8e" font-size="10" font-weight="600">0</text>
+  <line x1="32" y1="208" x2="528" y2="208" stroke="#f3f4f6"/>
+  <text x="46" y="228" fill="#9197a6" font-size="10.5">2</text>
+  <text x="80" y="228" fill="#1b1f27" font-size="10.5">Choose in, I will roll dice…</text>
+  <rect x="372" y="218" width="34" height="16" rx="4" fill="#f3eef8"/><text x="389" y="230" text-anchor="middle" fill="#5b2d8e" font-size="10" font-weight="600">P</text>
+  <rect x="452" y="218" width="22" height="16" rx="4" fill="#f3eef8"/><text x="463" y="230" text-anchor="middle" fill="#5b2d8e" font-size="10" font-weight="600">1</text>
+  <line x1="32" y1="242" x2="528" y2="242" stroke="#f3f4f6"/>
+  <text x="46" y="262" fill="#9197a6" font-size="10.5">5</text>
+  <text x="80" y="262" fill="#1b1f27" font-size="10.5">If you will choose "In", I will roll…</text>
+  <rect x="372" y="252" width="34" height="16" rx="4" fill="#f3eef8"/><text x="389" y="264" text-anchor="middle" fill="#5b2d8e" font-size="10" font-weight="600">P</text>
+  <rect x="452" y="252" width="22" height="16" rx="4" fill="#f3eef8"/><text x="463" y="264" text-anchor="middle" fill="#5b2d8e" font-size="10" font-weight="600">1</text>
+  <rect x="32" y="282" width="180" height="6" rx="3" fill="#e3e5ea"/><rect x="32" y="282" width="180" height="6" rx="3" fill="#16a34a"/>
+  <text x="224" y="288" fill="#16a34a" font-size="11" font-weight="600">Coding complete · 42/42</text>
+</svg>

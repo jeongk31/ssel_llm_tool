@@ -17,6 +17,52 @@ router = APIRouter()
 _uploaded_files: dict[str, dict] = {}
 
 
+def _group_units(
+    df: pd.DataFrame,
+    message_column: str,
+    identifier_columns: list[str],
+    identity_column: str | None,
+    order_column: str | None,
+    order_direction: str,
+) -> pd.DataFrame:
+    """
+    Collapse rows that share the same identifier combination into one unit.
+
+    Messages within a unit are concatenated (one per line). When a sender-identity
+    column is present each message is tagged: "[identity] message". Rows are ordered
+    by ``order_column`` (asc/desc) before joining; otherwise original file order is kept.
+    Other columns keep the first value seen in the unit.
+    """
+    identifier_columns = [c for c in (identifier_columns or []) if c in df.columns]
+    if not identifier_columns:
+        return df
+
+    work = df.copy()
+    if order_column and order_column in work.columns:
+        work = work.sort_values(
+            by=order_column,
+            ascending=(order_direction != "desc"),
+            kind="stable",
+        )
+
+    use_identity = bool(identity_column) and identity_column in work.columns
+    units: list[dict] = []
+    for _, group in work.groupby(identifier_columns, sort=False, dropna=False):
+        parts: list[str] = []
+        for _, r in group.iterrows():
+            msg = "" if pd.isna(r[message_column]) else str(r[message_column])
+            who = r[identity_column] if use_identity else None
+            if use_identity and pd.notna(who) and str(who).strip() != "":
+                parts.append(f"[{who}] {msg}")
+            else:
+                parts.append(msg)
+        unit = group.iloc[0].to_dict()
+        unit[message_column] = "\n".join(parts)
+        units.append(unit)
+
+    return pd.DataFrame(units, columns=list(df.columns)).reset_index(drop=True)
+
+
 # ── File upload + column discovery ─────────────────────────────────────────────
 
 @router.post("/coding/upload")
@@ -75,8 +121,13 @@ async def upload_coding_file(file: UploadFile):
 class CodebookEntry(BaseModel):
     label: str
     type: str
-    definition: str
     coded_values: str = ""
+    level: str = "window"   # "window" (one value per unit) or "sender" (one per participant)
+
+
+class ContextItem(BaseModel):
+    column: str
+    description: str = ""
 
 
 class GenerateScriptRequest(BaseModel):
@@ -88,6 +139,12 @@ class GenerateScriptRequest(BaseModel):
     provider: str
     model: str = ""
     api_key: str
+    participants: list[str] = []
+    context: list[ContextItem] = []
+    identifier_columns: list[str] = []
+    identity_column: str | None = None
+    order_column: str | None = None
+    order_direction: str = "asc"
 
 
 @router.post("/coding/generate-script")
@@ -107,6 +164,12 @@ async def generate_script(req: GenerateScriptRequest):
         provider=req.provider,
         model=req.model,
         api_key=req.api_key,
+        participants=req.participants,
+        context=[c.model_dump() for c in req.context],
+        identifier_columns=req.identifier_columns,
+        identity_column=req.identity_column,
+        order_column=req.order_column,
+        order_direction=req.order_direction,
     )
 
     base_name = req.file_name.rsplit(".", 1)[0] if "." in req.file_name else req.file_name
@@ -163,7 +226,20 @@ async def ws_run_coding(ws: WebSocket):
             await ws.close()
             return
 
+        # Collapse rows into units by identifier combination (with optional
+        # sender-identity tagging + ordering) before coding.
+        df = _group_units(
+            df,
+            message_column=message_column,
+            identifier_columns=config.get("identifier_columns") or [],
+            identity_column=config.get("identity_column"),
+            order_column=config.get("order_column"),
+            order_direction=config.get("order_direction", "asc"),
+        )
+
         codebook = config.get("codebook", [])
+        participants = config.get("participants", []) or []
+        context = config.get("context", []) or []
         model_slots = config.get("model_slots", [])
         runs_per_model = config.get("runs_per_model", 1)
         aggregation = config.get("aggregation", "mode")
@@ -196,6 +272,8 @@ async def ws_run_coding(ws: WebSocket):
             experiment_instructions=config.get("experiment_instructions", ""),
             coding_instructions=config.get("coding_instructions", ""),
             codebook=codebook,
+            participants=participants,
+            context=context,
             model_slots=model_slots,
             runs_per_model=runs_per_model,
             empty_message_handling=config.get("empty_message_handling", ""), 
@@ -350,8 +428,8 @@ def _validate_config(req: GenerateScriptRequest):
             raise HTTPException(400, f"Codebook entry {i + 1}: label is required")
         if not entry.type.strip():
             raise HTTPException(400, f"Codebook entry {i + 1}: type is required")
-        if not entry.definition.strip():
-            raise HTTPException(400, f"Codebook entry {i + 1}: definition is required")
+        if entry.level == "sender" and not req.participants:
+            raise HTTPException(400, "Per-sender variables require a participant list")
 
     if not req.message_column.strip():
         raise HTTPException(400, "Message column is required")

@@ -1,69 +1,56 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
-import Instructions from "@/app/tools/HowToPage";
+import Instructions, { CODING_EXAMPLE_SINGLE, EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT } from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 
 const CODING_TOUR_STEPS: TourStep[] = [
-  // {
-  //   targetId: "coding-panel-1", panel: 1, title: "Coding Instructions & Codebook",
-  //   body: (<><p>Tell the model exactly how to apply the codebook. The key decision: <strong>single-label</strong> (one category per row) vs <strong>multi-label</strong> (mark every category that applies).</p><p>Define each category and how to treat empty messages.</p></>),
-  // },
-  // {
-  //   targetId: "coding-panel-2", panel: 2, title: "Experiment instructions",
-  //   body: (<p>Provide the complete instructions that participants received during the experiment. This should include all task details, roles, decisions, payoffs, communication rules, and any other information available to subjects. If participants received additional information beyond the written instructions (e.g., examples, clarifications, training materials, or on-screen prompts), include that as well so the model has the same information as the subjects. Missing context here is the most common cause of inconsistent coding.</p>),
-  // },
-  // {
-  //   targetId: "coding-panel-3", panel: 3, title: "Upload your dataset",
-  //   body: (<p> Upload a CSV or Excel file. Include an <strong>ID column(s)</strong> that uniquely
-  //   identifies each unit of text to be coded. This can be a row ID, session ID,
-  //   round ID, message ID, or any other unique identifier. If no single column is
-  //   unique, a combination of multiple columns (e.g., <code>session_id</code> +{" "}
-  //   <code>round</code>) can serve as the unique identifier. Also include the
-  //   column containing the text to code. <strong>Do not</strong> add columns for
-  //   the variables you want coded—you&apos;ll define those later in the Codebook. </p>),
-  // },
-  // {
-  //   targetId: "coding-panel-4", panel: 4, title: "Pick the column",
-  //   body: (<p>Choose the column containing the text (messages) to code.</p>),
-  // },
-  // {
-  //   targetId: "coding-panel-5", panel: 5, title: "Models & Aggregation",
-  //   body: (<p>Add one or more provider/model pairs, each with its own API key. Run each model multiple times and aggregate by majority vote (mode) or average (mean) to enable voting. Expand tuning to control temperature, top-p, max tokens, and system prompt per model.</p>),
-  // },
-  // {
-  //   targetId: "coding-run-bar", title: "Run it",
-  //   body: (<><p><strong>Script only</strong> downloads a ready-to-run Python script without calling any model.</p><p><strong>Run Coding</strong> validates your keys, streams results live, then flags out-of-range or failed rows so you can re-run just those.</p></>),
-  // },
+  // ── Section 1: Coding Instructions & Codebook ──
   {
-    targetId: "coding-panel-1", panel: 1, title: "Coding Instructions & Codebook",
-    body: (<p>Tell the model how to apply the codebook: <strong>single-label</strong> (one category per row) or <strong>multi-label</strong> (all that apply). Define each category and how to handle empty messages.</p>),
+    sectionId: "coding-panel-1", panel: 1, section: "Coding Instructions & Codebook", media: "/tour/codebook.svg",
+    targetId: "tour-coding-instructions", title: "Coding instructions", mediaBox: { x: 5, y: 14, w: 89, h: 21 },
+    body: (<p>Tell the model exactly how to apply the codebook — single-label (one category per row) or multi-label (all that apply). The example shown is the Promise / Empty Talk / No Message task.</p>),
   },
   {
-    targetId: "coding-panel-2", panel: 2, title: "Experiment Instructions",
-    body: (<p>Paste the full experiment instructions participants received — tasks, roles, payoffs, and communication rules. Include any extra context (examples, clarifications, on-screen prompts) that you also provided to participants.</p>),
+    sectionId: "coding-panel-1", panel: 1, section: "Coding Instructions & Codebook", media: "/tour/codebook.svg",
+    targetId: "tour-empty-handling", title: "Empty messages", mediaBox: { x: 5, y: 37, w: 46, h: 9 },
+    body: (<p>Choose what happens to rows with no text: <strong>flag as error</strong>, <strong>skip</strong>, or <strong>code as a value</strong>.</p>),
   },
   {
-    targetId: "coding-panel-3", panel: 3, title: "Upload your dataset",
-    body: (<p>Upload a CSV or Excel file with an <strong>ID column</strong> that uniquely
-  identifies each row or observation. This may be a single column (e.g. a row ID,
-  session ID, or message ID) or a combination of columns that together form a
-  unique key (e.g. <code>session_id</code> + <code>round</code>). Also include
-  the text column to code.</p>),
+    sectionId: "coding-panel-1", panel: 1, section: "Coding Instructions & Codebook", media: "/tour/codebook.svg",
+    targetId: "tour-codebook", title: "Codebook variables", mediaBox: { x: 5, y: 49, w: 89, h: 36 },
+    body: (<p>List each variable to code with its type, <strong>level</strong> (per window or per sender), and allowed values. Per-sender variables expand into one column per participant (e.g. <code>cooperation_P</code>).</p>),
+  },
+  // ── Section 2: Experiment Instructions ──
+  {
+    sectionId: "coding-panel-2", panel: 2, section: "Experiment Instructions", media: "/tour/experiment.svg",
+    title: "Experiment Instructions",
+    body: (<p>Paste the full instructions participants received — tasks, roles, payoffs, and communication rules — so the model has the same context they did.</p>),
+  },
+  // ── Section 3: Upload & map ──
+  {
+    sectionId: "coding-panel-3", panel: 3, section: "Upload & Map Dataset", media: "/tour/mapping.svg",
+    title: "Upload & map your dataset",
+    body: (<p>Upload a CSV/Excel file, then map your columns: tag the <strong>message</strong>, the <strong>identifier(s)</strong> that define each unit (or “each row is its own unit”), and optionally the <strong>sender</strong> and <strong>order</strong>. Rows sharing an identifier merge into one tagged unit.</p>),
+  },
+  // ── Section 4: Models & Aggregation ──
+  {
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Aggregation", media: "/tour/models.svg",
+    targetId: "tour-model-slots", title: "Models & API keys", mediaBox: { x: 5, y: 19, w: 89, h: 35 },
+    body: (<p>Add one or more provider + model + API key rows. Each runs independently.</p>),
   },
   {
-    targetId: "coding-panel-4", panel: 4, title: "Pick the column",
-    body: (<p>Select the column containing the text to code.</p>),
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Aggregation", media: "/tour/models.svg",
+    targetId: "tour-aggregation", title: "Runs & aggregation", mediaBox: { x: 5, y: 64, w: 89, h: 30 },
+    body: (<p>Run each model several times and aggregate by majority vote or average across all calls.</p>),
   },
+  // ── Run ──
   {
-    targetId: "coding-panel-5", panel: 5, title: "Models & Aggregation",
-    body: (<p>Add one or more model + API key pairs. Run each model multiple times and aggregate by majority vote or average. Expand tuning to adjust temperature, top-p, and max tokens per model.</p>),
-  },
-  {
-    targetId: "coding-run-bar", title: "Run it",
-    body: (<><p><strong>Script only</strong> downloads a ready-to-run Python script. <strong>Run Coding</strong> validates your keys, streams results live, and flags any out-of-range or failed rows for re-running.</p></>),
+    sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
+    title: "Run it",
+    body: (<p><strong>Script only</strong> downloads a ready-to-run Python script. <strong>Run Coding</strong> validates your keys, streams results live, and flags out-of-range or failed rows for re-running.</p>),
   },
 ];
 
@@ -73,8 +60,24 @@ const CODING_TOUR_STEPS: TourStep[] = [
 interface CodebookEntry {
   label: string;
   type: string;
-  definition: string;
   coded_values: string;
+  level: "window" | "sender";   // window = one value per unit; sender = one value per participant
+}
+
+interface ExpandedVar { key: string; type: string; coded_values: string; }
+
+// Sender-level variables expand into one output key per participant: "Var [P]".
+function expandCodebook(codebook: CodebookEntry[], participants: string[]): ExpandedVar[] {
+  const out: ExpandedVar[] = [];
+  for (const e of codebook) {
+    if (!e.label.trim()) continue;
+    if (e.level === "sender" && participants.length > 0) {
+      for (const p of participants) out.push({ key: `${e.label}_${p}`, type: e.type, coded_values: e.coded_values });
+    } else {
+      out.push({ key: e.label, type: e.type, coded_values: e.coded_values });
+    }
+  }
+  return out;
 }
 
 interface UploadResult {
@@ -83,6 +86,66 @@ interface UploadResult {
   columns: string[];
   row_count: number;
   preview: Record<string, unknown>[];
+}
+
+// Column-mapping picker
+type ColRole = "message" | "identifier" | "identity" | "order" | "context";
+const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string }> = {
+  message:    { label: "Message",         short: "MSG", color: "#2563eb", bg: "#dbeafe" },
+  identifier: { label: "Identifier",      short: "ID",  color: "#16a34a", bg: "#dcfce7" },
+  identity:   { label: "Sender identity", short: "WHO", color: "#d97706", bg: "#fef3c7" },
+  order:      { label: "Order / time",    short: "ORD", color: "#7c3aed", bg: "#ede9fe" },
+  context:    { label: "Context",         short: "CTX", color: "#db2777", bg: "#fce7f3" },
+};
+
+
+
+// Frontend mirror of the backend's _group_units: collapse rows sharing an
+// identifier combination into one unit, tagging messages by sender and ordering
+// them. Returns the original rows unchanged when no identifiers are chosen.
+function buildPreprocessedRows(
+  rows: Record<string, unknown>[],
+  columns: string[],
+  messageColumn: string,
+  identifierColumns: string[],
+  identityColumn: string,
+  orderColumn: string,
+  orderDirection: "asc" | "desc",
+): Record<string, unknown>[] {
+  const idCols = identifierColumns.filter((c) => columns.includes(c));
+  if (idCols.length === 0 || !messageColumn) return rows;
+
+  let work = rows.map((r, i) => ({ r, i }));
+  if (orderColumn && columns.includes(orderColumn)) {
+    const dir = orderDirection === "desc" ? -1 : 1;
+    work = [...work].sort((a, b) => {
+      const av = a.r[orderColumn], bv = b.r[orderColumn];
+      const an = Number(av), bn = Number(bv);
+      const cmp = (!Number.isNaN(an) && !Number.isNaN(bn) && av !== "" && bv !== "")
+        ? an - bn
+        : String(av ?? "").localeCompare(String(bv ?? ""));
+      return cmp !== 0 ? cmp * dir : a.i - b.i; // stable tiebreak on original order
+    });
+  }
+
+  const useIdentity = !!identityColumn && columns.includes(identityColumn);
+  const groups = new Map<string, Record<string, unknown>[]>();
+  const order: string[] = [];
+  for (const { r } of work) {
+    const key = idCols.map((c) => String(r[c] ?? "")).join(" ⋮ ");
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key)!.push(r);
+  }
+
+  return order.map((key) => {
+    const g = groups.get(key)!;
+    const parts = g.map((r) => {
+      const msg = r[messageColumn] == null ? "" : String(r[messageColumn]);
+      const who = r[identityColumn];
+      return useIdentity && who != null && String(who) !== "" ? `[${who}] ${msg}` : msg;
+    });
+    return { ...g[0], [messageColumn]: parts.join("\n") };
+  });
 }
 
 interface GenerateResult {
@@ -142,7 +205,7 @@ interface VariableMetrics {
 function checkRow(
   rowIndex: number,
   coded: Record<string, unknown>,
-  codebook: CodebookEntry[]
+  vars: ExpandedVar[]
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -151,21 +214,20 @@ function checkRow(
     return issues;
   }
 
-  for (const entry of codebook) {
-    if (!entry.label.trim()) continue;
-    const value = coded[entry.label];
+  for (const entry of vars) {
+    const value = coded[entry.key];
 
     if (entry.coded_values.trim()) {
       const allowed = entry.coded_values.split(",").map((v) => v.trim().toLowerCase());
       const actual = String(value ?? "").trim().toLowerCase();
       if (!allowed.includes(actual)) {
-        issues.push({ rowIndex, variable: entry.label, value, expected: entry.coded_values, issueType: "out_of_range" });
+        issues.push({ rowIndex, variable: entry.key, value, expected: entry.coded_values, issueType: "out_of_range" });
       }
     }
 
     if (entry.type === "numeric" && value != null && value !== "") {
       if (isNaN(Number(value))) {
-        issues.push({ rowIndex, variable: entry.label, value, expected: "numeric value", issueType: "not_numeric" });
+        issues.push({ rowIndex, variable: entry.key, value, expected: "numeric value", issueType: "not_numeric" });
       }
     }
   }
@@ -173,31 +235,11 @@ function checkRow(
   return issues;
 }
 
-function validateCodedRows(rows: CodedRow[], codebook: CodebookEntry[]): ValidationReport {
+function validateCodedRows(rows: CodedRow[], vars: ExpandedVar[]): ValidationReport {
   const issues: ValidationIssue[] = [];
 
   for (const row of rows) {
-    const enc = row.coded;
-
-    for (const entry of codebook) {
-      if (!entry.label.trim()) continue;
-      const value = enc[entry.label];
-
-      if (entry.coded_values.trim()) {
-        const allowed = entry.coded_values.split(",").map((v) => v.trim().toLowerCase());
-        const actual = String(value ?? "").trim().toLowerCase();
-        if (!allowed.includes(actual)) {
-          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: entry.coded_values, issueType: "out_of_range" });
-        }
-      }
-
-      if (entry.type === "numeric" && value != null && value !== "") {
-        if (isNaN(Number(value))) {
-          issues.push({ rowIndex: row.index, variable: entry.label, value, expected: "numeric value", issueType: "not_numeric" });
-        }
-      }
-    }
-    issues.push(...checkRow(row.index, row.coded, codebook));
+    issues.push(...checkRow(row.index, row.coded, vars));
   }
 
   const problematicIndices = [...new Set(issues.map((i) => i.rowIndex))];
@@ -234,17 +276,6 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
     ],
   },
   {
-    value: "anthropic", label: "Anthropic", models: [
-      { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
-      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-      { value: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" },
-      { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-      { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
-      { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
-      { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
-    ],
-  },
-  {
     value: "gemini", label: "Google (Gemini)", models: [
       { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
       { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (Preview)" },
@@ -260,36 +291,6 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
       { value: "deepseek-reasoner", label: "DeepSeek R1", noTemperature: true },
     ],
   },
-  {
-    value: "mistral", label: "Mistral", models: [
-      { value: "mistral-large-latest", label: "Mistral Large" },
-      { value: "mistral-small-latest", label: "Mistral Small" },
-      { value: "codestral-latest", label: "Codestral" },
-      { value: "ministral-8b-latest", label: "Ministral 8B" },
-      { value: "ministral-3b-latest", label: "Ministral 3B" },
-      { value: "pixtral-large-latest", label: "Pixtral Large" },
-      { value: "open-mistral-nemo", label: "Mistral Nemo" },
-      { value: "open-mixtral-8x22b", label: "Mixtral 8x22B" },
-    ],
-  },
-  {
-    value: "together", label: "Together AI", models: [
-      { value: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", label: "Llama 4 Maverick" },
-      { value: "meta-llama/Llama-4-Scout-17B-16E-Instruct", label: "Llama 4 Scout" },
-      { value: "meta-llama/Meta-Llama-3.3-70B-Instruct-Turbo", label: "Llama 3.3 70B" },
-      { value: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo", label: "Llama 3.1 405B" },
-      { value: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", label: "Llama 3.1 70B" },
-      { value: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", label: "Llama 3.1 8B" },
-      { value: "deepseek-ai/DeepSeek-R1", label: "DeepSeek R1 (via Together)", noTemperature: true },
-      { value: "deepseek-ai/DeepSeek-V3", label: "DeepSeek V3 (via Together)" },
-      { value: "Qwen/Qwen2.5-72B-Instruct-Turbo", label: "Qwen 2.5 72B" },
-      { value: "Qwen/QwQ-32B", label: "QwQ 32B" },
-      { value: "google/gemma-2-27b-it", label: "Gemma 2 27B" },
-      { value: "google/gemma-2-9b-it", label: "Gemma 2 9B" },
-      { value: "mistralai/Mixtral-8x22B-Instruct-v0.1", label: "Mixtral 8x22B" },
-      { value: "mistralai/Mistral-Small-24B-Instruct-2501", label: "Mistral Small 24B" },
-    ],
-  },
 ];
 
 const CODEBOOK_TYPES = [
@@ -300,7 +301,7 @@ const CODEBOOK_TYPES = [
   { value: "text", label: "Text" },
 ];
 
-const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", definition: "", coded_values: "" };
+const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", coded_values: "", level: "window" };
 
 // ── TagInput ──────────────────────────────────────────────────────────────────
 
@@ -371,7 +372,7 @@ const EMPTY_SLOT: ModelSlot = {
   model: "gpt-4.1-mini",
   apiKey: "",
   showKey: false,
-  tuningEnabled: false,
+  tuningEnabled: true,   // tuning is always on (no toggle); params always sent
   temperature: 0.2,
   topP: 1.0,
   maxTokens: 1024,
@@ -453,8 +454,11 @@ export default function Home() {
     else if (mode === "guide") { setActiveTool("instructions"); }
   };
 
-  const [splitPct, setSplitPct] = useState(45);
-  const isDragging = useRef(false);
+  // Layout mode for the config column: fill (settings take the page),
+  // side (settings as a sidebar next to results), hidden (results only).
+  const [layoutMode, setLayoutMode] = useState<"fill" | "side" | "hidden">("fill");
+  const collapseLayout = () => setLayoutMode((m) => (m === "fill" ? "side" : "hidden"));
+  const expandLayout = () => setLayoutMode((m) => (m === "hidden" ? "side" : "fill"));
 
   // File upload state
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -465,9 +469,27 @@ export default function Home() {
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
+
+  // Column mapping (full-screen picker)
+  const [identifierColumns, setIdentifierColumns] = useState<string[]>([]);
+  const [identityColumn, setIdentityColumn] = useState("");
+  const [orderColumn, setOrderColumn] = useState("");
+  const [orderDirection, setOrderDirection] = useState<"asc" | "desc">("asc");
+  const [contextColumns, setContextColumns] = useState<string[]>([]);
+  const [contextDescriptions, setContextDescriptions] = useState<Record<string, string>>({});
+  const [rowsAsUnits, setRowsAsUnits] = useState(false); // identifier = each row is its own unit
+  const [columnModalOpen, setColumnModalOpen] = useState(false);
+  const [activeRole, setActiveRole] = useState<ColRole>("message");
   const [experimentInstructions, setExperimentInstructions] = useState("");
   const [codingInstructions, setCodingInstructions] = useState("");
   const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);
+  const [participantsStr, setParticipantsStr] = useState("");
+  const participants = useMemo(
+    () => participantsStr.split(",").map((s) => s.trim()).filter(Boolean),
+    [participantsStr],
+  );
+  const hasSenderVar = codebook.some((e) => e.level === "sender" && e.label.trim());
+  const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
 
   // Row filter
   const [rowFilter, setRowFilter] = useState("");
@@ -514,7 +536,7 @@ export default function Home() {
   const [consoleLogs, setConsoleLogs] = useState<{ time: string; level: "info" | "warn" | "error"; msg: string }[]>([]);
   const consoleRef = useRef<HTMLDivElement>(null);
 
-  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"error" | "ignore" | "code">("ignore");
+  const [emptyMessageHandling, setEmptyMessageHandling] = useState<"ignore" | "code">("ignore");
   const [rightView, setRightView] = useState<"script" | "run">("script");
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
 
@@ -542,14 +564,14 @@ export default function Home() {
 
   const openAllPanels = () => {
     setSkipPanelAnim(true);
-    setOpenPanels(new Set([1, 2, 3, 4, 5]));
+    setOpenPanels(new Set([1, 2, 3, 4]));
   };
 
   useEffect(() => { codedRowsRef.current = codedRows; }, [codedRows]);
 
   useEffect(() => {
     if (runComplete && codedRowsRef.current.length > 0) {
-      const report = validateCodedRows(codedRowsRef.current, codebook);
+      const report = validateCodedRows(codedRowsRef.current, expandedVars);
       setValidationReport(report);
       if (report.problematicIndices.length === 0) {
         log("info", "Validation passed: all rows within expected ranges.");
@@ -567,6 +589,14 @@ export default function Home() {
     setUploadError("");
     setUploadResult(null);
     setMessageColumn("");
+    setIdentifierColumns([]);
+    setIdentityColumn("");
+    setOrderColumn("");
+    setOrderDirection("asc");
+    setContextColumns([]);
+    setContextDescriptions({});
+    setRowsAsUnits(false);
+    setActiveRole("message");
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -577,7 +607,8 @@ export default function Home() {
       }
       const data: UploadResult = await res.json();
       setUploadResult(data);
-      setOpenPanels((prev) => new Set([...prev, 4]));
+      setActiveRole("message");
+      setColumnModalOpen(true);
       showToast(`Uploaded ${data.file_name} (${data.row_count} rows)`);
     } catch (e: unknown) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
@@ -601,6 +632,62 @@ export default function Home() {
     if (file) handleUpload(file);
   };
 
+  // ── Column mapping picker ─────────────────────────────────────────────────
+
+  const roleOf = (col: string): ColRole | null =>
+    col === messageColumn ? "message"
+    : identifierColumns.includes(col) ? "identifier"
+    : col === identityColumn ? "identity"
+    : col === orderColumn ? "order"
+    : contextColumns.includes(col) ? "context"
+    : null;
+
+  // Assign the currently active role to a column (one column = one role).
+  const clickColumn = (col: string) => {
+    const current = roleOf(col);
+    // Strip the column out of every role first.
+    if (messageColumn === col) setMessageColumn("");
+    if (identityColumn === col) setIdentityColumn("");
+    if (orderColumn === col) setOrderColumn("");
+    setIdentifierColumns((prev) => prev.filter((c) => c !== col));
+    setContextColumns((prev) => prev.filter((c) => c !== col));
+
+    // Clicking with the same brush it already has → just clear it (toggle off).
+    if (current === activeRole) return;
+
+    if (activeRole === "message") setMessageColumn(col);
+    else if (activeRole === "identity") setIdentityColumn(col);
+    else if (activeRole === "order") setOrderColumn(col);
+    else if (activeRole === "identifier") { setIdentifierColumns((prev) => [...prev, col]); setRowsAsUnits(false); }
+    else if (activeRole === "context") setContextColumns((prev) => [...prev, col]);
+  };
+
+  // Final preprocessed rows (grouped + tagged), mirroring the backend.
+  const preprocessedRows = useMemo(
+    () => uploadResult
+      ? buildPreprocessedRows(uploadResult.preview, uploadResult.columns, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection)
+      : [],
+    [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection],
+  );
+  const isPreprocessed = identifierColumns.length > 0 && !!messageColumn;
+
+  const downloadPreprocessed = () => {
+    if (!uploadResult) return;
+    const cols = uploadResult.columns;
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [cols.map(esc).join(",")];
+    for (const row of preprocessedRows) lines.push(cols.map((c) => esc(row[c])).join(","));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const base = uploadResult.file_name.replace(/\.[^.]+$/, "");
+    a.href = url; a.download = `${base}_preprocessed.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Codebook management ───────────────────────────────────────────────────
 
   const updateCodebook = (idx: number, field: keyof CodebookEntry, value: string) => {
@@ -622,12 +709,34 @@ export default function Home() {
 
   // ── Script generation ─────────────────────────────────────────────────────
 
+  // Distinct sender names found in the chosen identity column.
+  const dataSenders = useMemo(() => {
+    if (!uploadResult || !identityColumn) return [] as string[];
+    const set = new Set<string>();
+    for (const r of uploadResult.preview) {
+      const v = String(r[identityColumn] ?? "").trim();
+      if (v) set.add(v);
+    }
+    return [...set];
+  }, [uploadResult, identityColumn]);
+  const unknownSenders = dataSenders.filter((s) => !participants.includes(s));
+  // When any variable is sender-level, the identity column must be mapped and every
+  // sender in the data must be declared in the codebook's participant list.
+  const sendersOk = !hasSenderVar || (!!identityColumn && participants.length > 0 && unknownSenders.length === 0);
+
+  // Mapping is complete once a message column is set and an identifier choice is made.
+  const mappingComplete =
+    !!messageColumn &&
+    (rowsAsUnits || identifierColumns.length > 0) &&
+    sendersOk;
+
   const canGenerate =
     uploadResult &&
-    messageColumn &&
+    mappingComplete &&
     experimentInstructions.trim() &&
     codingInstructions.trim() &&
-    codebook.every((e) => e.label.trim() && e.type && e.definition.trim()) &&
+    codebook.every((e) => e.label.trim() && e.type) &&
+    (!hasSenderVar || participants.length > 0) &&
     modelSlots.length > 0 &&
     modelSlots.every((s) => s.provider && s.model && s.apiKey.trim()) &&
     !rowFilterError;
@@ -638,6 +747,7 @@ export default function Home() {
     setGenerateError("");
     setResult(null);
     setRightView("script");
+    setLayoutMode((m) => (m === "fill" ? "side" : m));
     try {
       const res = await fetch("/api/coding/generate-script", {
         method: "POST",
@@ -645,10 +755,16 @@ export default function Home() {
         body: JSON.stringify({
           file_name: uploadResult.file_name,
           message_column: messageColumn,
+          identifier_columns: identifierColumns,
+          identity_column: identityColumn || null,
+          order_column: orderColumn || null,
+          order_direction: orderDirection,
           experiment_instructions: experimentInstructions,
           coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
           codebook,
+          participants,
+          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
           provider,
           model,
           api_key: apiKey,
@@ -685,26 +801,6 @@ export default function Home() {
     setTimeout(() => consoleRef.current?.scrollTo({ top: consoleRef.current.scrollHeight }), 50);
   };
 
-  const onDividerMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    const onMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      const layout = document.querySelector(".pipeline-layout");
-      if (!layout) return;
-      const rect = layout.getBoundingClientRect();
-      const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      setSplitPct(Math.min(Math.max(pct, 20), 80));
-    };
-    const onUp = () => {
-      isDragging.current = false;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
   // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
@@ -723,6 +819,7 @@ export default function Home() {
     setGenerateError("");
     setConsoleLogs([]);
     setRightView("run");
+    setLayoutMode((m) => (m === "fill" ? "side" : m));
 
     log("info", "Generating coding script...");
     try {
@@ -732,10 +829,16 @@ export default function Home() {
         body: JSON.stringify({
           file_name: uploadResult.file_name,
           message_column: messageColumn,
+          identifier_columns: identifierColumns,
+          identity_column: identityColumn || null,
+          order_column: orderColumn || null,
+          order_direction: orderDirection,
           experiment_instructions: experimentInstructions,
           coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
           codebook,
+          participants,
+          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
           provider,
           model,
           api_key: apiKey,
@@ -810,10 +913,16 @@ export default function Home() {
       ws.send(JSON.stringify({
         file_id: uploadResult.file_id,
         message_column: messageColumn,
+        identifier_columns: identifierColumns,
+        identity_column: identityColumn || null,
+        order_column: orderColumn || null,
+        order_direction: orderDirection,
         experiment_instructions: experimentInstructions,
         coding_instructions: codingInstructions,
         empty_message_handling: emptyMessageHandling,
         codebook,
+        participants,
+        context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
         model_slots: modelSlots.map(buildSlotPayload),
         runs_per_model: runsPerModel,
         aggregation,
@@ -828,7 +937,7 @@ export default function Home() {
         log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
       } else if (msg.type === "row") {
         setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
-        const issues = checkRow(msg.index, msg.coded, codebook);
+        const issues = checkRow(msg.index, msg.coded, expandedVars);
         for (const issue of issues) {
           const detail = issue.issueType === "api_error"
             ? `Row ${msg.index + 1}: ${issue.value}`
@@ -1002,9 +1111,15 @@ export default function Home() {
       ws.send(JSON.stringify({
         file_id: uploadResult.file_id,
         message_column: messageColumn,
+        identifier_columns: identifierColumns,
+        identity_column: identityColumn || null,
+        order_column: orderColumn || null,
+        order_direction: orderDirection,
         experiment_instructions: experimentInstructions,
         coding_instructions: codingInstructions,
         codebook,
+        participants,
+        context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
         model_slots: modelSlots.map(buildSlotPayload),
         runs_per_model: runsPerModel,
         aggregation,
@@ -1025,7 +1140,7 @@ export default function Home() {
         } else {
           setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
         }
-        const issues = checkRow(msg.index, msg.coded, codebook);
+        const issues = checkRow(msg.index, msg.coded, expandedVars);
         for (const issue of issues) {
           const detail = issue.issueType === "api_error"
             ? `Row ${msg.index + 1}: ${issue.value}`
@@ -1065,7 +1180,7 @@ export default function Home() {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
     setMessageColumn(""); setExperimentInstructions(""); setCodingInstructions("");
-    setCodebook([{ ...EMPTY_ENTRY }]); setRowFilter(""); setRowFilterError("");
+    setCodebook([{ ...EMPTY_ENTRY }]); setParticipantsStr(""); setRowFilter(""); setRowFilterError("");
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1); setAggregation("mode");
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
@@ -1116,7 +1231,7 @@ export default function Home() {
 
   // ── Derived values ────────────────────────────────────────────────────────
 
-  const codebookLabels = codebook.filter((e) => e.label.trim()).map((e) => e.label);
+  const codebookLabels = expandedVars.map((v) => v.key);
   const visibleRows = codedRows.slice(-5);
   const parsedFilter = uploadResult ? parseRowFilter(rowFilter, uploadResult.row_count) : { indices: [], error: "" };
   const filterActive = rowFilter.trim() !== "" && !parsedFilter.error;
@@ -1179,9 +1294,16 @@ export default function Home() {
               <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">?</button>
             </div>
 
-            <div className="pipeline-layout split" style={{ display: "flex", gap: 0 }}>
+            <div className={`pipeline-layout split layout-${layoutMode}`} style={{ display: "flex", gap: 0 }}>
               {/* ── Left: Config Column ── */}
-              <div className="config-col" style={{ width: `${splitPct}%`, minWidth: 0 }}>
+              <div
+                className="config-col"
+                style={{
+                  width: tourOpen ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
+                  minWidth: 0,
+                  borderRight: layoutMode === "hidden" && !tourOpen ? "none" : undefined,
+                }}
+              >
                 <div className="config-scroll">
 
                   {/* Panel 1: Coding Instructions & Codebook */}
@@ -1199,36 +1321,35 @@ export default function Home() {
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="f">
+                      <div className="f" id="tour-coding-instructions">
                         <label>Describe how coding should be performed</label>
                         <textarea
-                          rows={5}
+                          className="ta-fit"
+                          rows={16}
                           value={codingInstructions}
                           onChange={(e) => setCodingInstructions(e.target.value)}
-                          placeholder="E.g., Read each message carefully. Classify the tone, intent, and strategy used by the sender..."
+                          placeholder={CODING_EXAMPLE_SINGLE}
                         />
-                        <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row.</p>
+                        <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
                       </div>
-                      <div className="f" style={{ marginTop: 12 }}>
+                      <div className="f" id="tour-empty-handling" style={{ marginTop: 12 }}>
                         <label>Empty message handling</label>
-                        <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "error" | "ignore" | "code")}>
-                          <option value="error">Flag as error</option>
+                        <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "ignore" | "code")}>
                           <option value="ignore">Ignore (skip row)</option>
                           <option value="code">Code as value</option>
                         </select>
                         <p className="hint">
                           {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
                           {emptyMessageHandling === "code" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
-                          {emptyMessageHandling === "error" && "Empty rows will be flagged with an error in the output."}
                         </p>
                       </div>
-                      <div className="f" style={{ marginTop: 12 }}>
+                      <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
                         <label>Codebook</label>
                         <div className="table-wrap table-clickable" onClick={() => setExpandedTable("codebook")} title="Click to expand">
                           <table className="tbl editable">
                             <thead>
                               <tr>
-                                <th>Label</th><th>Type</th><th>Definition</th><th>Coded Values</th><th className="th-narrow" />
+                                <th>Label</th><th>Type</th><th>Level</th><th>Coded Values</th><th className="th-narrow" />
                               </tr>
                             </thead>
                             <tbody>
@@ -1240,7 +1361,12 @@ export default function Home() {
                                       {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                                     </select>
                                   </td>
-                                  <td><input type="text" value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures" /></td>
+                                  <td>
+                                    <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
+                                      <option value="window">Per window</option>
+                                      <option value="sender">Per sender</option>
+                                    </select>
+                                  </td>
                                   <td>
                                     <TagInput value={entry.coded_values} onChange={(v) => updateCodebook(idx, "coded_values", v)} type={entry.type} />
                                   </td>
@@ -1256,6 +1382,14 @@ export default function Home() {
                         <p className="hint mt-8">
                           <code>binary</code>: 0/1 · <code>categorical</code>: named categories · <code>ordinal</code>: ordered scale · <code>numeric</code>: number · <code>text</code>: free text
                         </p>
+                        <p className="hint">Define what each variable means in the <strong>coding instructions</strong> above. <strong>Per window</strong> = one value for the whole unit; <strong>per sender</strong> = one value for each participant.</p>
+                        {hasSenderVar && (
+                          <div className="f participants-block">
+                            <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
+                            <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
+                            <p className="hint">Sender-level variables are coded once per participant. These names must match the values in your sender-identity column.</p>
+                          </div>
+                        )}
                       </div>
                     </div></div></div>
                   </div>
@@ -1275,12 +1409,13 @@ export default function Home() {
                       <div className="f">
                         <label>Describe the experiment context</label>
                         <textarea
-                          rows={5}
+                          className="ta-fit"
+                          rows={16}
                           value={experimentInstructions}
                           onChange={(e) => setExperimentInstructions(e.target.value)}
-                          placeholder="E.g., This dataset contains negotiation transcripts between pairs of participants. Each row is one message in a conversation..."
+                          placeholder={EXAMPLE_INSTRUCTIONS}
                         />
-                        <p className="hint">Provide context about what the data represents and the research goals.</p>
+                        <p className="hint">Provide context about what the data represents and the research goals. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
                       </div>
                     </div></div></div>
                   </div>
@@ -1322,9 +1457,33 @@ export default function Home() {
                             {uploadResult.file_name}
                             <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
                           </div>
-                          <div className="table-wrap table-clickable" onClick={() => setExpandedTable("preview")} title="Click to expand">
+                          {/* Mapping recap + open the highlighting popup */}
+                          <div className="colmap-recap">
+                            <div className="colmap-recap-roles">
+                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.message.color }} />Message: <b>{messageColumn || "—"}</b></span>
+                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identifier.color }} />Identifier: <b>{rowsAsUnits ? "each row = unit" : (identifierColumns.join(" + ") || "—")}</b></span>
+                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identity.color }} />Sender: <b>{identityColumn || "none"}</b></span>
+                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.order.color }} />Order: <b>{orderColumn ? `${orderColumn} (${orderDirection})` : "file order"}</b></span>
+                            </div>
+                            <div className="colmap-recap-foot">
+                              <button className="btn btn-outline btn-sm" onClick={() => setColumnModalOpen(true)}>
+                                {messageColumn ? "Edit column mapping" : "Map columns"}
+                              </button>
+                              {!mappingComplete && <span className="recap-warn">⚠ Mapping incomplete — finish it to continue.</span>}
+                            </div>
+                          </div>
+
+                          {/* Original table */}
+                          <div className="ds-table-label">
+                            <span className="ds-badge ds-badge-orig">Original</span>
+                            <span className="ds-table-cap">As uploaded — {uploadResult.row_count} rows</span>
+                          </div>
+                          <div className="table-wrap table-mini table-clickable" onClick={() => setExpandedTable("preview")} title="Click to expand">
                             <table className="tbl tbl-compact">
-                              <thead><tr>{uploadResult.columns.map((col) => <th key={col}>{col}</th>)}</tr></thead>
+                              <thead><tr>{uploadResult.columns.map((col) => {
+                                const role = roleOf(col);
+                                return <th key={col} style={role ? { borderTop: `3px solid ${ROLE_META[role].color}` } : undefined}>{col}</th>;
+                              })}</tr></thead>
                               <tbody>
                                 {uploadResult.preview.slice(0, 5).map((row, i) => (
                                   <tr key={i}>{uploadResult.columns.map((col) => <td key={col} className="mono">{String(row[col] ?? "")}</td>)}</tr>
@@ -1333,42 +1492,37 @@ export default function Home() {
                             </table>
                             {uploadResult.preview.length > 5 && <div className="table-more">Click to see all {uploadResult.preview.length} rows</div>}
                           </div>
+
+                          {isPreprocessed && (
+                            <div className="mt-12">
+                              <div className="ds-table-label">
+                                <span className="ds-badge ds-badge-final">Preprocessed</span>
+                                <span className="ds-table-cap">What the models will code — {preprocessedRows.length} merged unit{preprocessedRows.length !== 1 ? "s" : ""}</span>
+                                <button className="btn btn-ghost btn-xs ds-dl-btn" onClick={downloadPreprocessed}>↓ Download CSV</button>
+                              </div>
+                              <div className="table-wrap table-mini">
+                                <table className="tbl tbl-compact">
+                                  <thead><tr>{uploadResult.columns.map((col) => <th key={col} className={col === messageColumn ? "col-msg" : ""}>{col}</th>)}</tr></thead>
+                                  <tbody>
+                                    {preprocessedRows.slice(0, 5).map((row, i) => (
+                                      <tr key={i}>{uploadResult.columns.map((col) => <td key={col} className="mono ds-pre-cell">{String(row[col] ?? "")}</td>)}</tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                {preprocessedRows.length > 5 && <div className="table-more">{preprocessedRows.length} units total</div>}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div></div></div>
                   </div>
 
-                  {/* Panel 4: Column */}
+                  {/* Panel 4: Models & Aggregation */}
                   <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(4)}>
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
-                        <span className="panel-label">Select Column</span>
-                        <HelpTip text="Pick the column with the text to code." />
-                        {messageColumn && <span className="tag">{messageColumn}</span>}
-                      </div>
-                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-                    </button>
-                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      {uploadResult ? (
-                        <div className="f">
-                          <label>Select the column containing the text to code</label>
-                          <select value={messageColumn} onChange={(e) => setMessageColumn(e.target.value)}>
-                            <option value="">— Choose column —</option>
-                            {uploadResult.columns.map((col) => <option key={col} value={col}>{col}</option>)}
-                          </select>
-                        </div>
-                      ) : (
-                        <p className="hint">Upload a file first to see available columns.</p>
-                      )}
-                    </div></div></div>
-                  </div>
-
-                  {/* Panel 5: Models & Aggregation */}
-                  <div id="coding-panel-5" className={`panel ${openPanels.has(5) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(5)}>
-                      <div className="panel-head-left">
-                        <span className="step-badge">5</span>
                         <span className="panel-label">Models &amp; Aggregation</span>
                         <HelpTip text="Add model + API key pairs. Expand tuning to set temperature, top-p, and max tokens per model." />
                         <span className="tag">
@@ -1379,7 +1533,7 @@ export default function Home() {
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
 
-                      <div className="model-slots">
+                      <div className="model-slots" id="tour-model-slots">
                         {modelSlots.map((slot, idx) => {
                           const provInfo = PROVIDERS.find((p) => p.value === slot.provider);
                           const modelInfo = provInfo?.models.find((m) => m.value === slot.model);
@@ -1391,24 +1545,13 @@ export default function Home() {
                                 <span className="slot-num">{idx + 1}</span>
                                 <span className="slot-title">{provInfo?.label ?? slot.provider} — {modelInfo?.label ?? slot.model}</span>
                                 <div className="flex-1" />
-                                <button
-                                  className={`btn btn-ghost btn-xs slot-tune-toggle${slot.tuningEnabled ? " active" : ""}`}
-                                  onClick={() => updateSlot(idx, { tuningEnabled: !slot.tuningEnabled })}
-                                  title={slot.tuningEnabled ? "Hide tuning" : "Show tuning"}
-                                  type="button"
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}>
-                                    <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14" />
-                                  </svg>
-                                  {slot.tuningEnabled ? "Tuning on" : "Tuning off"}
-                                </button>
                                 {modelSlots.length > 1 && (
                                   <button className="row-rm" onClick={() => setModelSlots((prev) => prev.filter((_, i) => i !== idx))} title="Remove model">×</button>
                                 )}
                               </div>
 
                               <div className="slot-body">
-                                <div className="fg cols-3">
+                                <div className="slot-fields">
                                   <div className="f">
                                     <label>Provider</label>
                                     <select
@@ -1453,75 +1596,40 @@ export default function Home() {
                                   </div>
                                 </div>
 
-                                {slot.tuningEnabled && (
-                                  <div className="slot-tuning">
-                                    <div className="f">
-                                      <label>Model tuning</label>
+                                <div className="slot-tuning">
+                                  {noTemp && (
+                                    <div className="slot-tuning-warn">This model ignores temperature — the parameter will not be sent.</div>
+                                  )}
+                                  <div className="tuning-params-grid">
+                                    <div className="tuning-param">
+                                      <div className="tuning-param-header">
+                                        <label className={noTemp ? "text-muted" : ""}>Temperature</label>
+                                        <span className={`tuning-param-val${noTemp ? " text-muted" : ""}`}>{noTemp ? "N/A" : (slot.temperature ?? 0.2).toFixed(2)}</span>
+                                      </div>
+                                      <input type="range" min={0} max={2} step={0.05} value={slot.temperature ?? 0.2} disabled={noTemp}
+                                        onChange={(e) => updateSlot(idx, { temperature: parseFloat(e.target.value) })} className={noTemp ? "range-disabled" : ""} />
+                                      <div className="tuning-param-bounds"><span>0</span><span>2</span></div>
                                     </div>
-                                    {noTemp && (
-                                      <div className="slot-tuning-warn">
-                                        This model ignores temperature — the parameter will not be sent.
+                                    <div className="tuning-param">
+                                      <div className="tuning-param-header">
+                                        <label>Top-p</label>
+                                        <span className="tuning-param-val">{(slot.topP ?? 1.0).toFixed(2)}</span>
                                       </div>
-                                    )}
-                                    {slot.provider === "openai" && (
-                                      <div className="slot-tuning-note">
-                                        OpenAI recommends altering only one of temperature or top-p at a time.
+                                      <input type="range" min={0} max={1} step={0.05} value={slot.topP ?? 1.0}
+                                        onChange={(e) => updateSlot(idx, { topP: parseFloat(e.target.value) })} />
+                                      <div className="tuning-param-bounds"><span>0</span><span>1</span></div>
+                                    </div>
+                                    <div className="tuning-param">
+                                      <div className="tuning-param-header">
+                                        <label>Max tokens</label>
+                                        <span className="tuning-param-val">{slot.maxTokens ?? 1024}</span>
                                       </div>
-                                    )}
-                                    <div className="tuning-params-grid">
-                                      <div className="tuning-param">
-                                        <div className="tuning-param-header">
-                                          <label className={noTemp ? "text-muted" : ""}>Temperature</label>
-                                          <span className={`tuning-param-val${noTemp ? " text-muted" : ""}`}>
-                                            {noTemp ? "N/A" : (slot.temperature ?? 0.2).toFixed(2)}
-                                          </span>
-                                        </div>
-                                        <input
-                                          type="range"
-                                          min={0} max={2} step={0.05}
-                                          value={slot.temperature ?? 0.2}
-                                          disabled={noTemp}
-                                          onChange={(e) => updateSlot(idx, { temperature: parseFloat(e.target.value) })}
-                                          className={noTemp ? "range-disabled" : ""}
-                                        />
-                                        <div className="tuning-param-bounds">
-                                          <span>0</span><span>2</span>
-                                        </div>
-                                      </div>
-                                      <div className="tuning-param">
-                                        <div className="tuning-param-header">
-                                          <label>Top-p</label>
-                                          <span className="tuning-param-val">{(slot.topP ?? 1.0).toFixed(2)}</span>
-                                        </div>
-                                        <input
-                                          type="range"
-                                          min={0} max={1} step={0.05}
-                                          value={slot.topP ?? 1.0}
-                                          onChange={(e) => updateSlot(idx, { topP: parseFloat(e.target.value) })}
-                                        />
-                                        <div className="tuning-param-bounds">
-                                          <span>0</span><span>1</span>
-                                        </div>
-                                      </div>
-                                      <div className="tuning-param">
-                                        <div className="tuning-param-header">
-                                          <label>Max tokens</label>
-                                          <span className="tuning-param-val">{slot.maxTokens ?? 1024}</span>
-                                        </div>
-                                        <input
-                                          type="number"
-                                          min={64} max={8192} step={64}
-                                          value={slot.maxTokens ?? 1024}
-                                          onChange={(e) => updateSlot(idx, { maxTokens: parseInt(e.target.value, 10) })}
-                                          className="tuning-tokens-input"
-                                        />
-                                        <div className="tuning-param-bounds">
-                                          <span>64</span><span>8192</span>
-                                        </div>
-                                      </div>
+                                      <input type="number" min={64} max={8192} step={64} value={slot.maxTokens ?? 1024}
+                                        onChange={(e) => updateSlot(idx, { maxTokens: parseInt(e.target.value, 10) })} className="tuning-tokens-input" />
+                                      <div className="tuning-param-bounds"><span>64</span><span>8192</span></div>
                                     </div>
                                   </div>
-                                )}
+                                </div>
                               </div>
                             </div>
                           );
@@ -1535,7 +1643,7 @@ export default function Home() {
                         + Add Model
                       </button>
 
-                      <div className="enc-voting-settings">
+                      <div className="enc-voting-settings" id="tour-aggregation">
                         <div className="enc-voting-row">
                           <div className="f voting-runs">
                             <label>Runs per model <span className="fv">{runsPerModel}×</span></label>
@@ -1584,23 +1692,25 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              {/* Draggable divider */}
-              <div
-                className="split-divider"
-                onMouseDown={onDividerMouseDown}
-                style={{
-                  width: 6,
-                  flexShrink: 0,
-                  cursor: "col-resize",
-                  background: "var(--border)",
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = "var(--accent)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "var(--border)")}
-              />
+              {/* Layout toggle rail — left collapses, right expands */}
+              <div className="layout-rail" style={tourOpen ? { display: "none" } : undefined}>
+                <div className="layout-rail-btns">
+                  {layoutMode !== "hidden" && (
+                    <button className="layout-arrow" onClick={collapseLayout} title={layoutMode === "fill" ? "Settings to the side" : "Hide settings"} aria-label="Collapse settings">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4L6 8l4 4" /></svg>
+                    </button>
+                  )}
+                  {layoutMode !== "fill" && (
+                    <button className="layout-arrow" onClick={expandLayout} title={layoutMode === "hidden" ? "Show settings" : "Expand settings"} aria-label="Expand settings">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4l4 4-4 4" /></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
 
               {/* ── Right: Results Column ── */}
               <div className="results-col" style={{ flex: 1, minWidth: 0 }}>
+                {layoutMode !== "fill" && (<>
                 {(result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
                   <div className="tab-strip tab-strip-gap">
                     <button className={`tab ${rightView === "run" ? "active" : ""}`} onClick={() => setRightView("run")}>
@@ -1789,6 +1899,7 @@ export default function Home() {
                     <span className="text-sm">Configure the left panel, then press Script Only</span>
                   </div>
                 ) : null}
+                </>)}
               </div>
             </div>
           </div>
@@ -2032,6 +2143,159 @@ export default function Home() {
         </main>
       </div>
 
+      {/* Column-mapping popup: square role tabs → verify → proceed */}
+      {columnModalOpen && uploadResult && (() => {
+        const assignedFor = (role: ColRole): string[] =>
+          role === "message" ? (messageColumn ? [messageColumn] : [])
+          : role === "identifier" ? identifierColumns
+          : role === "identity" ? (identityColumn ? [identityColumn] : [])
+          : (orderColumn ? [orderColumn] : []);
+        return (
+          <div className="colmap-overlay">
+            <div className="colmap-modal">
+              <div className="colmap-head">
+                <div>
+                  <h2 className="colmap-title">Map your columns</h2>
+                  <p className="colmap-sub">Pick a role, click the columns to tag them, verify the identifiers, then proceed.</p>
+                </div>
+                <button className="modal-close" onClick={() => setColumnModalOpen(false)} title="Close (you can finish mapping later)">✕</button>
+              </div>
+
+              {/* Square role tabs */}
+              <div className="colmap-roles-bar">
+                {(Object.keys(ROLE_META) as ColRole[]).map((role) => {
+                  const meta = ROLE_META[role];
+                  const assigned = role === "identifier" && rowsAsUnits ? ["each row = unit"] : assignedFor(role);
+                  const optional = role !== "message" && role !== "identifier";
+                  return (
+                    <button key={role} className={`role-brush ${activeRole === role ? "active" : ""}`}
+                      style={activeRole === role ? { borderColor: meta.color, background: meta.bg } : undefined}
+                      onClick={() => setActiveRole(role)}>
+                      <span className="role-dot" style={{ background: meta.color }} />
+                      <span className="role-brush-text">
+                        <span className="role-brush-name">{meta.label}{optional ? <span className="role-brush-opt"> · optional</span> : <span className="colmap-req">*</span>}</span>
+                        <span className="role-brush-val">{assigned.length ? assigned.join(", ") : "click columns to tag"}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Contextual control for the active role */}
+              {activeRole === "identifier" ? (
+                <div>
+                  <div className="colmap-idmode">
+                    <button className={`idmode-pill ${!rowsAsUnits ? "on" : ""}`} onClick={() => setRowsAsUnits(false)}>Group rows by column(s)</button>
+                    <button className={`idmode-pill ${rowsAsUnits ? "on" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>Each row is its own unit</button>
+                  </div>
+                  {!rowsAsUnits && (
+                    <p className="colmap-autoid">Tag the column(s) that define one unit — e.g. session + round. Rows sharing the same combination are merged into one unit.</p>
+                  )}
+                </div>
+              ) : activeRole === "order" && orderColumn ? (
+                <div className="colmap-order-dir">
+                  <span>Order messages by <b>{orderColumn}</b>:</span>
+                  <div className="seg">
+                    <button className={orderDirection === "asc" ? "on" : ""} onClick={() => setOrderDirection("asc")}>Ascending</button>
+                    <button className={orderDirection === "desc" ? "on" : ""} onClick={() => setOrderDirection("desc")}>Descending</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="colmap-current">
+                  <span className="role-dot" style={{ background: ROLE_META[activeRole].color }} />
+                  <span className="colmap-current-txt">Click a column header below to tag it as <b>{ROLE_META[activeRole].label}</b>.</span>
+                </div>
+              )}
+
+              {/* Clickable preview = highlight columns */}
+              <div className="colmap-table-wrap">
+                <table className="colmap-table">
+                  <thead><tr>
+                    <th className="colmap-rownum">#</th>
+                    {uploadResult.columns.map((col) => {
+                      const role = roleOf(col);
+                      const meta = role ? ROLE_META[role] : null;
+                      return (
+                        <th key={col} className={`colmap-col ${role ? "assigned" : ""}`}
+                          style={meta ? { borderTopColor: meta.color, background: meta.bg } : undefined}
+                          onClick={() => clickColumn(col)} title={`Click to tag as ${ROLE_META[activeRole].label}`}>
+                          <span className="colmap-col-name">{col}</span>
+                          {meta && <span className="colmap-col-badge" style={{ background: meta.color }}>{meta.short}</span>}
+                        </th>
+                      );
+                    })}
+                  </tr></thead>
+                  <tbody>
+                    {uploadResult.preview.slice(0, 8).map((row, i) => (
+                      <tr key={i}>
+                        <td className="colmap-rownum">{i + 1}</td>
+                        {uploadResult.columns.map((col) => {
+                          const role = roleOf(col);
+                          const meta = role ? ROLE_META[role] : null;
+                          return (
+                            <td key={col} className={`colmap-cell ${role ? "assigned" : ""}`}
+                              style={meta ? { background: meta.bg } : undefined} onClick={() => clickColumn(col)}>
+                              {String(row[col] ?? "")}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {uploadResult.preview.length > 8 && <div className="colmap-more">Showing 8 of {uploadResult.preview.length} rows</div>}
+              </div>
+
+              {/* Context column descriptions */}
+              {contextColumns.length > 0 && (
+                <div className="colmap-context">
+                  <div className="colmap-context-head">Context for the model — describe what each tagged column&apos;s values mean</div>
+                  {contextColumns.map((col) => (
+                    <div className="f colmap-context-row" key={col}>
+                      <label><span className="role-dot" style={{ background: ROLE_META.context.color }} /> {col}</label>
+                      <textarea
+                        rows={2}
+                        value={contextDescriptions[col] ?? ""}
+                        onChange={(e) => setContextDescriptions((prev) => ({ ...prev, [col]: e.target.value }))}
+                        placeholder={`e.g. ${col} is the chat channel — p-v1 = private chat between P and V1, public = all players, …`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sender-name verification (for per-sender variables) */}
+              {hasSenderVar && (
+                <div className={`colmap-verify-result ${sendersOk ? "ok" : "warn"}`} style={{ margin: 0 }}>
+                  {!identityColumn ? (
+                    <p><b>⚠ Sender column needed.</b> You defined a per-sender variable — tag a <b>Sender identity</b> column so each sender can be matched.</p>
+                  ) : participants.length === 0 ? (
+                    <p><b>⚠ No participants declared.</b> Add participant names in the codebook (Coding Instructions &amp; Codebook → Participants).</p>
+                  ) : sendersOk ? (
+                    <p><b>✓ Senders match.</b> Every sender in <b>{identityColumn}</b> ({dataSenders.join(", ")}) is a declared participant.</p>
+                  ) : (
+                    <p><b>⚠ Unknown senders.</b> These appear in <b>{identityColumn}</b> but aren&apos;t declared participants: <b>{unknownSenders.join(", ")}</b>. Add them to the codebook participants (or fix the data).</p>
+                  )}
+                </div>
+              )}
+
+              {/* Proceed */}
+              <div className="colmap-foot">
+                <span className="hint" style={{ margin: 0 }}>
+                  {mappingComplete
+                    ? "Mapping complete."
+                    : !messageColumn ? "Tag a Message column to continue."
+                    : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own unit”)."
+                    : !sendersOk ? "Resolve the sender-name match above to continue."
+                    : ""}
+                </span>
+                <button className="btn btn-primary" disabled={!mappingComplete} onClick={() => setColumnModalOpen(false)}>Proceed</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Fullscreen table modal */}
       {expandedTable && (
         <div className="modal-overlay" onClick={() => setExpandedTable(null)}>
@@ -2058,7 +2322,7 @@ export default function Home() {
               {expandedTable === "codebook" && (
                 <>
                   <table className="tbl editable">
-                    <thead><tr><th className="col-label">Label</th><th className="col-type">Type</th><th className="col-def">Definition</th><th className="col-values">Coded Values</th><th className="th-narrow" /></tr></thead>
+                    <thead><tr><th className="col-label">Label</th><th className="col-type">Type</th><th className="col-type">Level</th><th className="col-values">Coded Values</th><th className="th-narrow" /></tr></thead>
                     <tbody>
                       {codebook.map((entry, idx) => (
                         <tr key={idx}>
@@ -2068,7 +2332,12 @@ export default function Home() {
                               {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                           </td>
-                          <td><textarea rows={3} value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures" className="cb-def-textarea" /></td>
+                          <td>
+                            <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
+                              <option value="window">Per window</option>
+                              <option value="sender">Per sender</option>
+                            </select>
+                          </td>
                           <td><TagInput value={entry.coded_values} onChange={(v) => updateCodebook(idx, "coded_values", v)} type={entry.type} /></td>
                           <td><button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove row" disabled={codebook.length <= 1}>×</button></td>
                         </tr>
@@ -2076,6 +2345,13 @@ export default function Home() {
                     </tbody>
                   </table>
                   <div className="mt-8"><button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>+ Add Variable</button></div>
+                  {hasSenderVar && (
+                    <div className="f participants-block mt-12">
+                      <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
+                      <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
+                      <p className="hint">Per-sender variables are coded once for each participant. These names must match the values in your sender-identity column.</p>
+                    </div>
+                  )}
                 </>
               )}
               {expandedTable === "live" && codedRows.length > 0 && (

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="360" viewBox="0 0 560 360" font-family="Inter, -apple-system, Segoe UI, sans-serif">
+  <rect width="560" height="360" fill="#f5f6f8"/>
+  <rect x="16" y="16" width="528" height="328" rx="10" fill="#ffffff" stroke="#e3e5ea"/>
+  <text x="32" y="42" fill="#1b1f27" font-size="14" font-weight="700">Map your columns</text>
+  <text x="32" y="60" fill="#5f6577" font-size="11">Pick a role, click the columns to tag them, verify, then proceed.</text>
+  <!-- role tabs -->
+  <g>
+    <rect x="32" y="72" width="118" height="40" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <circle cx="48" cy="92" r="5" fill="#2563eb"/><text x="60" y="89" fill="#1b1f27" font-size="11" font-weight="600">Message *</text><text x="60" y="103" fill="#5f6577" font-size="9.5">Message</text>
+    <rect x="156" y="72" width="118" height="40" rx="6" fill="#fff" stroke="#e3e5ea"/>
+    <circle cx="172" cy="92" r="5" fill="#16a34a"/><text x="184" y="89" fill="#1b1f27" font-size="11" font-weight="600">Identifier *</text><text x="184" y="103" fill="#5f6577" font-size="9.5">Sess, ID</text>
+    <rect x="280" y="72" width="118" height="40" rx="6" fill="#fff" stroke="#e3e5ea"/>
+    <circle cx="296" cy="92" r="5" fill="#d97706"/><text x="308" y="89" fill="#1b1f27" font-size="11" font-weight="600">Sender</text><text x="308" y="103" fill="#5f6577" font-size="9.5">— optional</text>
+    <rect x="404" y="72" width="118" height="40" rx="6" fill="#fff" stroke="#e3e5ea"/>
+    <circle cx="420" cy="92" r="5" fill="#7c3aed"/><text x="432" y="89" fill="#1b1f27" font-size="11" font-weight="600">Order</text><text x="432" y="103" fill="#5f6577" font-size="9.5">— optional</text>
+  </g>
+  <!-- table -->
+  <rect x="32" y="126" width="496" height="150" rx="6" fill="#fff" stroke="#e3e5ea"/>
+  <!-- header cells with role tints -->
+  <rect x="32" y="126" width="58" height="26" fill="#dcfce7"/><text x="61" y="143" text-anchor="middle" fill="#166534" font-size="10.5" font-weight="700">Sess</text>
+  <rect x="90" y="126" width="48" height="26" fill="#dcfce7"/><text x="114" y="143" text-anchor="middle" fill="#166534" font-size="10.5" font-weight="700">ID</text>
+  <rect x="138" y="126" width="286" height="26" fill="#dbeafe"/><text x="150" y="143" fill="#1e3a8a" font-size="10.5" font-weight="700">Message</text>
+  <rect x="424" y="126" width="48" height="26" fill="#f5f6f8"/><text x="448" y="143" text-anchor="middle" fill="#5f6577" font-size="10.5" font-weight="700">Class</text>
+  <rect x="472" y="126" width="56" height="26" fill="#f5f6f8"/><text x="500" y="143" text-anchor="middle" fill="#5f6577" font-size="10.5" font-weight="700">A · B</text>
+  <line x1="32" y1="152" x2="528" y2="152" stroke="#edeef1"/>
+  <!-- rows -->
+  <text x="61" y="170" text-anchor="middle" fill="#5f6577" font-size="10.5">1</text>
+  <text x="114" y="170" text-anchor="middle" fill="#5f6577" font-size="10.5">1</text>
+  <text x="150" y="170" fill="#1b1f27" font-size="10.5">Please choose In so we can get paid more.</text>
+  <text x="448" y="170" text-anchor="middle" fill="#5f6577" font-size="10.5">E</text>
+  <text x="500" y="170" text-anchor="middle" fill="#5f6577" font-size="10.5">Out·DR</text>
+  <line x1="32" y1="180" x2="528" y2="180" stroke="#f3f4f6"/>
+  <text x="61" y="198" text-anchor="middle" fill="#5f6577" font-size="10.5">1</text>
+  <text x="114" y="198" text-anchor="middle" fill="#5f6577" font-size="10.5">2</text>
+  <text x="150" y="198" fill="#1b1f27" font-size="10.5">Choose in, I will roll dice, you are 5/6 likely…</text>
+  <text x="448" y="198" text-anchor="middle" fill="#5f6577" font-size="10.5">P</text>
+  <text x="500" y="198" text-anchor="middle" fill="#5f6577" font-size="10.5">In·DR</text>
+  <line x1="32" y1="208" x2="528" y2="208" stroke="#f3f4f6"/>
+  <text x="61" y="226" text-anchor="middle" fill="#5f6577" font-size="10.5">1</text>
+  <text x="114" y="226" text-anchor="middle" fill="#5f6577" font-size="10.5">5</text>
+  <text x="150" y="226" fill="#1b1f27" font-size="10.5">If you will choose "In", I will choose to roll…</text>
+  <text x="448" y="226" text-anchor="middle" fill="#5f6577" font-size="10.5">P</text>
+  <text x="500" y="226" text-anchor="middle" fill="#5f6577" font-size="10.5">In·R</text>
+  <line x1="32" y1="236" x2="528" y2="236" stroke="#f3f4f6"/>
+  <text x="61" y="254" text-anchor="middle" fill="#5f6577" font-size="10.5">1</text>
+  <text x="114" y="254" text-anchor="middle" fill="#5f6577" font-size="10.5">6</text>
+  <text x="150" y="254" fill="#9197a6" font-size="10.5" font-style="italic">(empty)</text>
+  <text x="448" y="254" text-anchor="middle" fill="#5f6577" font-size="10.5">N</text>
+  <text x="500" y="254" text-anchor="middle" fill="#5f6577" font-size="10.5">Out·R</text>
+  <!-- verify + proceed -->
+  <rect x="32" y="290" width="320" height="26" rx="6" fill="#dcfce7"/>
+  <text x="44" y="307" fill="#166534" font-size="11">✓ Each Sess · ID combination is unique — 42 units.</text>
+  <rect x="438" y="288" width="90" height="30" rx="6" fill="#5b2d8e"/>
+  <text x="483" y="307" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Proceed</text>
+</svg>

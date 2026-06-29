@@ -13,7 +13,7 @@ const SECTIONS: { value: Section; label: string }[] = [
   { value: "faq", label: "FAQ" },
 ];
 
-const CODING_EXAMPLE_MULTI = `What we need you to do is code the messages that managers sent. Please mark a 1 for any comment that you think fits the category. You can code more than one category per message. Here are categories:
+export const CODING_EXAMPLE_MULTI = `What we need you to do is code the messages that managers sent. Please mark a 1 for any comment that you think fits the category. You can code more than one category per message. Here are categories:
 
 Suggested effort level:
 - cat_1a_suggested_effort_0: Suggests choosing 0 hours
@@ -29,7 +29,7 @@ cat_4_positive_feedback: Positive feedback about previous outcome
 cat_5_negative_feedback: Negative feedback about previous outcome
 cat_6_social_banter: Social banter — friendly chatter not directly related to the game`;
 
-const CODING_EXAMPLE_SINGLE = `Your Coding Task
+export const CODING_EXAMPLE_SINGLE = `Your Coding Task
 You will be shown each message sent by Player B. Classify each message into one of these categories:
 
 1. Promise (P)
@@ -48,7 +48,7 @@ Step 1: Read thoroughly the full message (or lack thereof) for each observation.
 Step 2: Assign each message to one and only one of the three defined categories (P, E, N).
 Step 3: Record the assigned category.`;
 
-const EXAMPLE_INSTRUCTIONS = `Parts, Rounds, and Firms: Stage II of the experiment will have two parts. In the first part there are 6 rounds and in the second part there are 12 rounds.
+export const EXAMPLE_INSTRUCTIONS = `Parts, Rounds, and Firms: Stage II of the experiment will have two parts. In the first part there are 6 rounds and in the second part there are 12 rounds.
 
 For the remainder of this experiment you will be randomly assigned to a firm consisting of five participants. You will be grouped with the same four other participants for all 18 rounds.
 
@@ -67,6 +67,11 @@ Firm managers: In the second part of Stage II (Rounds 7–18), there will be a f
 Restrictions on messages:
 1. Do not identify yourself or send any information that could be used to identify you (age, race, gender, etc.).
 2. Refrain from using obscene or offensive language.`;
+
+// Source of every example instruction, coding scheme, and sample dataset shipped
+// with this toolkit.
+export const PAPER_CITATION_SHORT = `Charness & Dufwenberg (2006), “Promises and Partnerships,” Econometrica`;
+export const PAPER_CITATION_FULL = `Charness, G., & Dufwenberg, M. (2006). Promises and Partnerships. Econometrica, 74(6), 1579–1601.`;
 
 function AtAGlance({ items }: { items: { label: string; value: string }[] }) {
   return (
@@ -141,6 +146,10 @@ export default function HowToPage({ onNavigate }: Props) {
                   ]}
                 />
               </div>
+              <div className="howto-warning mt-12">
+                <strong>Citation.</strong> All example instructions, coding schemes, and sample data
+                used throughout this toolkit are drawn from {PAPER_CITATION_FULL}
+              </div>
             </div>
 
             <StepSection n={1} title="Coding Instructions & Codebook">
@@ -153,6 +162,7 @@ export default function HowToPage({ onNavigate }: Props) {
 
               <p className="mt-12"><strong>Single-label example</strong> (assign exactly one category):</p>
               <pre className="howto-example">{CODING_EXAMPLE_SINGLE}</pre>
+              <p className="howto-cite">Coding schemes adapted from {PAPER_CITATION_SHORT}.</p>
 
               <p className="mt-12">
                 The codebook is the list of variables to code. Each entry needs a label, a type, a definition, and (for every type except text) a set of allowed coded values. Supported variable types: <strong>Binary</strong>, <strong>Categorical</strong>, <strong>Ordinal</strong>, <strong>Numeric</strong>, and <strong>Text</strong>.
@@ -168,6 +178,7 @@ export default function HowToPage({ onNavigate }: Props) {
               </p>
               <p className="mt-12"><strong>Example:</strong></p>
               <pre className="howto-example">{EXAMPLE_INSTRUCTIONS}</pre>
+              <p className="howto-cite">Experiment instructions adapted from {PAPER_CITATION_SHORT}.</p>
             </StepSection>
 
             <StepSection n={3} title="Upload Dataset">
