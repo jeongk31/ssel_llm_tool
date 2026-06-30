@@ -1291,7 +1291,11 @@ export default function Home() {
                 <h1>LLM Coding</h1>
                 <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
               </div>
-              <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">?</button>
+              {/* <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">?</button> */}
+              <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">
+                <span className="tour-help-icon">?</span>
+                
+              </button>
             </div>
 
             <div className={`pipeline-layout split layout-${layoutMode}`} style={{ display: "flex", gap: 0 }}>
