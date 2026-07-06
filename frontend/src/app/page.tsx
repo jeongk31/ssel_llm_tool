@@ -22,7 +22,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook", media: "/tour/codebook.svg",
     targetId: "tour-codebook", title: "Codebook variables", mediaBox: { x: 5, y: 30, w: 90, h: 55 },
-    body: (<p>Define each variable to code: its type, <strong>level</strong> (per window or per sender), a <strong>definition</strong> for the category, and a definition for every <strong>coded value</strong> — with optional examples and context. Per-sender variables expand into one column per participant (e.g. <code>cooperation_P</code>).</p>),
+    body: (<p>Define each variable to code: its type, <strong>level</strong> (per episode or per sender), a <strong>definition</strong> for the category, and a definition for every <strong>coded value</strong> — with optional examples and context. Per-sender variables expand into one column per participant (e.g. <code>cooperation_P</code>).</p>),
   },
   // ── Section 3: Experiment Instructions ──
   {
@@ -62,7 +62,7 @@ interface CodedValue {
 interface CodebookEntry {
   label: string;
   type: string;
-  level: "window" | "sender";   // window = one value per unit; sender = one value per participant
+  level: "episode" | "sender";   // episode = one value per unit; sender = one value per participant
   definition: string;           // definition of the variable/category itself
   values: CodedValue[];         // one definition per possible coded value
 }
@@ -314,7 +314,7 @@ const binaryValues = (): CodedValue[] => [
   { value: "1", definition: "", examples: "", context: "" },
 ];
 // Binary variables have fixed 0/1 values; new variables default to binary.
-const newEntry = (): CodebookEntry => ({ label: "", type: "binary", level: "window", definition: "", values: binaryValues() });
+const newEntry = (): CodebookEntry => ({ label: "", type: "binary", level: "episode", definition: "", values: binaryValues() });
 const TYPE_HAS_VALUES = (t: string) => t === "binary" || t === "categorical" || t === "ordinal";
 
 // ── TagInput ──────────────────────────────────────────────────────────────────
@@ -480,6 +480,9 @@ export default function Home() {
   const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  //codebook download state
+  const [showCodebookExport, setShowCodebookExport] = useState(false);
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
@@ -1044,6 +1047,165 @@ export default function Home() {
     showToast("Download started");
   };
 
+  const handleCodebookDownload = async (format: "json" | "csv" | "txt" | "pdf" | "xlsx") => {
+    const entries = codebook.filter((e) => e.label.trim());
+    const filename = `codebook`;
+
+    // Flatten: one row per coded value. Numeric/text vars (no values) get a single blank-value row.
+    const flatRows = entries.flatMap((e) => {
+      const level = e.level === "sender" ? "per sender" : "per episode";
+      if (e.values.length === 0) {
+        return [{
+          label: e.label, type: e.type, level, definition: e.definition,
+          value: "", value_definition: "", examples: "", context: "",
+        }];
+      }
+      return e.values
+        .filter((v) => v.value.trim() || v.definition.trim())
+        .map((v) => ({
+          label: e.label, type: e.type, level, definition: e.definition,
+          value: v.value, value_definition: v.definition, examples: v.examples, context: v.context,
+        }));
+    });
+
+    if (format === "json") {
+      const data = JSON.stringify(entries.map((e) => ({
+        label: e.label,
+        type: e.type,
+        level: e.level,
+        definition: e.definition,
+        values: e.values
+          .filter((v) => v.value.trim() || v.definition.trim())
+          .map((v) => ({
+            value: v.value,
+            definition: v.definition,
+            examples: v.examples || null,
+            context: v.context || null,
+          })),
+      })), null, 2);
+      downloadBlob(new Blob([data], { type: "application/json" }), `${filename}.json`);
+
+    } else if (format === "csv") {
+      const header = "label,type,level,definition,value,value_definition,examples,context";
+      const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const rows = flatRows.map((r) =>
+        [r.label, r.type, r.level, r.definition, r.value, r.value_definition, r.examples, r.context]
+          .map(esc).join(",")
+      );
+      downloadBlob(new Blob([[header, ...rows].join("\n")], { type: "text/csv" }), `${filename}.csv`);
+
+    } else if (format === "txt") {
+      const lines = entries.map((e, i) => {
+        const head = [
+          `${i + 1}. ${e.label} (${e.type}, ${e.level === "sender" ? "per sender" : "per episode"})`,
+          `   Definition: ${e.definition}`,
+        ];
+        const valueLines = e.values
+          .filter((v) => v.value.trim() || v.definition.trim())
+          .map((v) => {
+            const parts = [`   - ${v.value}: ${v.definition}`];
+            if (v.examples.trim()) parts.push(`       Examples: ${v.examples}`);
+            if (v.context.trim()) parts.push(`       Context: ${v.context}`);
+            return parts.join("\n");
+          });
+        return [...head, ...valueLines].join("\n");
+      });
+      downloadBlob(new Blob([lines.join("\n\n")], { type: "text/plain" }), `${filename}.txt`);
+
+    } else if (format === "xlsx") {
+      const XLSX = await import("xlsx");
+      const rows = flatRows.map((r) => ({
+        Label: r.label,
+        Type: r.type,
+        Level: r.level,
+        "Category Definition": r.definition,
+        Value: r.value,
+        "Value Definition": r.value_definition,
+        Examples: r.examples,
+        Context: r.context,
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 36 },
+        { wch: 10 }, { wch: 36 }, { wch: 28 }, { wch: 28 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Codebook");
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+
+    } else if (format === "pdf") {
+      const sections = entries.map((e, i) => {
+        const valueRows = e.values
+          .filter((v) => v.value.trim() || v.definition.trim())
+          .map((v) => `
+            <tr class="value-row">
+              <td class="value-cell">${v.value}</td>
+              <td>${v.definition}</td>
+              <td class="muted">${v.examples || "—"}</td>
+              <td class="muted">${v.context || "—"}</td>
+            </tr>`).join("");
+
+        return `
+          <div class="var-block">
+            <div class="var-head">
+              <span class="var-num">${i + 1}</span>
+              <span class="var-label">${e.label}</span>
+              <span class="var-meta">${e.type} · ${e.level === "sender" ? "per sender" : "per episode"}</span>
+            </div>
+            <p class="var-def">${e.definition}</p>
+            ${valueRows ? `
+              <table class="value-table">
+                <thead><tr><th>Value</th><th>Definition</th><th>Examples</th><th>Context</th></tr></thead>
+                <tbody>${valueRows}</tbody>
+              </table>` : `<p class="muted">No fixed values (numeric/free text).</p>`}
+          </div>`;
+      }).join("");
+
+      const html = `<!DOCTYPE html>
+  <html><head><meta charset="utf-8"><title>Codebook</title>
+  <style>
+    body{font-family:-apple-system,sans-serif;padding:40px;color:#18181b;font-size:13px}
+    h1{font-size:18px;font-weight:600;margin-bottom:4px}
+    p{color:#71717a;margin-bottom:24px;font-size:12px}
+    .var-block{margin-bottom:22px;page-break-inside:avoid}
+    .var-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+    .var-num{color:#a1a1aa;font-size:11px}
+    .var-label{font-weight:600;font-size:14px}
+    .var-meta{color:#7c4dab;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+    .var-def{color:#3f3f46;font-size:12px;margin:0 0 8px;font-style:italic}
+    .value-table{width:100%;border-collapse:collapse;margin-top:4px}
+    .value-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+      color:#a1a1aa;border-bottom:2px solid #e4e4e7;padding:5px 8px}
+    .value-table td{padding:6px 8px;border-bottom:1px solid #f4f4f5;vertical-align:top;font-size:12px}
+    .value-cell{font-family:monospace;color:#7c4dab;font-weight:600;width:60px}
+    .muted{color:#a1a1aa;font-size:11px}
+    @media print{body{padding:20px}}
+  </style></head>
+  <body>
+    <h1>Codebook</h1>
+    <p>Generated ${new Date().toLocaleDateString()} · ${entries.length} variable${entries.length !== 1 ? "s" : ""}</p>
+    ${sections}
+  </body></html>`;
+
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.print();
+      }
+    }
+
+    showToast(`Codebook exported as .${format}`);
+  };
+
+  // Helper used by handleCodebookDownload
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Analysis handlers ─────────────────────────────────────────────────────
 
   const handleAnalysisRaterUpload = async (idx: number, file: File) => {
@@ -1348,6 +1510,17 @@ export default function Home() {
               >
                 <div className="config-scroll">
 
+                  {/* ── Episode definition ── */}
+                  <div className="episode-def">
+                    <span className="episode-def-term">*Communication episode</span>
+                    <span className="episode-def-text">
+                      one unit of analysis — the group of rows that get merged into a single
+                      tagged block and receive one coded value per variable (e.g. all messages
+                      in a session, or all messages between two players in a round). You'll
+                      define what counts as one episode when you map columns below.
+                    </span>
+                  </div>
+
                   {/* Panel 1: Upload Dataset */}
                   <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(1)}>
@@ -1480,7 +1653,7 @@ export default function Home() {
                             codebook.map((e, i) => e.label.trim() ? (
                               <div className="cb-sum-row" key={i}>
                                 <span className="cb-sum-label">{e.label}</span>
-                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per window"}</span>
+                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per episode"}</span>
                                 <span className="cb-sum-vals">{
                                   e.type === "numeric" ? "number"
                                   : e.type === "text" ? "free text"
@@ -1491,12 +1664,75 @@ export default function Home() {
                           )}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
-                        <p className="hint mt-8">Each variable gets a <strong>definition</strong> for the category and a definition for every coded value, plus optional <strong>examples</strong> and <strong>context</strong>. <strong>Per window</strong> = one value per unit; <strong>per sender</strong> = one per participant.</p>
+                        <p className="hint mt-8">Each variable gets a <strong>definition</strong> for the category and a definition for every coded value, plus optional <strong>examples</strong> and <strong>context</strong>. <strong>Per episode</strong> = one value per unit; <strong>per sender</strong> = one per participant.</p>
                         {hasSenderVar && (
                           <div className="f participants-block">
                             <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
                             <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
                             <p className="hint">Sender-level variables are coded once per participant. These names must match the values in your sender-identity column.</p>
+                          </div>
+                        )}
+                      </div>
+                      <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>
+                        + Add Variable
+                      </button>
+
+                      {/* ── Codebook export ── */}
+                      {/* <div className="cb-export-row" style={{ marginTop: 8 }}>
+                        <button
+                          className="btn btn-ghost btn-xs"
+                          onClick={() => setShowCodebookExport((p) => !p)}
+                          disabled={!codebook.some((e) => e.label.trim())}
+                        >
+                          ↓ Export codebook
+                        </button>
+                      </div>
+
+                      {showCodebookExport && (
+                        <div className="cb-export-options">
+                          <span className="cb-export-label">Download as:</span>
+                          {(["json", "csv", "txt", "pdf", "xlsx"] as const).map((fmt) => (
+                            <button
+                              key={fmt}
+                              className="btn btn-outline btn-xs"
+                              onClick={() => { handleCodebookDownload(fmt); setShowCodebookExport(false); }}
+                            >
+                              .{fmt}
+                            </button>
+                          ))}
+                        </div>
+                      )} */}
+                      {/* ── Codebook export ── */}
+                      <div className="cb-export-block">
+                        <div className="cb-export-divider" />
+                        <div className="cb-export-row">
+                          <div className="cb-export-info">
+                            <span className="cb-export-title">Export codebook</span>
+                          </div>
+                          <button
+                            className="btn-export"
+                            onClick={() => setShowCodebookExport((p) => !p)}
+                            disabled={!codebook.some((e) => e.label.trim())}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                            </svg>
+                            Export
+                          </button>
+                        </div>
+
+                        {showCodebookExport && (
+                          <div className="cb-export-options">
+                            <span className="cb-export-label">Download as:</span>
+                            {(["json", "csv", "txt", "pdf", "xlsx"] as const).map((fmt) => (
+                              <button
+                                key={fmt}
+                                className="btn btn-outline btn-xs"
+                                onClick={() => { handleCodebookDownload(fmt); setShowCodebookExport(false); }}
+                              >
+                                .{fmt}
+                              </button>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -2340,7 +2576,7 @@ export default function Home() {
                           {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                         </select>
                         <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
-                          <option value="window">Per window</option>
+                          <option value="episode">Per episode</option>
                           <option value="sender">Per sender</option>
                         </select>
                         <button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove variable" disabled={codebook.length <= 1}>×</button>
