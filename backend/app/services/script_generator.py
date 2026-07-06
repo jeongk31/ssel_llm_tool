@@ -32,18 +32,38 @@ def generate_coding_script(
     exp_instr = experiment_instructions.replace('"""', '\\"\\"\\"')
     enc_instr = coding_instructions.replace('"""', '\\"\\"\\"')
 
-    # Build the codebook description block + expanded output keys.
-    # Sender-level variables expand into one key per participant: "Var [P]".
+    # Build the rich codebook block (definition + optional examples/context per
+    # variable, and a definition per coded value) + expanded output keys.
     codebook_lines = []
     labels = []
     for entry in codebook:
-        line = f"- {entry['label']} (type: {entry['type']}). Allowed values: {entry.get('coded_values', 'any')}"
+        header = f"### {entry['label']} (type: {entry.get('type', 'text')}"
         if entry.get("level") == "sender" and participants:
-            line += f"  -> code separately for each participant: {', '.join(participants)}"
+            header += f"; coded separately per participant: {', '.join(participants)}"
             labels.extend(f"{entry['label']}_{p}" for p in participants)
         else:
             labels.append(entry["label"])
-        codebook_lines.append(line)
+        header += ")"
+        codebook_lines.append(header)
+        if (entry.get("definition") or "").strip():
+            codebook_lines.append(f"Definition: {entry['definition'].strip()}")
+        if (entry.get("examples") or "").strip():
+            codebook_lines.append(f"Examples: {entry['examples'].strip()}")
+        if (entry.get("context") or "").strip():
+            codebook_lines.append(f"Notes: {entry['context'].strip()}")
+        printable = [v for v in (entry.get("values") or []) if str(v.get("value", "")).strip()]
+        if printable:
+            codebook_lines.append("Coded values:")
+            for v in printable:
+                l = f"  - {v['value']}"
+                if (v.get("definition") or "").strip():
+                    l += f": {v['definition'].strip()}"
+                if (v.get("examples") or "").strip():
+                    l += f" (e.g., {v['examples'].strip()})"
+                if (v.get("context") or "").strip():
+                    l += f" — {v['context'].strip()}"
+                codebook_lines.append(l)
+        codebook_lines.append("")
     if any(e.get("level") == "sender" for e in codebook) and participants:
         codebook_lines.append(
             f'(For per-sender variables, output one value per participant using keys like '
@@ -171,15 +191,14 @@ def build_prompt(message_text: str, row=None) -> str:
         if lines:
             context_section = "\\n## Context\\n" + "\\n".join(lines) + "\\n"
 
+    coding_section = f"\\n## Coding Instructions\\n{{CODING_INSTRUCTIONS}}\\n" if CODING_INSTRUCTIONS.strip() else ""
+
     prompt = f"""You are coding one row of data. One row = one unit of observation.
 
 ## Experiment Instructions
 {{EXPERIMENT_INSTRUCTIONS}}
-
-## Coding Instructions
-{{CODING_INSTRUCTIONS}}
-
-## Codebook Variables
+{{coding_section}}
+## Codebook
 {{CODEBOOK_PROMPT_BLOCK}}
 {{context_section}}
 ## Message to Code

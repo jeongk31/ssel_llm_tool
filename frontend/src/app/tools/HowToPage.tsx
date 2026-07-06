@@ -152,27 +152,27 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
             </div>
 
-            <StepSection n={1} title="Coding Instructions & Codebook">
+            <StepSection n={1} title="Upload & Map Dataset">
               <p>
-                Tell the model how to apply the codebook: <strong>single-label</strong> (one category per row) or <strong>multi-label</strong> (all that apply). Define each category and how to handle empty messages.
+                Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one unit (or choose “each row is its own unit”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Rows that share an identifier combination are merged into one tagged unit, shown in the preprocessed preview.
               </p>
+            </StepSection>
 
-              <p className="mt-12"><strong>Multi-label example</strong> (mark every category that applies):</p>
-              <pre className="howto-example">{CODING_EXAMPLE_MULTI}</pre>
-
-              <p className="mt-12"><strong>Single-label example</strong> (assign exactly one category):</p>
+            <StepSection n={2} title="Codebook">
+              <p>
+                The codebook is the list of variables to code. Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Ordinal, Numeric, Text), a <strong>level</strong> (per window = one value per unit, or per sender = one value per participant), and a <strong>definition</strong> of the category. For every allowed <strong>coded value</strong> you add, give a definition too — plus optional <strong>examples</strong> and <strong>context</strong>. All the coding guidance now lives in these definitions.
+              </p>
+              <p className="mt-12"><strong>Example coding scheme</strong> (single-label — one category per unit):</p>
               <pre className="howto-example">{CODING_EXAMPLE_SINGLE}</pre>
+              <p className="mt-12"><strong>Multi-label example</strong> (each category is its own binary variable, marked when it applies):</p>
+              <pre className="howto-example">{CODING_EXAMPLE_MULTI}</pre>
               <p className="howto-cite">Coding schemes adapted from {PAPER_CITATION_SHORT}.</p>
-
-              <p className="mt-12">
-                The codebook is the list of variables to code. Each entry needs a label, a type, a definition, and (for every type except text) a set of allowed coded values. Supported variable types: <strong>Binary</strong>, <strong>Categorical</strong>, <strong>Ordinal</strong>, <strong>Numeric</strong>, and <strong>Text</strong>.
-              </p>
               <div className="howto-warning mt-12">
-                <strong>Keep names and values in sync.</strong> The label, type, and allowed values you set here must match what you describe in your coding instructions word-for-word.
+                <strong>Per-sender variables</strong> expand into one output column per participant (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). Declare the participant names in the codebook so they match your sender column.
               </div>
             </StepSection>
 
-            <StepSection n={2} title="Experiment Instructions">
+            <StepSection n={3} title="Experiment Instructions">
               <p>
                 Paste the full instructions participants received — tasks, roles, payoffs, and communication rules. Include any extra context such as examples or on-screen prompts. Missing context is the most common cause of inconsistent coding.
               </p>
@@ -181,22 +181,10 @@ export default function HowToPage({ onNavigate }: Props) {
               <p className="howto-cite">Experiment instructions adapted from {PAPER_CITATION_SHORT}.</p>
             </StepSection>
 
-            <StepSection n={3} title="Upload Dataset">
-              <p>
-                Upload a CSV or Excel file with the data you want coded. Include an ID column that uniquely identifies each row and the column containing the text to code. Don't include columns for the variables you want coded — define those in the Codebook.
-              </p>
-            </StepSection>
-
-            <StepSection n={4} title="Select Column">
-              <p>
-                Pick the column that contains the text to code from the dropdown of column names.
-              </p>
-            </StepSection>
-
-            <StepSection n={5} title="Models & Aggregation">
+            <StepSection n={4} title="Models & Aggregation">
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>
-                Add one or more provider/model pairs, each with your own API key. Supported providers are OpenAI, Anthropic, Google (Gemini), DeepSeek, Mistral, and Together AI.
+                Add one or more provider/model pairs, each with your own API key. Supported providers are OpenAI, Google (Gemini), and DeepSeek.
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Runs per model:</span>
