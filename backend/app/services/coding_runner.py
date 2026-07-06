@@ -53,6 +53,39 @@ def _expanded_keys(codebook: list[dict[str, Any]], participants: list[str] | Non
     return keys
 
 
+def _codebook_block(codebook: list[dict[str, Any]], participants: list[str]) -> str:
+    """Render the codebook: each variable with its definition + optional examples/context,
+    and a definition for every coded value."""
+    out = ""
+    for var in codebook:
+        header = f"### {var['label']} (type: {var.get('type', 'text')}"
+        if var.get("level") == "sender" and participants:
+            header += f"; coded separately per participant: {', '.join(participants)}"
+        header += ")"
+        out += header + "\n"
+        if (var.get("definition") or "").strip():
+            out += f"Definition: {var['definition'].strip()}\n"
+        if (var.get("examples") or "").strip():
+            out += f"Examples: {var['examples'].strip()}\n"
+        if (var.get("context") or "").strip():
+            out += f"Notes: {var['context'].strip()}\n"
+        values = var.get("values") or []
+        printable = [v for v in values if str(v.get("value", "")).strip()]
+        if printable:
+            out += "Coded values:\n"
+            for v in printable:
+                line = f"  - {v['value']}"
+                if (v.get("definition") or "").strip():
+                    line += f": {v['definition'].strip()}"
+                if (v.get("examples") or "").strip():
+                    line += f" (e.g., {v['examples'].strip()})"
+                if (v.get("context") or "").strip():
+                    line += f" — {v['context'].strip()}"
+                out += line + "\n"
+        out += "\n"
+    return out
+
+
 def _build_prompt(
     message_text: str,
     experiment_instructions: str,
@@ -64,12 +97,7 @@ def _build_prompt(
     """Construct the full coding prompt for one row."""
     participants = participants or []
     context_section = f"\n## Context\n{context_block}" if context_block.strip() else ""
-    codebook_block = ""
-    for var in codebook:
-        line = f"- {var['label']} (type: {var['type']}). Allowed values: {var.get('coded_values', 'any')}"
-        if var.get("level") == "sender" and participants:
-            line += f"  → code separately for each participant: {', '.join(participants)}"
-        codebook_block += line + "\n"
+    codebook_block = _codebook_block(codebook, participants)
 
     keys = _expanded_keys(codebook, participants)
     sender_note = ""
@@ -80,15 +108,14 @@ def _build_prompt(
             "Each participant's messages are tagged with [participant] in the text above."
         )
 
+    coding_section = f"\n## Coding Instructions\n{coding_instructions}\n" if coding_instructions.strip() else ""
+
     return f"""You are coding one row of data. One row = one unit of observation.
 
 ## Experiment Instructions
 {experiment_instructions}
-
-## Coding Instructions
-{coding_instructions}
-
-## Codebook Variables
+{coding_section}
+## Codebook
 {codebook_block}{context_section}
 ## Message to Code
 {message_text}

@@ -118,11 +118,21 @@ async def upload_coding_file(file: UploadFile):
 
 # ── Script generation ─────────────────────────────────────────────────────────
 
+class CodedValue(BaseModel):
+    value: str = ""
+    definition: str = ""
+    examples: str = ""
+    context: str = ""
+
+
 class CodebookEntry(BaseModel):
     label: str
     type: str
-    coded_values: str = ""
     level: str = "window"   # "window" (one value per unit) or "sender" (one per participant)
+    definition: str = ""
+    examples: str = ""
+    context: str = ""
+    values: list[CodedValue] = []
 
 
 class ContextItem(BaseModel):
@@ -134,7 +144,7 @@ class GenerateScriptRequest(BaseModel):
     file_name: str
     message_column: str
     experiment_instructions: str
-    coding_instructions: str
+    coding_instructions: str = ""
     codebook: list[CodebookEntry]
     provider: str
     model: str = ""
@@ -435,8 +445,6 @@ def _validate_config(req: GenerateScriptRequest):
         raise HTTPException(400, "Message column is required")
     if not req.experiment_instructions.strip():
         raise HTTPException(400, "Experiment instructions are required")
-    if not req.coding_instructions.strip():
-        raise HTTPException(400, "Coding instructions are required")
     if not req.provider.strip():
         raise HTTPException(400, "Provider is required")
     if not req.api_key.strip():

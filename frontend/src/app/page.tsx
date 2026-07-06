@@ -2,38 +2,33 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
-import Instructions, { CODING_EXAMPLE_SINGLE, EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT } from "@/app/tools/HowToPage";
+import Instructions, { EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT } from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 
 const CODING_TOUR_STEPS: TourStep[] = [
-  // ── Section 1: Coding Instructions & Codebook ──
+  // ── Section 1: Upload & map dataset ──
   {
-    sectionId: "coding-panel-1", panel: 1, section: "Coding Instructions & Codebook", media: "/tour/codebook.svg",
-    targetId: "tour-coding-instructions", title: "Coding instructions", mediaBox: { x: 5, y: 14, w: 89, h: 21 },
-    body: (<p>Tell the model exactly how to apply the codebook — single-label (one category per row) or multi-label (all that apply). The example shown is the Promise / Empty Talk / No Message task.</p>),
-  },
-  {
-    sectionId: "coding-panel-1", panel: 1, section: "Coding Instructions & Codebook", media: "/tour/codebook.svg",
-    targetId: "tour-empty-handling", title: "Empty messages", mediaBox: { x: 5, y: 37, w: 46, h: 9 },
-    body: (<p>Choose what happens to rows with no text: <strong>flag as error</strong>, <strong>skip</strong>, or <strong>code as a value</strong>.</p>),
-  },
-  {
-    sectionId: "coding-panel-1", panel: 1, section: "Coding Instructions & Codebook", media: "/tour/codebook.svg",
-    targetId: "tour-codebook", title: "Codebook variables", mediaBox: { x: 5, y: 49, w: 89, h: 36 },
-    body: (<p>List each variable to code with its type, <strong>level</strong> (per window or per sender), and allowed values. Per-sender variables expand into one column per participant (e.g. <code>cooperation_P</code>).</p>),
-  },
-  // ── Section 2: Experiment Instructions ──
-  {
-    sectionId: "coding-panel-2", panel: 2, section: "Experiment Instructions", media: "/tour/experiment.svg",
-    title: "Experiment Instructions",
-    body: (<p>Paste the full instructions participants received — tasks, roles, payoffs, and communication rules — so the model has the same context they did.</p>),
-  },
-  // ── Section 3: Upload & map ──
-  {
-    sectionId: "coding-panel-3", panel: 3, section: "Upload & Map Dataset", media: "/tour/mapping.svg",
+    sectionId: "coding-panel-1", panel: 1, section: "Upload & Map Dataset", media: "/tour/mapping.svg",
     title: "Upload & map your dataset",
     body: (<p>Upload a CSV/Excel file, then map your columns: tag the <strong>message</strong>, the <strong>identifier(s)</strong> that define each unit (or “each row is its own unit”), and optionally the <strong>sender</strong> and <strong>order</strong>. Rows sharing an identifier merge into one tagged unit.</p>),
+  },
+  // ── Section 2: Codebook ──
+  {
+    sectionId: "coding-panel-2", panel: 2, section: "Codebook", media: "/tour/codebook.svg",
+    targetId: "tour-empty-handling", title: "Empty messages", mediaBox: { x: 5, y: 12, w: 46, h: 12 },
+    body: (<p>Choose what happens to rows with no text: <strong>skip the row</strong> or <strong>code it as a value</strong>.</p>),
+  },
+  {
+    sectionId: "coding-panel-2", panel: 2, section: "Codebook", media: "/tour/codebook.svg",
+    targetId: "tour-codebook", title: "Codebook variables", mediaBox: { x: 5, y: 30, w: 90, h: 55 },
+    body: (<p>Define each variable to code: its type, <strong>level</strong> (per window or per sender), a <strong>definition</strong> for the category, and a definition for every <strong>coded value</strong> — with optional examples and context. Per-sender variables expand into one column per participant (e.g. <code>cooperation_P</code>).</p>),
+  },
+  // ── Section 3: Experiment Instructions ──
+  {
+    sectionId: "coding-panel-3", panel: 3, section: "Experiment Instructions", media: "/tour/experiment.svg",
+    title: "Experiment Instructions",
+    body: (<p>Paste the full instructions participants received — tasks, roles, payoffs, and communication rules — so the model has the same context they did.</p>),
   },
   // ── Section 4: Models & Aggregation ──
   {
@@ -57,24 +52,36 @@ const CODING_TOUR_STEPS: TourStep[] = [
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// One coded value within a variable, with its own definition + optional examples/context.
+interface CodedValue {
+  value: string;
+  definition: string;
+  examples: string;   // optional
+  context: string;    // optional
+}
 interface CodebookEntry {
   label: string;
   type: string;
-  coded_values: string;
   level: "window" | "sender";   // window = one value per unit; sender = one value per participant
+  definition: string;           // definition of the variable/category itself
+  values: CodedValue[];         // one definition per possible coded value
 }
 
 interface ExpandedVar { key: string; type: string; coded_values: string; }
+
+const codedValuesOf = (e: CodebookEntry) =>
+  e.values.map((v) => v.value.trim()).filter(Boolean).join(",");
 
 // Sender-level variables expand into one output key per participant: "Var [P]".
 function expandCodebook(codebook: CodebookEntry[], participants: string[]): ExpandedVar[] {
   const out: ExpandedVar[] = [];
   for (const e of codebook) {
     if (!e.label.trim()) continue;
+    const cv = codedValuesOf(e);
     if (e.level === "sender" && participants.length > 0) {
-      for (const p of participants) out.push({ key: `${e.label}_${p}`, type: e.type, coded_values: e.coded_values });
+      for (const p of participants) out.push({ key: `${e.label}_${p}`, type: e.type, coded_values: cv });
     } else {
-      out.push({ key: e.label, type: e.type, coded_values: e.coded_values });
+      out.push({ key: e.label, type: e.type, coded_values: cv });
     }
   }
   return out;
@@ -301,7 +308,14 @@ const CODEBOOK_TYPES = [
   { value: "text", label: "Text" },
 ];
 
-const EMPTY_ENTRY: CodebookEntry = { label: "", type: "binary", coded_values: "", level: "window" };
+const EMPTY_VALUE: CodedValue = { value: "", definition: "", examples: "", context: "" };
+const binaryValues = (): CodedValue[] => [
+  { value: "0", definition: "", examples: "", context: "" },
+  { value: "1", definition: "", examples: "", context: "" },
+];
+// Binary variables have fixed 0/1 values; new variables default to binary.
+const newEntry = (): CodebookEntry => ({ label: "", type: "binary", level: "window", definition: "", values: binaryValues() });
+const TYPE_HAS_VALUES = (t: string) => t === "binary" || t === "categorical" || t === "ordinal";
 
 // ── TagInput ──────────────────────────────────────────────────────────────────
 
@@ -481,8 +495,7 @@ export default function Home() {
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [activeRole, setActiveRole] = useState<ColRole>("message");
   const [experimentInstructions, setExperimentInstructions] = useState("");
-  const [codingInstructions, setCodingInstructions] = useState("");
-  const [codebook, setCodebook] = useState<CodebookEntry[]>([{ ...EMPTY_ENTRY }]);
+  const [codebook, setCodebook] = useState<CodebookEntry[]>([newEntry()]);
   const [participantsStr, setParticipantsStr] = useState("");
   const participants = useMemo(
     () => participantsStr.split(",").map((s) => s.trim()).filter(Boolean),
@@ -694,12 +707,42 @@ export default function Home() {
     setCodebook((prev) => prev.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry)));
   };
 
-  const addCodebookRow = () => setCodebook((prev) => [...prev, { ...EMPTY_ENTRY }]);
+  // Changing the type adjusts the coded values: binary → fixed 0/1; numeric/text → none.
+  const changeType = (idx: number, newType: string) => {
+    setCodebook((prev) => prev.map((e, i) => {
+      if (i !== idx) return e;
+      let values = e.values;
+      if (newType === "binary") {
+        const d = e.values;
+        values = [
+          { value: "0", definition: d[0]?.definition ?? "", examples: d[0]?.examples ?? "", context: d[0]?.context ?? "" },
+          { value: "1", definition: d[1]?.definition ?? "", examples: d[1]?.examples ?? "", context: d[1]?.context ?? "" },
+        ];
+      } else if (newType === "numeric" || newType === "text") {
+        values = [];
+      } else {
+        values = e.values.length ? e.values : [{ ...EMPTY_VALUE }];
+      }
+      return { ...e, type: newType, values };
+    }));
+  };
+
+  const addCodebookRow = () => setCodebook((prev) => [...prev, newEntry()]);
 
   const removeCodebookRow = (idx: number) => {
     if (codebook.length <= 1) return;
     setCodebook((prev) => prev.filter((_, i) => i !== idx));
   };
+
+  // Per-value (coded value) helpers
+  const addValueRow = (idx: number) =>
+    setCodebook((prev) => prev.map((e, i) => (i === idx ? { ...e, values: [...e.values, { ...EMPTY_VALUE }] } : e)));
+  const removeValueRow = (idx: number, vIdx: number) =>
+    setCodebook((prev) => prev.map((e, i) => (i === idx ? { ...e, values: e.values.filter((_, j) => j !== vIdx) } : e)));
+  const updateValue = (idx: number, vIdx: number, field: keyof CodedValue, value: string) =>
+    setCodebook((prev) => prev.map((e, i) => (i === idx
+      ? { ...e, values: e.values.map((v, j) => (j === vIdx ? { ...v, [field]: value } : v)) }
+      : e)));
 
   // ── Model slot helpers ────────────────────────────────────────────────────
 
@@ -734,7 +777,6 @@ export default function Home() {
     uploadResult &&
     mappingComplete &&
     experimentInstructions.trim() &&
-    codingInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type) &&
     (!hasSenderVar || participants.length > 0) &&
     modelSlots.length > 0 &&
@@ -760,7 +802,6 @@ export default function Home() {
           order_column: orderColumn || null,
           order_direction: orderDirection,
           experiment_instructions: experimentInstructions,
-          coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
           codebook,
           participants,
@@ -834,7 +875,6 @@ export default function Home() {
           order_column: orderColumn || null,
           order_direction: orderDirection,
           experiment_instructions: experimentInstructions,
-          coding_instructions: codingInstructions,
           empty_message_handling: emptyMessageHandling,
           codebook,
           participants,
@@ -918,7 +958,6 @@ export default function Home() {
         order_column: orderColumn || null,
         order_direction: orderDirection,
         experiment_instructions: experimentInstructions,
-        coding_instructions: codingInstructions,
         empty_message_handling: emptyMessageHandling,
         codebook,
         participants,
@@ -1116,7 +1155,6 @@ export default function Home() {
         order_column: orderColumn || null,
         order_direction: orderDirection,
         experiment_instructions: experimentInstructions,
-        coding_instructions: codingInstructions,
         codebook,
         participants,
         context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
@@ -1179,8 +1217,8 @@ export default function Home() {
   const handleReset = () => {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
-    setMessageColumn(""); setExperimentInstructions(""); setCodingInstructions("");
-    setCodebook([{ ...EMPTY_ENTRY }]); setParticipantsStr(""); setRowFilter(""); setRowFilterError("");
+    setMessageColumn(""); setExperimentInstructions("");
+    setCodebook([newEntry()]); setParticipantsStr(""); setRowFilter(""); setRowFilterError("");
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1); setAggregation("mode");
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
@@ -1310,125 +1348,11 @@ export default function Home() {
               >
                 <div className="config-scroll">
 
-                  {/* Panel 1: Coding Instructions & Codebook */}
+                  {/* Panel 1: Upload Dataset */}
                   <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(1)}>
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
-                        <span className="panel-label">Coding Instructions &amp; Codebook</span>
-                        <HelpTip text="Tell the model how to apply the codebook — single-label vs multi-label, and how to handle empty messages." />
-                        {codingInstructions.trim() && <span className="tag">set</span>}
-                        {codebook.some((e) => e.label.trim()) && (
-                          <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
-                        )}
-                      </div>
-                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-                    </button>
-                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="f" id="tour-coding-instructions">
-                        <label>Describe how coding should be performed</label>
-                        <textarea
-                          className="ta-fit"
-                          rows={16}
-                          value={codingInstructions}
-                          onChange={(e) => setCodingInstructions(e.target.value)}
-                          placeholder={CODING_EXAMPLE_SINGLE}
-                        />
-                        <p className="hint">Specific instructions for the LLM on how to apply the codebook to each row. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
-                      </div>
-                      <div className="f" id="tour-empty-handling" style={{ marginTop: 12 }}>
-                        <label>Empty message handling</label>
-                        <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "ignore" | "code")}>
-                          <option value="ignore">Ignore (skip row)</option>
-                          <option value="code">Code as value</option>
-                        </select>
-                        <p className="hint">
-                          {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
-                          {emptyMessageHandling === "code" && "Variables for empty rows will be filled according to the coding instructions and codebook description."}
-                        </p>
-                      </div>
-                      <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
-                        <label>Codebook</label>
-                        <div className="table-wrap table-clickable" onClick={() => setExpandedTable("codebook")} title="Click to expand">
-                          <table className="tbl editable">
-                            <thead>
-                              <tr>
-                                <th>Label</th><th>Type</th><th>Level</th><th>Coded Values</th><th className="th-narrow" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {codebook.map((entry, idx) => (
-                                <tr key={idx}>
-                                  <td><input type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="e.g., sentiment" /></td>
-                                  <td>
-                                    <select value={entry.type} onChange={(e) => updateCodebook(idx, "type", e.target.value)}>
-                                      {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
-                                      <option value="window">Per window</option>
-                                      <option value="sender">Per sender</option>
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <TagInput value={entry.coded_values} onChange={(v) => updateCodebook(idx, "coded_values", v)} type={entry.type} />
-                                  </td>
-                                  <td>
-                                    <button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove row" disabled={codebook.length <= 1}>×</button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>+ Add Variable</button>
-                        <p className="hint mt-8">
-                          <code>binary</code>: 0/1 · <code>categorical</code>: named categories · <code>ordinal</code>: ordered scale · <code>numeric</code>: number · <code>text</code>: free text
-                        </p>
-                        <p className="hint">Define what each variable means in the <strong>coding instructions</strong> above. <strong>Per window</strong> = one value for the whole unit; <strong>per sender</strong> = one value for each participant.</p>
-                        {hasSenderVar && (
-                          <div className="f participants-block">
-                            <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
-                            <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
-                            <p className="hint">Sender-level variables are coded once per participant. These names must match the values in your sender-identity column.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div></div></div>
-                  </div>
-
-                  {/* Panel 2: Experiment Instructions */}
-                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(2)}>
-                      <div className="panel-head-left">
-                        <span className="step-badge">2</span>
-                        <span className="panel-label">Experiment Instructions</span>
-                        <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
-                        {experimentInstructions.trim() && <span className="tag">set</span>}
-                      </div>
-                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
-                    </button>
-                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="f">
-                        <label>Describe the experiment context</label>
-                        <textarea
-                          className="ta-fit"
-                          rows={16}
-                          value={experimentInstructions}
-                          onChange={(e) => setExperimentInstructions(e.target.value)}
-                          placeholder={EXAMPLE_INSTRUCTIONS}
-                        />
-                        <p className="hint">Provide context about what the data represents and the research goals. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
-                      </div>
-                    </div></div></div>
-                  </div>
-
-                  {/* Panel 3: Upload Dataset */}
-                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
-                    <button className="panel-head" onClick={() => togglePanel(3)}>
-                      <div className="panel-head-left">
-                        <span className="step-badge">3</span>
                         <span className="panel-label">Upload Dataset</span>
                         <HelpTip text="Upload a CSV or Excel file. Include an ID column and the column containing the text to code." />
                         {uploadResult && <span className="tag">uploaded</span>}
@@ -1519,6 +1443,89 @@ export default function Home() {
                           )}
                         </div>
                       )}
+                    </div></div></div>
+                  </div>
+
+                  {/* Panel 2: Codebook */}
+                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                    <button className="panel-head" onClick={() => togglePanel(2)}>
+                      <div className="panel-head-left">
+                        <span className="step-badge">2</span>
+                        <span className="panel-label">Codebook</span>
+                        <HelpTip text="Define each variable to code: its type, level, a definition for the category, and a definition for every coded value (with optional examples and context)." />
+                        {codebook.some((e) => e.label.trim()) && (
+                          <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
+                        )}
+                      </div>
+                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
+                    </button>
+                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
+                      <div className="f" id="tour-empty-handling">
+                        <label>Empty message handling</label>
+                        <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "ignore" | "code")}>
+                          <option value="ignore">Ignore (skip row)</option>
+                          <option value="code">Code as value</option>
+                        </select>
+                        <p className="hint">
+                          {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
+                          {emptyMessageHandling === "code" && "Variables for empty rows will be coded from the codebook definitions."}
+                        </p>
+                      </div>
+                      <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
+                        <label>Codebook variables</label>
+                        <div className="cb-summary" onClick={() => setExpandedTable("codebook")} title="Click to edit the codebook">
+                          {codebook.filter((e) => e.label.trim()).length === 0 ? (
+                            <p className="hint" style={{ margin: 0 }}>No variables yet — click to define your codebook.</p>
+                          ) : (
+                            codebook.map((e, i) => e.label.trim() ? (
+                              <div className="cb-sum-row" key={i}>
+                                <span className="cb-sum-label">{e.label}</span>
+                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per window"}</span>
+                                <span className="cb-sum-vals">{
+                                  e.type === "numeric" ? "number"
+                                  : e.type === "text" ? "free text"
+                                  : (e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") || "—")
+                                }</span>
+                              </div>
+                            ) : null)
+                          )}
+                          <div className="cb-sum-edit">Click to edit codebook →</div>
+                        </div>
+                        <p className="hint mt-8">Each variable gets a <strong>definition</strong> for the category and a definition for every coded value, plus optional <strong>examples</strong> and <strong>context</strong>. <strong>Per window</strong> = one value per unit; <strong>per sender</strong> = one per participant.</p>
+                        {hasSenderVar && (
+                          <div className="f participants-block">
+                            <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
+                            <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
+                            <p className="hint">Sender-level variables are coded once per participant. These names must match the values in your sender-identity column.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div></div></div>
+                  </div>
+
+                  {/* Panel 3: Experiment Instructions */}
+                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                    <button className="panel-head" onClick={() => togglePanel(3)}>
+                      <div className="panel-head-left">
+                        <span className="step-badge">3</span>
+                        <span className="panel-label">Experiment Instructions</span>
+                        <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
+                        {experimentInstructions.trim() && <span className="tag">set</span>}
+                      </div>
+                      <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
+                    </button>
+                    <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
+                      <div className="f">
+                        <label>Describe the experiment context</label>
+                        <textarea
+                          className="ta-fit"
+                          rows={16}
+                          value={experimentInstructions}
+                          onChange={(e) => setExperimentInstructions(e.target.value)}
+                          placeholder={EXAMPLE_INSTRUCTIONS}
+                        />
+                        <p className="hint">Provide context about what the data represents and the research goals. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
+                      </div>
                     </div></div></div>
                   </div>
 
@@ -2324,31 +2331,65 @@ export default function Home() {
                 </table>
               )}
               {expandedTable === "codebook" && (
-                <>
-                  <table className="tbl editable">
-                    <thead><tr><th className="col-label">Label</th><th className="col-type">Type</th><th className="col-type">Level</th><th className="col-values">Coded Values</th><th className="th-narrow" /></tr></thead>
-                    <tbody>
-                      {codebook.map((entry, idx) => (
-                        <tr key={idx}>
-                          <td><input type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="e.g., sentiment" /></td>
-                          <td>
-                            <select value={entry.type} onChange={(e) => updateCodebook(idx, "type", e.target.value)}>
-                              {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                            </select>
-                          </td>
-                          <td>
-                            <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
-                              <option value="window">Per window</option>
-                              <option value="sender">Per sender</option>
-                            </select>
-                          </td>
-                          <td><TagInput value={entry.coded_values} onChange={(v) => updateCodebook(idx, "coded_values", v)} type={entry.type} /></td>
-                          <td><button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove row" disabled={codebook.length <= 1}>×</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="mt-8"><button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>+ Add Variable</button></div>
+                <div className="cb-editor">
+                  {codebook.map((entry, idx) => (
+                    <div className="cb-card" key={idx}>
+                      <div className="cb-card-top">
+                        <input className="cb-card-label" type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="Variable label — e.g. promise" />
+                        <select value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
+                          {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                        <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
+                          <option value="window">Per window</option>
+                          <option value="sender">Per sender</option>
+                        </select>
+                        <button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove variable" disabled={codebook.length <= 1}>×</button>
+                      </div>
+
+                      <div className="cb-field">
+                        <label>Category definition</label>
+                        <textarea rows={2} value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures and how to decide it" />
+                      </div>
+
+                      {!TYPE_HAS_VALUES(entry.type) ? (
+                        <div className="cb-values">
+                          <p className="hint" style={{ margin: 0 }}>
+                            {entry.type === "numeric"
+                              ? "Numeric — the model returns a number. No fixed values to define."
+                              : "Text — the model returns free-form text. No fixed values to define."}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="cb-values">
+                          <div className="cb-values-h">Coded values <span className="cb-opt">
+                            {entry.type === "binary" ? "fixed 0 / 1 — just define what each means"
+                              : entry.type === "ordinal" ? "list in order, lowest → highest"
+                              : "one definition per value"}
+                          </span></div>
+                          <div className="cb-value-grid cb-value-head">
+                            <span>Value</span>
+                            <span>Definition</span>
+                            <span>Examples <em>(optional)</em></span>
+                            <span>Additional context <em>(optional)</em></span>
+                            <span />
+                          </div>
+                          {entry.values.map((v, vIdx) => (
+                            <div className="cb-value-grid" key={vIdx}>
+                              <input className="cb-value-key" type="text" value={v.value} readOnly={entry.type === "binary"} onChange={(e) => updateValue(idx, vIdx, "value", e.target.value)} placeholder="e.g. P" />
+                              <input type="text" value={v.definition} onChange={(e) => updateValue(idx, vIdx, "definition", e.target.value)} placeholder="What this value means" />
+                              <input type="text" value={v.examples} onChange={(e) => updateValue(idx, vIdx, "examples", e.target.value)} placeholder="examples" />
+                              <input type="text" value={v.context} onChange={(e) => updateValue(idx, vIdx, "context", e.target.value)} placeholder="context" />
+                              {entry.type === "binary"
+                                ? <span />
+                                : <button className="row-rm" onClick={() => removeValueRow(idx, vIdx)} title="Remove value" disabled={entry.values.length <= 1}>×</button>}
+                            </div>
+                          ))}
+                          {entry.type !== "binary" && <button className="btn btn-ghost btn-xs" onClick={() => addValueRow(idx)}>+ Add value</button>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button className="btn btn-outline btn-sm" onClick={addCodebookRow}>+ Add variable</button>
                   {hasSenderVar && (
                     <div className="f participants-block mt-12">
                       <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
@@ -2356,7 +2397,7 @@ export default function Home() {
                       <p className="hint">Per-sender variables are coded once for each participant. These names must match the values in your sender-identity column.</p>
                     </div>
                   )}
-                </>
+                </div>
               )}
               {expandedTable === "live" && codedRows.length > 0 && (
                 <table className="tbl">
