@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
  * A small "?" icon that shows a hover tooltip. The bubble is fixed-positioned
  * (measured on hover) so it escapes any overflow:auto/hidden scroll container.
  */
-export default function HelpTip({ text }: { text: string }) {
+export default function HelpTip({ text }: { text: React.ReactNode }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -26,7 +26,7 @@ export default function HelpTip({ text }: { text: string }) {
       onMouseEnter={show}
       onMouseLeave={hide}
       onClick={(e) => e.stopPropagation()}
-      aria-label={text}
+      aria-label={typeof text === "string" ? text : "Help"}
     >
       ?
       {pos && (

@@ -110,7 +110,7 @@ def _build_prompt(
 
     coding_section = f"\n## Coding Instructions\n{coding_instructions}\n" if coding_instructions.strip() else ""
 
-    return f"""You are coding one row of data. One row = one unit of observation.
+    return f"""You are coding one row of data. One row = one episode of observation.
 
 ## Experiment Instructions
 {experiment_instructions}

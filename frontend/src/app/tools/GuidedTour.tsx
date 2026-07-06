@@ -17,6 +17,8 @@ export interface TourStep {
   media?: string;
   /** region of the media to highlight (percent of the image), matching this sub-part */
   mediaBox?: { x: number; y: number; w: number; h: number };
+  /** if set, this step walks a popup that the parent opens (Map Columns / Codebook editor) */
+  open?: "mapping" | "codebook";
 }
 
 interface Props {
@@ -127,6 +129,18 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
   const isLast = idx === steps.length - 1;
   const isFirst = idx === 0;
 
+  // For popup steps, dock the panel on the opposite vertical half of the highlighted
+  // control so it doesn't cover it (the popup fills the screen).
+  const isPopup = !!step.open;
+  let panelStyle: React.CSSProperties | undefined;
+  if (isPopup && typeof window !== "undefined") {
+    const targetMidY = subRect ? subRect.top + subRect.height / 2 : window.innerHeight / 2;
+    const dockBottom = targetMidY < window.innerHeight / 2;
+    panelStyle = dockBottom
+      ? { top: "auto", bottom: 20, left: "50%", right: "auto", transform: "translateX(-50%)" }
+      : { top: 20, bottom: "auto", left: "50%", right: "auto", transform: "translateX(-50%)" };
+  }
+
   return (
     <div className="tour-root">
       {sec
@@ -137,7 +151,7 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
         <div className="tour-sub-spot" style={{ top: sub.top, left: sub.left, width: sub.width, height: sub.height }} />
       )}
 
-      <div className="tour-panel">
+      <div className={`tour-panel${isPopup ? " tour-panel-float" : ""}`} style={panelStyle}>
         <div className="tour-panel-head">
           <span className="tour-step-count">{step.section ?? "Walkthrough"} · {idx + 1}/{steps.length}</span>
           <button className="tour-close" onClick={onClose} aria-label="Close walkthrough">×</button>
