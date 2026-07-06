@@ -9,20 +9,52 @@ import HelpTip from "@/app/tools/HelpTip";
 const CODING_TOUR_STEPS: TourStep[] = [
   // ── Section 1: Upload & map dataset ──
   {
-    sectionId: "coding-panel-1", panel: 1, section: "Upload & Map Dataset", media: "/tour/mapping.svg",
-    title: "Upload & map your dataset",
-    body: (<p>Upload a CSV/Excel file, then map your columns: tag the <strong>message</strong>, the <strong>identifier(s)</strong> that define each unit (or “each row is its own unit”), and optionally the <strong>sender</strong> and <strong>order</strong>. Rows sharing an identifier merge into one tagged unit.</p>),
+    sectionId: "coding-panel-1", panel: 1, section: "Upload & Map Dataset",
+    targetId: "tour-episode-preview", title: "Upload your dataset",
+    body: (<p>Upload a CSV/Excel file with one message per row. We've loaded a small <strong>sample</strong> so you can follow along — the preview shows the original rows and, once you map columns, the merged <strong>episodes</strong>.</p>),
+  },
+  // ── Map Columns popup ──
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
+    targetId: "tour-map-roles", title: "Column roles",
+    body: (<p>This popup opens right after upload. Pick a <strong>role</strong> up here — Message, Identifier(s), Sender, Order, or Context — then click columns below to tag them. Each color marks one role.</p>),
+  },
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
+    targetId: "tour-map-table", title: "Tag your columns",
+    body: (<p>Click a column header to tag it with the active role. Here <strong>Message</strong> is the text, <strong>Session + Round</strong> define an episode, <strong>Speaker</strong> is the sender, and <strong>Order</strong> sequences the messages.</p>),
+  },
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
+    targetId: "tour-map-proceed", title: "Proceed",
+    body: (<p>When your mapping is complete, click <strong>Proceed</strong>. Rows sharing your identifier(s) are merged into one tagged episode, shown in the preprocessed preview.</p>),
   },
   // ── Section 2: Codebook ──
   {
-    sectionId: "coding-panel-2", panel: 2, section: "Codebook", media: "/tour/codebook.svg",
-    targetId: "tour-empty-handling", title: "Empty messages", mediaBox: { x: 5, y: 12, w: 46, h: 12 },
+    sectionId: "coding-panel-2", panel: 2, section: "Codebook",
+    targetId: "tour-empty-handling", title: "Empty messages",
     body: (<p>Choose what happens to rows with no text: <strong>skip the row</strong> or <strong>code it as a value</strong>.</p>),
   },
   {
-    sectionId: "coding-panel-2", panel: 2, section: "Codebook", media: "/tour/codebook.svg",
-    targetId: "tour-codebook", title: "Codebook variables", mediaBox: { x: 5, y: 30, w: 90, h: 55 },
-    body: (<p>Define each variable to code: its type, <strong>level</strong> (per episode or per sender), a <strong>definition</strong> for the category, and a definition for every <strong>coded value</strong> — with optional examples and context. Per-sender variables expand into one column per participant (e.g. <code>cooperation_P</code>).</p>),
+    sectionId: "coding-panel-2", panel: 2, section: "Codebook",
+    targetId: "tour-codebook", title: "Codebook variables",
+    body: (<p>This summary lists your variables. Click it to open the full editor and define what to code.</p>),
+  },
+  // ── Codebook editor popup ──
+  {
+    sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
+    targetId: "tour-cb-card", title: "Variable card",
+    body: (<p>Each variable is a card. Give it a <strong>label</strong>, a <strong>level</strong> (per episode or per sender), and a <strong>category definition</strong> describing what it measures.</p>),
+  },
+  {
+    sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
+    targetId: "tour-cb-type", title: "Variable type",
+    body: (<p>Pick the <strong>type</strong> (hover the <span aria-hidden>?</span> for details): Binary is fixed 0/1, Categorical is your named set, Numeric a number, Text free-form. Per-sender variables expand to one column per participant (e.g. <code>cooperation_P</code>).</p>),
+  },
+  {
+    sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
+    targetId: "tour-cb-values", title: "Coded values",
+    body: (<p>For Binary/Categorical, define <strong>every coded value</strong> — the value, its definition, and optional examples/context. This is the guidance the model uses to code each episode.</p>),
   },
   // ── Section 3: Experiment Instructions ──
   {
@@ -303,10 +335,19 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
 const CODEBOOK_TYPES = [
   { value: "binary", label: "Binary" },
   { value: "categorical", label: "Categorical" },
-  { value: "ordinal", label: "Ordinal" },
   { value: "numeric", label: "Numeric" },
   { value: "text", label: "Text" },
 ];
+
+// Short explanation of each type, shown in the codebook editor's help tooltip.
+const TYPE_HELP = (
+  <>
+    <strong>Binary</strong>: two fixed outcomes, always 0/1 (e.g. absent / present).<br />
+    <strong>Categorical</strong>: unordered named categories you define (e.g. P / E / N).<br />
+    <strong>Numeric</strong>: a number, no fixed value list (e.g. a count or amount).<br />
+    <strong>Text</strong>: free-form text output, no fixed values.
+  </>
+);
 
 const EMPTY_VALUE: CodedValue = { value: "", definition: "", examples: "", context: "" };
 const binaryValues = (): CodedValue[] => [
@@ -315,7 +356,49 @@ const binaryValues = (): CodedValue[] => [
 ];
 // Binary variables have fixed 0/1 values; new variables default to binary.
 const newEntry = (): CodebookEntry => ({ label: "", type: "binary", level: "episode", definition: "", values: binaryValues() });
-const TYPE_HAS_VALUES = (t: string) => t === "binary" || t === "categorical" || t === "ordinal";
+const TYPE_HAS_VALUES = (t: string) => t === "binary" || t === "categorical";
+
+// Watermark applied to every generated PDF.
+const PDF_WATERMARK_CSS = `
+  .ssel-watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);
+    font-size:26px;font-weight:800;letter-spacing:.04em;color:#5b2d8e;opacity:.06;
+    white-space:nowrap;text-align:center;line-height:1.4;z-index:0;pointer-events:none;}
+  .ssel-footer{position:fixed;bottom:12px;left:0;right:0;text-align:center;
+    font-size:8.5px;color:#a1a1aa;letter-spacing:.03em;pointer-events:none;}
+  body>*:not(.ssel-watermark):not(.ssel-footer){position:relative;z-index:1;}
+`;
+const PDF_WATERMARK_HTML = `
+  <div class="ssel-watermark">Social Science Experimental Laboratory<br/>New York University Abu Dhabi</div>
+  <div class="ssel-footer">Generated by ChAT (Chat Annotation Toolkit) — Social Science Experimental Laboratory, New York University Abu Dhabi</div>
+`;
+const htmlEsc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+
+// Sample data used during the guided tour so the popups render populated.
+const TOUR_SAMPLE_UPLOAD: UploadResult = {
+  file_id: "__tour_sample__",
+  file_name: "sample_conversations.csv",
+  columns: ["Session", "Round", "Speaker", "Order", "Message"],
+  row_count: 6,
+  preview: [
+    { Session: 1, Round: 1, Speaker: "P", Order: 1, Message: "Let's both choose In." },
+    { Session: 1, Round: 1, Speaker: "V1", Order: 2, Message: "Sounds good, I'm in." },
+    { Session: 1, Round: 1, Speaker: "P", Order: 3, Message: "Great — I'll roll." },
+    { Session: 1, Round: 2, Speaker: "P", Order: 1, Message: "Same plan this round?" },
+    { Session: 1, Round: 2, Speaker: "V1", Order: 2, Message: "Yes, let's do it." },
+    { Session: 2, Round: 1, Speaker: "V2", Order: 1, Message: "I'll pass this time." },
+  ],
+};
+const tourSampleCodebook = (): CodebookEntry[] => [{
+  label: "cooperation",
+  type: "categorical",
+  level: "episode",
+  definition: "Does the episode reach a cooperative agreement?",
+  values: [
+    { value: "yes", definition: "Both players agree to cooperate", examples: "“let's both choose In”", context: "" },
+    { value: "no", definition: "No agreement is reached", examples: "", context: "" },
+    { value: "mixed", definition: "Partial or ambiguous agreement", examples: "", context: "" },
+  ],
+}];
 
 // ── TagInput ──────────────────────────────────────────────────────────────────
 
@@ -464,7 +547,7 @@ export default function Home() {
       try { localStorage.setItem("coding_welcome_dismissed", "never"); } catch {}
     }
     setShowWelcome(false);
-    if (mode === "tour") { setActiveTool("coding"); setTourOpen(true); }
+    if (mode === "tour") { startTour(); }
     else if (mode === "guide") { setActiveTool("instructions"); }
   };
 
@@ -532,6 +615,8 @@ export default function Home() {
   const [codedRows, setCodedRows] = useState<CodedRow[]>([]);
   const [runErrors, setRunErrors] = useState<string[]>([]);
   const [runComplete, setRunComplete] = useState<{ total_rows: number; coded_rows: number; file_path: string } | null>(null);
+  const [runStartedAt, setRunStartedAt] = useState<string | null>(null);
+  const [runFinishedAt, setRunFinishedAt] = useState<string | null>(null);
   const [runError, setRunError] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
@@ -585,7 +670,36 @@ export default function Home() {
 
   useEffect(() => { codedRowsRef.current = codedRows; }, [codedRows]);
 
+  // ── Usage analytics (metadata only — never keys or data) ────────────────────
+  const trackEvent = (event: "visit" | "run") => {
+    try {
+      let sid = localStorage.getItem("ssel_session_id");
+      if (!sid) { sid = (crypto.randomUUID?.() ?? String(Date.now() + Math.random())); localStorage.setItem("ssel_session_id", sid); }
+      const body: Record<string, unknown> = { event, session_id: sid };
+      if (event === "run") {
+        body.providers = modelSlots.map((s) => s.provider);
+        body.models = modelSlots.map((s) => s.model);
+        body.num_models = modelSlots.length;
+        body.runs_per_model = runsPerModel;
+        body.aggregation = aggregation;
+        body.num_variables = codebook.filter((e) => e.label.trim()).length;
+        body.num_rows = uploadResult?.row_count ?? 0;
+        body.num_episodes = rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length;
+        body.per_sender = codebook.some((e) => e.level === "sender");
+      }
+      fetch("/api/analytics/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+    } catch {}
+  };
+
+  // Count one visit per browser session.
   useEffect(() => {
+    try { if (sessionStorage.getItem("ssel_visited")) return; sessionStorage.setItem("ssel_visited", "1"); } catch {}
+    trackEvent("visit");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (runComplete) setRunFinishedAt(new Date().toISOString());
     if (runComplete && codedRowsRef.current.length > 0) {
       const report = validateCodedRows(codedRowsRef.current, expandedVars);
       setValidationReport(report);
@@ -634,8 +748,53 @@ export default function Home() {
   }, []);
 
   const handleStepEnter = useCallback((s: TourStep) => {
+    // Open/close the relevant popup for popup steps; close popups for section steps.
+    if (s.open === "mapping") { setExpandedTable(null); setColumnModalOpen(true); }
+    else if (s.open === "codebook") { setColumnModalOpen(false); setExpandedTable("codebook"); }
+    else { setColumnModalOpen(false); setExpandedTable(null); }
     if (s.panel) setOpenPanels((prev) => new Set(prev).add(s.panel as number));
   }, []);
+
+  // Guided tour: load a sample dataset + codebook so every section and popup renders
+  // populated, then restore the user's real state when the tour closes.
+  const tourSnap = useRef<Record<string, unknown> | null>(null);
+  const startTour = () => {
+    tourSnap.current = {
+      uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+      rowsAsUnits, contextColumns, contextDescriptions, codebook, participantsStr,
+      layoutMode,
+    };
+    setUploadResult(TOUR_SAMPLE_UPLOAD);
+    setMessageColumn("Message");
+    setIdentifierColumns(["Session", "Round"]);
+    setIdentityColumn("Speaker");
+    setOrderColumn("Order"); setOrderDirection("asc");
+    setRowsAsUnits(false);
+    setContextColumns([]); setContextDescriptions({});
+    setCodebook(tourSampleCodebook());
+    setParticipantsStr("P, V1, V2");
+    setColumnModalOpen(false); setExpandedTable(null);
+    setActiveTool("coding");
+    setTourOpen(true);
+  };
+  const endTour = () => {
+    setTourOpen(false);
+    setColumnModalOpen(false); setExpandedTable(null);
+    const s = tourSnap.current;
+    if (s) {
+      setUploadResult(s.uploadResult as UploadResult | null);
+      setMessageColumn(s.messageColumn as string);
+      setIdentifierColumns(s.identifierColumns as string[]);
+      setIdentityColumn(s.identityColumn as string);
+      setOrderColumn(s.orderColumn as string); setOrderDirection(s.orderDirection as "asc" | "desc");
+      setRowsAsUnits(s.rowsAsUnits as boolean);
+      setContextColumns(s.contextColumns as string[]); setContextDescriptions(s.contextDescriptions as Record<string, string>);
+      setCodebook(s.codebook as CodebookEntry[]);
+      setParticipantsStr(s.participantsStr as string);
+      setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
+      tourSnap.current = null;
+    }
+  };
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -864,6 +1023,9 @@ export default function Home() {
     setConsoleLogs([]);
     setRightView("run");
     setLayoutMode((m) => (m === "fill" ? "side" : m));
+    setRunStartedAt(new Date().toISOString());
+    setRunFinishedAt(null);
+    trackEvent("run");
 
     log("info", "Generating coding script...");
     try {
@@ -1047,7 +1209,7 @@ export default function Home() {
     showToast("Download started");
   };
 
-  const handleCodebookDownload = async (format: "json" | "csv" | "txt" | "pdf" | "xlsx") => {
+  const handleCodebookDownload = async (format: "json" | "csv" | "txt" | "pdf" | "xlsx" | "latex") => {
     const entries = codebook.filter((e) => e.label.trim());
     const filename = `codebook`;
 
@@ -1180,8 +1342,10 @@ export default function Home() {
     .value-cell{font-family:monospace;color:#7c4dab;font-weight:600;width:60px}
     .muted{color:#a1a1aa;font-size:11px}
     @media print{body{padding:20px}}
+    ${PDF_WATERMARK_CSS}
   </style></head>
   <body>
+    ${PDF_WATERMARK_HTML}
     <h1>Codebook</h1>
     <p>Generated ${new Date().toLocaleDateString()} · ${entries.length} variable${entries.length !== 1 ? "s" : ""}</p>
     ${sections}
@@ -1193,6 +1357,54 @@ export default function Home() {
         win.document.close();
         win.print();
       }
+
+    } else if (format === "latex") {
+      const esc = (s: string) => String(s ?? "")
+        .replace(/\\/g, "\\textbackslash{}")
+        .replace(/([&%$#_{}])/g, "\\$1")
+        .replace(/~/g, "\\textasciitilde{}")
+        .replace(/\^/g, "\\textasciicircum{}")
+        .replace(/—/g, "---").replace(/–/g, "--")
+        .replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+      const DASH = "---";
+      const blocks = entries.map((e) => {
+        const meta = `${e.type}, ${e.level === "sender" ? "per sender" : "per episode"}`;
+        const header = `\\multicolumn{3}{@{}l}{\\textbf{${esc(e.label)}} \\quad \\textit{(${esc(meta)})}} \\\\`;
+        const def = e.definition.trim() ? `\\multicolumn{3}{@{}p{\\linewidth}}{${esc(e.definition)}} \\\\` : "";
+        const vals = e.values.filter((v) => v.value.trim() || v.definition.trim());
+        let rows: string;
+        if (vals.length === 0) {
+          const kind = e.type === "numeric" ? "numeric --- free number" : "free text";
+          rows = `\\multicolumn{3}{@{}l}{\\quad \\textit{(${kind}, no fixed values)}} \\\\`;
+        } else {
+          rows = vals.map((v) => {
+            const notes = [
+              v.examples.trim() ? `e.g.\\ ${esc(v.examples)}` : "",
+              v.context.trim() ? esc(v.context) : "",
+            ].filter(Boolean).join("; ") || DASH;
+            return `${esc(v.value) || DASH} & ${esc(v.definition) || DASH} & ${notes} \\\\`;
+          }).join("\n");
+        }
+        return [header, def, "\\addlinespace[2pt]", rows].filter(Boolean).join("\n");
+      }).join("\n\\midrule\n");
+
+      const tex = `% Codebook — generated by ChAT (Chat Annotation Toolkit)
+% Requires in your preamble: \\usepackage{booktabs}
+\\begin{table}[htbp]
+\\centering
+\\caption{Coding codebook}
+\\label{tab:codebook}
+\\footnotesize
+\\begin{tabular}{@{}l p{6cm} p{3.6cm}@{}}
+\\toprule
+\\textbf{Value} & \\textbf{Definition} & \\textbf{Examples / context} \\\\
+\\midrule
+${blocks}
+\\bottomrule
+\\end{tabular}
+\\end{table}
+`;
+      downloadBlob(new Blob([tex], { type: "application/x-tex" }), `${filename}.tex`);
     }
 
     showToast(`Codebook exported as .${format}`);
@@ -1204,6 +1416,98 @@ export default function Home() {
     const a = document.createElement("a");
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ── Run summary (printable PDF) ─────────────────────────────────────────────
+  const handleRunSummary = () => {
+    if (!uploadResult || !runComplete) return;
+    const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+    let duration = "—";
+    if (runStartedAt && runFinishedAt) {
+      const ms = new Date(runFinishedAt).getTime() - new Date(runStartedAt).getTime();
+      const s = Math.max(0, Math.round(ms / 1000));
+      duration = s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+    }
+    const totalCalls = modelSlots.length * runsPerModel;
+    const episodeCount = rowsAsUnits ? uploadResult.row_count : preprocessedRows.length;
+    const errs = runErrors.length;
+    const rowsHtml = (arr: string[]) => arr.join("");
+
+    const modelRows = modelSlots.map((s, i) => {
+      const p = PROVIDERS.find((pp) => pp.value === s.provider);
+      const m = p?.models.find((mm) => mm.value === s.model);
+      const noTemp = modelIgnoresTemperature(s.provider, s.model);
+      return `<tr><td>${i + 1}</td><td>${htmlEsc(p?.label ?? s.provider)}</td><td>${htmlEsc(m?.label ?? s.model)}</td>
+        <td>${noTemp ? "n/a" : (s.temperature ?? 0.2)}</td><td>${s.topP ?? 1.0}</td><td>${s.maxTokens ?? 1024}</td></tr>`;
+    });
+    const cbRows = codebook.filter((e) => e.label.trim()).map((e) => {
+      const vals = TYPE_HAS_VALUES(e.type) ? e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") : "—";
+      return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${htmlEsc(vals)}</td></tr>`;
+    });
+
+    const kv = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Summary</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,sans-serif;padding:40px;color:#18181b;font-size:12.5px}
+  h1{font-size:19px;font-weight:700;margin-bottom:2px}
+  .sub{color:#71717a;font-size:11px;margin-bottom:20px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#7c4dab;margin:18px 0 6px;border-bottom:1px solid #e4e4e7;padding-bottom:3px}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px}
+  td,th{padding:4px 8px;border-bottom:1px solid #f1f1f4;text-align:left;vertical-align:top}
+  th{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#a1a1aa}
+  td.k{color:#71717a;width:180px}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;background:#f3eef8;color:#5b2d8e;font-weight:600;font-size:11px}
+  @media print{body{padding:24px}}
+  ${PDF_WATERMARK_CSS}
+</style></head><body>
+${PDF_WATERMARK_HTML}
+<h1>LLM Coding — Run Summary</h1>
+<div class="sub">Generated ${new Date().toLocaleString()}</div>
+
+<h2>Run</h2>
+<table>
+  ${kv("Started", fmt(runStartedAt))}
+  ${kv("Finished", fmt(runFinishedAt))}
+  ${kv("Duration", duration)}
+  ${kv("Episodes coded", `${runComplete.coded_rows} of ${runComplete.total_rows}`)}
+  ${kv("Errors", errs > 0 ? `<span class="pill" style="background:#fee2e2;color:#b91c1c">${errs}</span>` : "0")}
+  ${kv("API calls", `${modelSlots.length} model${modelSlots.length !== 1 ? "s" : ""} × ${runsPerModel} run${runsPerModel !== 1 ? "s" : ""} = ${totalCalls} per episode`)}
+  ${kv("Aggregation", aggregation === "mode" ? "Majority vote (mode)" : "Average (mean)")}
+</table>
+
+<h2>Dataset</h2>
+<table>
+  ${kv("File", htmlEsc(uploadResult.file_name))}
+  ${kv("Rows (messages)", String(uploadResult.row_count))}
+  ${kv("Episodes", String(episodeCount))}
+  ${kv("Columns", htmlEsc(uploadResult.columns.join(", ")))}
+</table>
+
+<h2>Column mapping</h2>
+<table>
+  ${kv("Message", htmlEsc(messageColumn || "—"))}
+  ${kv("Identifier(s)", rowsAsUnits ? "each row is its own episode" : htmlEsc(identifierColumns.join(" + ") || "—"))}
+  ${kv("Sender identity", htmlEsc(identityColumn || "none"))}
+  ${kv("Order", orderColumn ? `${htmlEsc(orderColumn)} (${orderDirection})` : "file order")}
+  ${kv("Context columns", htmlEsc(contextColumns.join(", ") || "none"))}
+</table>
+
+<h2>Models &amp; configuration</h2>
+<table>
+  <thead><tr><th>#</th><th>Provider</th><th>Model</th><th>Temp</th><th>Top-p</th><th>Max tokens</th></tr></thead>
+  <tbody>${rowsHtml(modelRows)}</tbody>
+</table>
+
+<h2>Codebook (${codebook.filter((e) => e.label.trim()).length} variable${codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""})</h2>
+<table>
+  <thead><tr><th>Label</th><th>Type</th><th>Level</th><th>Values</th></tr></thead>
+  <tbody>${rowsHtml(cbRows)}</tbody>
+</table>
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    if (win) { win.document.write(html); win.document.close(); win.print(); }
+    showToast("Run summary opened — save as PDF from the print dialog");
   };
 
   // ── Analysis handlers ─────────────────────────────────────────────────────
@@ -1465,13 +1769,13 @@ export default function Home() {
             role="button" tabIndex={0}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveTool("coding"); }}
           >
-            LLM Measurement Toolkit
+            ChAT — Chat Annotation Toolkit
           </span>
           <span className="topbar-badge">beta</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
-            <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn the Toolkit</button>
+            <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn ChAT</button>
           </div>
         </div>
         <div className="topbar-right">
@@ -1490,11 +1794,15 @@ export default function Home() {
               <div>
                 <h1>LLM Coding</h1>
                 <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
+                <div className="episode-def">
+                  <span className="episode-def-term">Communication episode:</span>
+                  <span className="episode-def-text"> the unit of analysis — a combination of messages exchanged through the same channel, or a collection of messages sent by one sender. Rows that share your chosen identifier(s) are merged into one episode.</span>
+                </div>
               </div>
               {/* <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">?</button> */}
-              <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">
+              <button className="tour-help-btn" onClick={startTour} title="Guided walkthrough" aria-label="Start guided walkthrough">
                 <span className="tour-help-icon">?</span>
-                
+
               </button>
             </div>
 
@@ -1509,17 +1817,6 @@ export default function Home() {
                 }}
               >
                 <div className="config-scroll">
-
-                  {/* ── Episode definition ── */}
-                  <div className="episode-def">
-                    <span className="episode-def-term">*Communication episode</span>
-                    <span className="episode-def-text">
-                      one unit of analysis — the group of rows that get merged into a single
-                      tagged block and receive one coded value per variable (e.g. all messages
-                      in a session, or all messages between two players in a round). You'll
-                      define what counts as one episode when you map columns below.
-                    </span>
-                  </div>
 
                   {/* Panel 1: Upload Dataset */}
                   <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
@@ -1552,7 +1849,7 @@ export default function Home() {
                       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={onFileChange} className="input-hidden" />
                       {uploadError && <p className="enc-error">{uploadError}</p>}
                       {uploadResult && (
-                        <div className="mt-12">
+                        <div className="mt-12" id="tour-episode-preview">
                           <div className="file-chip">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
                             {uploadResult.file_name}
@@ -1562,7 +1859,7 @@ export default function Home() {
                           <div className="colmap-recap">
                             <div className="colmap-recap-roles">
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.message.color }} />Message: <b>{messageColumn || "—"}</b></span>
-                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identifier.color }} />Identifier: <b>{rowsAsUnits ? "each row = unit" : (identifierColumns.join(" + ") || "—")}</b></span>
+                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identifier.color }} />Identifier: <b>{rowsAsUnits ? "each row = episode" : (identifierColumns.join(" + ") || "—")}</b></span>
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identity.color }} />Sender: <b>{identityColumn || "none"}</b></span>
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.order.color }} />Order: <b>{orderColumn ? `${orderColumn} (${orderDirection})` : "file order"}</b></span>
                             </div>
@@ -1598,7 +1895,7 @@ export default function Home() {
                             <div className="mt-12">
                               <div className="ds-table-label">
                                 <span className="ds-badge ds-badge-final">Preprocessed</span>
-                                <span className="ds-table-cap">What the models will code — {preprocessedRows.length} merged unit{preprocessedRows.length !== 1 ? "s" : ""}</span>
+                                <span className="ds-table-cap">What the models will code — {preprocessedRows.length} merged episode{preprocessedRows.length !== 1 ? "s" : ""}</span>
                                 <button className="btn btn-ghost btn-xs ds-dl-btn" onClick={downloadPreprocessed}>↓ Download CSV</button>
                               </div>
                               <div className="table-wrap table-mini">
@@ -1610,7 +1907,7 @@ export default function Home() {
                                     ))}
                                   </tbody>
                                 </table>
-                                {preprocessedRows.length > 5 && <div className="table-more">{preprocessedRows.length} units total</div>}
+                                {preprocessedRows.length > 5 && <div className="table-more">{preprocessedRows.length} episodes total</div>}
                               </div>
                             </div>
                           )}
@@ -1724,13 +2021,13 @@ export default function Home() {
                         {showCodebookExport && (
                           <div className="cb-export-options">
                             <span className="cb-export-label">Download as:</span>
-                            {(["json", "csv", "txt", "pdf", "xlsx"] as const).map((fmt) => (
+                            {(["json", "csv", "txt", "pdf", "xlsx", "latex"] as const).map((fmt) => (
                               <button
                                 key={fmt}
                                 className="btn btn-outline btn-xs"
                                 onClick={() => { handleCodebookDownload(fmt); setShowCodebookExport(false); }}
                               >
-                                .{fmt}
+                                {fmt === "latex" ? "LaTeX" : `.${fmt}`}
                               </button>
                             ))}
                           </div>
@@ -2085,6 +2382,16 @@ export default function Home() {
                     )}
                     {runComplete && !validationReport && <div className="enc-complete-bar"><div>Validating results...</div></div>}
 
+                    {runComplete && (
+                      <div className="res-section mt-12 run-summary-cta">
+                        <div>
+                          <div className="run-summary-title">Run summary</div>
+                          <div className="run-summary-sub">Dataset, models, configuration, timing &amp; results — save as PDF.</div>
+                        </div>
+                        <button className="btn btn-outline btn-sm" onClick={handleRunSummary}>↓ Download summary (PDF)</button>
+                      </div>
+                    )}
+
                     {consoleLogs.length > 0 && (
                       <div className="enc-console mt-12">
                         <div className="enc-console-header">
@@ -2399,7 +2706,7 @@ export default function Home() {
           : (orderColumn ? [orderColumn] : []);
         return (
           <div className="colmap-overlay">
-            <div className="colmap-modal">
+            <div className="colmap-modal" id="tour-map-modal">
               <div className="colmap-head">
                 <div>
                   <h2 className="colmap-title">Map your columns</h2>
@@ -2409,10 +2716,10 @@ export default function Home() {
               </div>
 
               {/* Square role tabs */}
-              <div className="colmap-roles-bar">
+              <div className="colmap-roles-bar" id="tour-map-roles">
                 {(Object.keys(ROLE_META) as ColRole[]).map((role) => {
                   const meta = ROLE_META[role];
-                  const assigned = role === "identifier" && rowsAsUnits ? ["each row = unit"] : assignedFor(role);
+                  const assigned = role === "identifier" && rowsAsUnits ? ["each row = episode"] : assignedFor(role);
                   const optional = role !== "message" && role !== "identifier";
                   return (
                     <button key={role} className={`role-brush ${activeRole === role ? "active" : ""}`}
@@ -2433,10 +2740,10 @@ export default function Home() {
                 <div>
                   <div className="colmap-idmode">
                     <button className={`idmode-pill ${!rowsAsUnits ? "on" : ""}`} onClick={() => setRowsAsUnits(false)}>Group rows by column(s)</button>
-                    <button className={`idmode-pill ${rowsAsUnits ? "on" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>Each row is its own unit</button>
+                    <button className={`idmode-pill ${rowsAsUnits ? "on" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>Each row is its own episode</button>
                   </div>
                   {!rowsAsUnits && (
-                    <p className="colmap-autoid">Tag the column(s) that define one unit — e.g. session + round. Rows sharing the same combination are merged into one unit.</p>
+                    <p className="colmap-autoid">Tag the column(s) that define one episode — e.g. session + round. Rows sharing the same combination are merged into one episode.</p>
                   )}
                 </div>
               ) : activeRole === "order" && orderColumn ? (
@@ -2455,7 +2762,7 @@ export default function Home() {
               )}
 
               {/* Clickable preview = highlight columns */}
-              <div className="colmap-table-wrap">
+              <div className="colmap-table-wrap" id="tour-map-table">
                 <table className="colmap-table">
                   <thead><tr>
                     <th className="colmap-rownum">#</th>
@@ -2527,12 +2834,12 @@ export default function Home() {
               )}
 
               {/* Proceed */}
-              <div className="colmap-foot">
+              <div className="colmap-foot" id="tour-map-proceed">
                 <span className="hint" style={{ margin: 0 }}>
                   {mappingComplete
                     ? "Mapping complete."
                     : !messageColumn ? "Tag a Message column to continue."
-                    : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own unit”)."
+                    : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own episode”)."
                     : !sendersOk ? "Resolve the sender-name match above to continue."
                     : ""}
                 </span>
@@ -2567,14 +2874,17 @@ export default function Home() {
                 </table>
               )}
               {expandedTable === "codebook" && (
-                <div className="cb-editor">
+                <div className="cb-editor" id="tour-cb-editor">
                   {codebook.map((entry, idx) => (
-                    <div className="cb-card" key={idx}>
+                    <div className="cb-card" id={idx === 0 ? "tour-cb-card" : undefined} key={idx}>
                       <div className="cb-card-top">
                         <input className="cb-card-label" type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="Variable label — e.g. promise" />
-                        <select value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
-                          {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                        </select>
+                        <div className="cb-type-wrap" id={idx === 0 ? "tour-cb-type" : undefined}>
+                          <select value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
+                            {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          </select>
+                          <HelpTip text={TYPE_HELP} />
+                        </div>
                         <select value={entry.level} onChange={(e) => updateCodebook(idx, "level", e.target.value)}>
                           <option value="episode">Per episode</option>
                           <option value="sender">Per sender</option>
@@ -2588,7 +2898,7 @@ export default function Home() {
                       </div>
 
                       {!TYPE_HAS_VALUES(entry.type) ? (
-                        <div className="cb-values">
+                        <div className="cb-values" id={idx === 0 ? "tour-cb-values" : undefined}>
                           <p className="hint" style={{ margin: 0 }}>
                             {entry.type === "numeric"
                               ? "Numeric — the model returns a number. No fixed values to define."
@@ -2596,11 +2906,9 @@ export default function Home() {
                           </p>
                         </div>
                       ) : (
-                        <div className="cb-values">
+                        <div className="cb-values" id={idx === 0 ? "tour-cb-values" : undefined}>
                           <div className="cb-values-h">Coded values <span className="cb-opt">
-                            {entry.type === "binary" ? "fixed 0 / 1 — just define what each means"
-                              : entry.type === "ordinal" ? "list in order, lowest → highest"
-                              : "one definition per value"}
+                            {entry.type === "binary" ? "fixed 0 / 1 — just define what each means" : "one definition per value"}
                           </span></div>
                           <div className="cb-value-grid cb-value-head">
                             <span>Value</span>
@@ -2665,7 +2973,7 @@ export default function Home() {
       <GuidedTour
         open={tourOpen}
         steps={CODING_TOUR_STEPS}
-        onClose={() => setTourOpen(false)}
+        onClose={endTour}
         onStepEnter={handleStepEnter}
       />
 

@@ -1,7 +1,7 @@
 import uuid
 import json
 
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, TypeDecorator
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, TypeDecorator, Integer, Boolean
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
@@ -66,3 +66,22 @@ class PipelineRun(Base):
     results = Column(JSONField, default=[])
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
+
+
+class UsageEvent(Base):
+    """Developer usage analytics — metadata only (never API keys or dataset content)."""
+    __tablename__ = "usage_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    event = Column(String(20))            # "visit" | "run"
+    session_id = Column(String(64))
+    providers = Column(JSONField, default=[])
+    models = Column(JSONField, default=[])
+    num_models = Column(Integer, default=0)
+    runs_per_model = Column(Integer, default=0)
+    aggregation = Column(String(20))
+    num_variables = Column(Integer, default=0)
+    num_rows = Column(Integer, default=0)
+    num_episodes = Column(Integer, default=0)
+    per_sender = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())

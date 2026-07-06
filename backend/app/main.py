@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import files, generate, pipeline, coding, agreement
+from app.routes import files, generate, pipeline, coding, agreement, analytics
 
 from fastapi import Request
 
@@ -13,11 +13,11 @@ from fastapi import Request
 async def lifespan(app: FastAPI):
     from app.models.database import init_db
     await init_db()
-    print("LLM Measurement Toolkit API started (SQLite)")
+    print("ChAT (Chat Annotation Toolkit) API started (SQLite)")
     yield
 
 
-app = FastAPI(title="LLM Measurement Toolkit", lifespan=lifespan)
+app = FastAPI(title="ChAT — Chat Annotation Toolkit", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,12 +32,13 @@ app.include_router(generate.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
 app.include_router(coding.router, prefix="/api")
 app.include_router(agreement.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
 
 
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "LLM Measurement Toolkit API"}
+    return {"status": "ok", "service": "ChAT — Chat Annotation Toolkit API"}
 
 
 

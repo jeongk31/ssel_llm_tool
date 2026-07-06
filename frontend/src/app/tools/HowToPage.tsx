@@ -105,7 +105,7 @@ export default function HowToPage({ onNavigate }: Props) {
     <div className="tool-page active">
       <div className="tool-header">
         <div>
-          <h1>Learn the Toolkit</h1>
+          <h1>Learn ChAT</h1>
           <p className="tool-desc">
             What each tool does, what every field expects, and short demos to watch it in action.
           </p>
@@ -148,21 +148,21 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
               <div className="howto-warning mt-12">
                 <strong>Citation.</strong> All example instructions, coding schemes, and sample data
-                used throughout this toolkit are drawn from {PAPER_CITATION_FULL}
+                used throughout ChAT are drawn from {PAPER_CITATION_FULL}
               </div>
             </div>
 
             <StepSection n={1} title="Upload & Map Dataset">
               <p>
-                Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one unit (or choose “each row is its own unit”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Rows that share an identifier combination are merged into one tagged unit, shown in the preprocessed preview.
+                A <strong>communication episode</strong> is a combination of messages exchanged through the same channel — or a collection of messages sent by one sender — and it's what the model codes. Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one episode (or choose “each row is its own episode”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Rows that share an identifier combination are merged into one tagged episode, shown in the preprocessed preview.
               </p>
             </StepSection>
 
             <StepSection n={2} title="Codebook">
               <p>
-                The codebook is the list of variables to code. Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Ordinal, Numeric, Text), a <strong>level</strong> (per window = one value per unit, or per sender = one value per participant), and a <strong>definition</strong> of the category. For every allowed <strong>coded value</strong> you add, give a definition too — plus optional <strong>examples</strong> and <strong>context</strong>. All the coding guidance now lives in these definitions.
+                The codebook is the list of variables to code. Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Numeric, Text), a <strong>level</strong> (per episode = one value per episode, or per sender = one value per participant), and a <strong>definition</strong> of the category. For every allowed <strong>coded value</strong> you add, give a definition too — plus optional <strong>examples</strong> and <strong>context</strong>. All the coding guidance now lives in these definitions.
               </p>
-              <p className="mt-12"><strong>Example coding scheme</strong> (single-label — one category per unit):</p>
+              <p className="mt-12"><strong>Example coding scheme</strong> (single-label — one category per episode):</p>
               <pre className="howto-example">{CODING_EXAMPLE_SINGLE}</pre>
               <p className="mt-12"><strong>Multi-label example</strong> (each category is its own binary variable, marked when it applies):</p>
               <pre className="howto-example">{CODING_EXAMPLE_MULTI}</pre>
