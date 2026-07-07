@@ -21,7 +21,21 @@ class JSONField(TypeDecorator):
         return json.loads(value) if value is not None else None
 
 
-engine = create_async_engine(settings.database_url)
+def _async_url(url: str) -> str:
+    """Normalize a DATABASE_URL into an async SQLAlchemy URL.
+
+    Managed Postgres (Railway, Heroku, university servers) usually hands out
+    `postgres://` or `postgresql://`; SQLAlchemy async needs the asyncpg driver.
+    SQLite/other URLs are returned unchanged.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url[len("postgresql://"):]
+    return url
+
+
+engine = create_async_engine(_async_url(settings.database_url))
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
