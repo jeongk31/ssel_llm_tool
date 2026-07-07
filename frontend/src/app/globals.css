@@ -1907,6 +1907,8 @@ td.cm-off:hover{background:var(--bg)}
 .cb-sum-edit{font-size:10.5px;color:var(--purple);font-weight:600;margin-top:2px;border-top:1px solid var(--border-lt);padding-top:6px}
 
 .cb-editor{display:flex;flex-direction:column;gap:14px;padding:16px 18px}
+.cb-editor-foot{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;
+  padding:12px 0 2px;margin-top:4px;background:linear-gradient(to top,var(--surface) 70%,transparent);z-index:2}
 .cb-card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);padding:14px;box-shadow:var(--shadow)}
 .cb-card-top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .cb-card-label{flex:1;font-weight:600}
@@ -2128,6 +2130,39 @@ textarea.ta-fit{
   font-size: 12.5px;
   font-weight: 600;
   color: #18181b;
+  white-space: nowrap;
+}
+
+/* inline format selector: pick one, then Export */
+.cb-export-formats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.cb-fmt {
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b3f96;
+  background: #fff;
+  border: 1px solid #e9d5ff;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.cb-fmt:hover {
+  border-color: #c9a8e6;
+}
+
+.cb-fmt.active {
+  color: #fff;
+  background: #7c4dab;
+  border-color: #7c4dab;
 }
 
 .cb-export-sub {

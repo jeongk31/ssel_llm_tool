@@ -564,8 +564,6 @@ export default function Home() {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  //codebook download state
-  const [showCodebookExport, setShowCodebookExport] = useState(false);
 
   // Form state
   const [messageColumn, setMessageColumn] = useState("");
@@ -579,7 +577,13 @@ export default function Home() {
   const [contextDescriptions, setContextDescriptions] = useState<Record<string, string>>({});
   const [rowsAsUnits, setRowsAsUnits] = useState(false); // identifier = each row is its own unit
   const [columnModalOpen, setColumnModalOpen] = useState(false);
+  const [colMapError, setColMapError] = useState("");
+  const [exportFormat, setExportFormat] = useState<"json" | "csv" | "txt" | "pdf" | "xlsx" | "latex">("csv");
   const [activeRole, setActiveRole] = useState<ColRole>("message");
+  // Snapshots for save/discard on the two popups, and a flag guarding first hydration.
+  const codebookSnapshotRef = useRef<string | null>(null);
+  const mapSnapshotRef = useRef<string | null>(null);
+  const hydratedRef = useRef(false);
   const [experimentInstructions, setExperimentInstructions] = useState("");
   const [codebook, setCodebook] = useState<CodebookEntry[]>([newEntry()]);
   const [participantsStr, setParticipantsStr] = useState("");
@@ -697,6 +701,109 @@ export default function Home() {
     trackEvent("visit");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Persistence: keep the whole coding setup across refreshes ────────────────
+  const PERSIST_KEY = "chat_coding_v1";
+  // Hydrate once on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.uploadResult !== undefined) setUploadResult(s.uploadResult);
+        if (typeof s.messageColumn === "string") setMessageColumn(s.messageColumn);
+        if (Array.isArray(s.identifierColumns)) setIdentifierColumns(s.identifierColumns);
+        if (typeof s.identityColumn === "string") setIdentityColumn(s.identityColumn);
+        if (typeof s.orderColumn === "string") setOrderColumn(s.orderColumn);
+        if (s.orderDirection === "asc" || s.orderDirection === "desc") setOrderDirection(s.orderDirection);
+        if (Array.isArray(s.contextColumns)) setContextColumns(s.contextColumns);
+        if (s.contextDescriptions && typeof s.contextDescriptions === "object") setContextDescriptions(s.contextDescriptions);
+        if (typeof s.rowsAsUnits === "boolean") setRowsAsUnits(s.rowsAsUnits);
+        if (s.emptyMessageHandling === "ignore" || s.emptyMessageHandling === "code") setEmptyMessageHandling(s.emptyMessageHandling);
+        if (typeof s.experimentInstructions === "string") setExperimentInstructions(s.experimentInstructions);
+        if (Array.isArray(s.codebook) && s.codebook.length) setCodebook(s.codebook);
+        if (typeof s.participantsStr === "string") setParticipantsStr(s.participantsStr);
+        if (Array.isArray(s.modelSlots) && s.modelSlots.length) setModelSlots(s.modelSlots);
+        if (typeof s.runsPerModel === "number") setRunsPerModel(s.runsPerModel);
+        if (s.aggregation === "mode" || s.aggregation === "mean") setAggregation(s.aggregation);
+      }
+    } catch {}
+    hydratedRef.current = true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Save on any change (skip during the guided tour, which loads sample data).
+  useEffect(() => {
+    if (!hydratedRef.current || tourOpen) return;
+    try {
+      localStorage.setItem(PERSIST_KEY, JSON.stringify({
+        uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+        contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
+        codebook, participantsStr, modelSlots, runsPerModel, aggregation,
+      }));
+    } catch {}
+  }, [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+      contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
+      codebook, participantsStr, modelSlots, runsPerModel, aggregation, tourOpen]);
+
+  // ── Popup save / discard ────────────────────────────────────────────────────
+  const mapStateJSON = () => JSON.stringify({
+    messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+    contextColumns, contextDescriptions, rowsAsUnits,
+  });
+  // Snapshot each popup's state when it opens.
+  useEffect(() => {
+    if (columnModalOpen) { mapSnapshotRef.current = mapStateJSON(); setColMapError(""); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnModalOpen]);
+  useEffect(() => {
+    if (expandedTable === "codebook") codebookSnapshotRef.current = JSON.stringify(codebook);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedTable]);
+
+  const mapRequirementMsg = () =>
+    !messageColumn ? "Tag a Message column before you proceed."
+    : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier — tag column(s) or pick “each row is its own episode”."
+    : !sendersOk ? "Resolve the sender-name match above before you proceed."
+    : "";
+
+  const saveAndProceed = () => {
+    if (!mappingComplete) { setColMapError(mapRequirementMsg() || "Select all required columns first."); return; }
+    mapSnapshotRef.current = mapStateJSON();
+    setColMapError("");
+    setColumnModalOpen(false);
+    showToast("Column mapping saved");
+  };
+  const closeColumnModal = () => {
+    if (mapSnapshotRef.current !== null && mapStateJSON() !== mapSnapshotRef.current) {
+      if (!window.confirm("Leave without saving your column mapping? Your changes will be discarded.")) return;
+      try {
+        const s = JSON.parse(mapSnapshotRef.current);
+        setMessageColumn(s.messageColumn); setIdentifierColumns(s.identifierColumns);
+        setIdentityColumn(s.identityColumn); setOrderColumn(s.orderColumn); setOrderDirection(s.orderDirection);
+        setContextColumns(s.contextColumns); setContextDescriptions(s.contextDescriptions); setRowsAsUnits(s.rowsAsUnits);
+      } catch {}
+    }
+    setColMapError("");
+    setColumnModalOpen(false);
+  };
+
+  const saveCodebookEditor = () => {
+    codebookSnapshotRef.current = JSON.stringify(codebook);
+    setExpandedTable(null);
+    showToast("Codebook saved");
+  };
+  const closeCodebookEditor = () => {
+    if (codebookSnapshotRef.current !== null && JSON.stringify(codebook) !== codebookSnapshotRef.current) {
+      if (!window.confirm("Leave without saving? Your codebook changes will be discarded.")) return;
+      try { setCodebook(JSON.parse(codebookSnapshotRef.current)); } catch {}
+    }
+    setExpandedTable(null);
+  };
+  // Close the fullscreen modal, routing the codebook editor through its discard check.
+  const closeExpanded = () => {
+    if (expandedTable === "codebook") { closeCodebookEditor(); return; }
+    setExpandedTable(null);
+  };
 
   useEffect(() => {
     if (runComplete) setRunFinishedAt(new Date().toISOString());
@@ -1681,9 +1788,13 @@ ${PDF_WATERMARK_HTML}
   // ── Reset ─────────────────────────────────────────────────────────────────
 
   const handleReset = () => {
+    if (!window.confirm("Reset everything and clear all saved fields? This cannot be undone.")) return;
+    try { localStorage.removeItem(PERSIST_KEY); } catch {}
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
     setMessageColumn(""); setExperimentInstructions("");
+    setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
+    setContextColumns([]); setContextDescriptions({}); setRowsAsUnits(false); setEmptyMessageHandling("ignore");
     setCodebook([newEntry()]); setParticipantsStr(""); setRowFilter(""); setRowFilterError("");
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1); setAggregation("mode");
     setGenerating(false); setGenerateError(""); setResult(null);
@@ -2003,12 +2114,22 @@ ${PDF_WATERMARK_HTML}
                       <div className="cb-export-block">
                         <div className="cb-export-divider" />
                         <div className="cb-export-row">
-                          <div className="cb-export-info">
-                            <span className="cb-export-title">Export codebook</span>
+                          <span className="cb-export-title">Export codebook</span>
+                          <div className="cb-export-formats">
+                            {(["json", "csv", "txt", "pdf", "xlsx", "latex"] as const).map((fmt) => (
+                              <button
+                                key={fmt}
+                                className={`cb-fmt ${exportFormat === fmt ? "active" : ""}`}
+                                onClick={() => setExportFormat(fmt)}
+                                title={fmt === "latex" ? "LaTeX table" : `.${fmt}`}
+                              >
+                                {fmt === "latex" ? "LaTeX" : fmt.toUpperCase()}
+                              </button>
+                            ))}
                           </div>
                           <button
                             className="btn-export"
-                            onClick={() => setShowCodebookExport((p) => !p)}
+                            onClick={() => handleCodebookDownload(exportFormat)}
                             disabled={!codebook.some((e) => e.label.trim())}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2017,21 +2138,6 @@ ${PDF_WATERMARK_HTML}
                             Export
                           </button>
                         </div>
-
-                        {showCodebookExport && (
-                          <div className="cb-export-options">
-                            <span className="cb-export-label">Download as:</span>
-                            {(["json", "csv", "txt", "pdf", "xlsx", "latex"] as const).map((fmt) => (
-                              <button
-                                key={fmt}
-                                className="btn btn-outline btn-xs"
-                                onClick={() => { handleCodebookDownload(fmt); setShowCodebookExport(false); }}
-                              >
-                                {fmt === "latex" ? "LaTeX" : `.${fmt}`}
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     </div></div></div>
                   </div>
@@ -2712,7 +2818,7 @@ ${PDF_WATERMARK_HTML}
                   <h2 className="colmap-title">Map your columns</h2>
                   <p className="colmap-sub">Pick a role, click the columns to tag them, verify the identifiers, then proceed.</p>
                 </div>
-                <button className="modal-close" onClick={() => setColumnModalOpen(false)} title="Close (you can finish mapping later)">✕</button>
+                <button className="modal-close" onClick={closeColumnModal} title="Close without saving">✕</button>
               </div>
 
               {/* Square role tabs */}
@@ -2833,17 +2939,19 @@ ${PDF_WATERMARK_HTML}
                 </div>
               )}
 
-              {/* Proceed */}
+              {/* Save & proceed */}
               <div className="colmap-foot" id="tour-map-proceed">
-                <span className="hint" style={{ margin: 0 }}>
-                  {mappingComplete
+                <span className={`hint ${colMapError ? "text-bad" : ""}`} style={{ margin: 0 }}>
+                  {colMapError
+                    ? colMapError
+                    : mappingComplete
                     ? "Mapping complete."
                     : !messageColumn ? "Tag a Message column to continue."
                     : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own episode”)."
                     : !sendersOk ? "Resolve the sender-name match above to continue."
                     : ""}
                 </span>
-                <button className="btn btn-primary" disabled={!mappingComplete} onClick={() => setColumnModalOpen(false)}>Proceed</button>
+                <button className="btn btn-primary" onClick={saveAndProceed}>Save &amp; Proceed</button>
               </div>
             </div>
           </div>
@@ -2852,7 +2960,7 @@ ${PDF_WATERMARK_HTML}
 
       {/* Fullscreen table modal */}
       {expandedTable && (
-        <div className="modal-overlay" onClick={() => setExpandedTable(null)}>
+        <div className="modal-overlay" onClick={closeExpanded}>
           <div className="modal modal-table" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="fw-600">
@@ -2860,7 +2968,7 @@ ${PDF_WATERMARK_HTML}
                 {expandedTable === "codebook" && "Codebook"}
                 {expandedTable === "live" && `Coded Results (${codedRows.length} rows)`}
               </span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setExpandedTable(null)}>✕</button>
+              <button className="btn btn-ghost btn-sm" onClick={closeExpanded}>✕</button>
             </div>
             <div className="modal-body">
               {expandedTable === "preview" && uploadResult && (
@@ -2941,6 +3049,10 @@ ${PDF_WATERMARK_HTML}
                       <p className="hint">Per-sender variables are coded once for each participant. These names must match the values in your sender-identity column.</p>
                     </div>
                   )}
+                  <div className="cb-editor-foot">
+                    <button className="btn btn-ghost" onClick={closeCodebookEditor}>Cancel</button>
+                    <button className="btn btn-primary" onClick={saveCodebookEditor}>Save</button>
+                  </div>
                 </div>
               )}
               {expandedTable === "live" && codedRows.length > 0 && (
