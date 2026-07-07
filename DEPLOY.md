@@ -62,8 +62,8 @@ Use Railway's managed Postgres, which runs as its own service and persists indep
 3. **Redeploy** the backend (make sure the deployed commit includes `asyncpg` support).
 
 Verify: the backend's `DATABASE_URL` now shows a real `postgresql://…railway.internal:5432/railway`
-value; the deploy logs show `ChAT (Chat Annotation Toolkit) API started` with no traceback;
-and the Postgres service's **Data** tab lists the three tables.
+value; the deploy logs show `ChAT (Chat Annotation Toolkit) API started — database: postgresql`
+with no traceback; and the Postgres service's **Data** tab lists the `usage_events` table.
 
 ---
 
