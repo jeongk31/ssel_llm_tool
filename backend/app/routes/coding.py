@@ -1,20 +1,79 @@
 import io
 import uuid
 import os
+import shutil
 import tempfile
+import time
 
 import pandas as pd
-from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from app.config import settings
+from app.ratelimit import limiter
 from app.services.script_generator import generate_coding_script
 from app.services.coding_runner import run_coding
 
 router = APIRouter()
 
-# In-memory store for uploaded files (file_id → {path, filename, df})
+# In-memory store for uploaded files (file_id → {path, filename, created})
 _uploaded_files: dict[str, dict] = {}
+
+# Temp files live under the system temp dir with these prefixes.
+_TEMP_PREFIXES = ("llm_upload_", "llm_coding_")
+_TEMP_TTL_SECONDS = 24 * 60 * 60  # delete working files after 24 hours
+
+
+def _temp_dir_for(path: str) -> str | None:
+    """Return the top-level ChAT temp dir a path belongs to, or None if it isn't one.
+
+    Guards the cleanup endpoint so it can only ever delete our own temp dirs,
+    never an arbitrary path.
+    """
+    if not path:
+        return None
+    real = os.path.realpath(path)
+    tmp_root = os.path.realpath(tempfile.gettempdir())
+    if real != tmp_root and not real.startswith(tmp_root + os.sep):
+        return None
+    rel = os.path.relpath(real, tmp_root)
+    top = rel.split(os.sep)[0]
+    if top and any(top.startswith(p) for p in _TEMP_PREFIXES):
+        return os.path.join(tmp_root, top)
+    return None
+
+
+def _remove_temp_dir(path: str) -> None:
+    d = _temp_dir_for(path)
+    if d and os.path.isdir(d):
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _cleanup_file_id(file_id: str) -> None:
+    info = _uploaded_files.pop(file_id, None)
+    if info and info.get("path"):
+        _remove_temp_dir(info["path"])
+
+
+def sweep_temp_files(max_age_seconds: int = _TEMP_TTL_SECONDS) -> None:
+    """Delete ChAT temp dirs older than the TTL (24h backstop) and prune the store."""
+    now = time.time()
+    for fid in [f for f, i in _uploaded_files.items() if now - i.get("created", 0) > max_age_seconds]:
+        _cleanup_file_id(fid)
+    tmp_root = tempfile.gettempdir()
+    try:
+        for name in os.listdir(tmp_root):
+            if not any(name.startswith(p) for p in _TEMP_PREFIXES):
+                continue
+            full = os.path.join(tmp_root, name)
+            try:
+                if os.path.isdir(full) and now - os.path.getmtime(full) > max_age_seconds:
+                    shutil.rmtree(full, ignore_errors=True)
+            except OSError:
+                continue
+    except OSError:
+        pass
 
 
 def _group_units(
@@ -66,7 +125,8 @@ def _group_units(
 # ── File upload + column discovery ─────────────────────────────────────────────
 
 @router.post("/coding/upload")
-async def upload_coding_file(file: UploadFile):
+@limiter.limit("30/minute")
+async def upload_coding_file(request: Request, file: UploadFile):
     """Upload a CSV/Excel file, save temporarily, return columns + preview."""
     if not file.filename:
         raise HTTPException(400, "No file provided")
@@ -75,26 +135,39 @@ async def upload_coding_file(file: UploadFile):
     if ext not in ("csv", "xlsx", "xls"):
         raise HTTPException(400, f"Unsupported file type: .{ext}")
 
-    content = await file.read()
+    # Read in bounded chunks so an oversized upload can't exhaust memory.
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    buf = bytearray()
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > max_bytes:
+            raise HTTPException(413, f"File too large (max {settings.max_upload_mb} MB).")
+    content = bytes(buf)
 
     try:
         if ext == "csv":
             df = pd.read_csv(io.BytesIO(content))
         else:
             df = pd.read_excel(io.BytesIO(content))
-    except Exception as e:
-        raise HTTPException(400, f"Failed to parse file: {e}")
+    except Exception:
+        raise HTTPException(400, "Could not read the file. Make sure it is a valid CSV or Excel file.")
 
-    # Save to temp file
-    file_id = str(uuid.uuid4())[:8]
+    # Save to temp file. Sanitize the client-supplied filename to its basename so it
+    # cannot traverse out of the temp dir (e.g. "../../x" or an absolute path).
+    file_id = uuid.uuid4().hex
     tmp_dir = tempfile.mkdtemp(prefix="llm_upload_")
-    tmp_path = os.path.join(tmp_dir, file.filename)
+    safe_name = os.path.basename((file.filename or "upload").replace("\\", "/")) or "upload"
+    tmp_path = os.path.join(tmp_dir, safe_name)
     with open(tmp_path, "wb") as f:
         f.write(content)
 
     _uploaded_files[file_id] = {
         "path": tmp_path,
-        "filename": file.filename,
+        "filename": safe_name,
+        "created": time.time(),
     }
 
     all_rows = df.where(df.notna(), None).to_dict(orient="records")
@@ -128,7 +201,7 @@ class CodedValue(BaseModel):
 class CodebookEntry(BaseModel):
     label: str
     type: str
-    level: str = "window"   # "window" (one value per unit) or "sender" (one per participant)
+    level: str = "episode"  # "episode" (one value per episode) or "sender" (one per participant)
     definition: str = ""
     examples: str = ""
     context: str = ""
@@ -155,10 +228,15 @@ class GenerateScriptRequest(BaseModel):
     identity_column: str | None = None
     order_column: str | None = None
     order_direction: str = "asc"
+    empty_message_handling: str = "ignore"
+    # Accepted so the field isn't silently dropped; the standalone script runs the
+    # first configured model (see generate_coding_script header note).
+    model_slots: list[dict] = []
 
 
 @router.post("/coding/generate-script")
-async def generate_script(req: GenerateScriptRequest):
+@limiter.limit("30/minute")
+async def generate_script(request: Request, req: GenerateScriptRequest):
     """Validate config and generate a ready-to-run Python coding script."""
 
     _validate_config(req)
@@ -180,6 +258,7 @@ async def generate_script(req: GenerateScriptRequest):
         identity_column=req.identity_column,
         order_column=req.order_column,
         order_direction=req.order_direction,
+        empty_message_handling=req.empty_message_handling,
     )
 
     base_name = req.file_name.rsplit(".", 1)[0] if "." in req.file_name else req.file_name
@@ -207,11 +286,8 @@ async def ws_run_coding(ws: WebSocket):
         # config = await ws.receive_json()
 
         config = await ws.receive_json()
-        print(f">>> config received: file_id={config.get('file_id')}, model_slots={config.get('model_slots')}")
-
 
         file_id = config.get("file_id")
-        print(f">>> checking file_id: {file_id}, in store: {file_id in _uploaded_files}")
         if not file_id or file_id not in _uploaded_files:
             await ws.send_json({"type": "error", "message": "File not found. Please re-upload."})
             await ws.close()
@@ -219,7 +295,6 @@ async def ws_run_coding(ws: WebSocket):
 
         file_info = _uploaded_files[file_id]
         file_path = file_info["path"]
-        print(f">>> loading file: {file_path}")
 
         # Load the DataFrame
         ext = file_path.rsplit(".", 1)[-1].lower()
@@ -227,10 +302,8 @@ async def ws_run_coding(ws: WebSocket):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
-        print(f">>> file loaded, shape: {df.shape}")
 
         message_column = config.get("message_column", "")
-        print(f">>> message_column: {message_column}, in columns: {message_column in df.columns}")
         if message_column not in df.columns:
             await ws.send_json({"type": "error", "message": f"Column '{message_column}' not found in file."})
             await ws.close()
@@ -321,7 +394,8 @@ class ValidateRequest(BaseModel):
 
 
 @router.post("/coding/validate")
-async def validate_models(req: ValidateRequest):
+@limiter.limit("20/minute")
+async def validate_models(request: Request, req: ValidateRequest):
     """Test each model slot with a tiny prompt to verify API key + model work."""
     from app.services.coding_runner import _get_provider_instance
 
@@ -349,11 +423,40 @@ async def validate_models(req: ValidateRequest):
 
 # ── Download coded results ──────────────────────────────────────────────────
 
+class CleanupRequest(BaseModel):
+    file_id: str | None = None
+    path: str | None = None
+
+
+@router.post("/coding/cleanup")
+@limiter.limit("120/minute")
+async def cleanup_files(request: Request, req: CleanupRequest):
+    """Delete an upload's temp working files and/or a results file (best effort).
+
+    Called by the client on Reset and when a new file replaces the current one, so
+    uploaded data doesn't linger on disk. Only ChAT temp dirs can be removed.
+    """
+    if req.file_id:
+        _cleanup_file_id(req.file_id)
+    if req.path:
+        _remove_temp_dir(req.path)
+    return {"ok": True}
+
+
 @router.get("/coding/download")
 async def download_results(path: str):
-    """Download coded results — single CSV or structured zip."""
-    if not os.path.exists(path):
+    """Download coded results — single CSV or structured zip.
+
+    Only files under the system temp directory (where results are written) may be
+    read, so a caller cannot pass an arbitrary path (e.g. /etc/passwd).
+    """
+    real = os.path.realpath(path)
+    tmp_root = os.path.realpath(tempfile.gettempdir())
+    if real != tmp_root and not real.startswith(tmp_root + os.sep):
+        raise HTTPException(403, "Invalid path")
+    if not os.path.isfile(real):
         raise HTTPException(404, "File not found")
+    path = real
 
     import re
     import zipfile
@@ -397,22 +500,20 @@ async def download_results(path: str):
                 run_df = df[df["coder"] == runs[0]].drop(columns=["coder"], errors="ignore")
                 zf.writestr(f"{safe_name}.csv", run_df.to_csv(index=False))
             else:
-                # Multiple runs — per-model aggregate + individual runs in folder
-                all_runs_df = df[df["coder"].isin(runs)]
-                # Per-model aggregate: take mode across runs for each row
-                orig_cols = [c for c in df.columns if c != "coder" and not c.startswith("_")]
-                id_cols = [c for c in orig_cols if c not in [e.rsplit("__run", 1)[0] for e in runs]]
-
-                # Write per-model aggregate (mode across runs per original row)
-                # Group by original row position (every len(runs) consecutive rows = same original row)
-                run_dfs = []
-                for run_enc in sorted(runs):
-                    run_df = df[df["coder"] == run_enc].reset_index(drop=True)
-                    run_dfs.append(run_df)
-
-                # Simple aggregate: take first run as base, use mode across all
-                base = run_dfs[0].drop(columns=["coder"], errors="ignore").copy()
-                zf.writestr(f"{safe_name}.csv", base.to_csv(index=False))
+                # Multiple runs — per-model aggregate (mode across runs per row) + individual runs.
+                run_dfs = [
+                    df[df["coder"] == run_enc].drop(columns=["coder"], errors="ignore").reset_index(drop=True)
+                    for run_enc in sorted(runs)
+                ]
+                # Take the mode across runs for every non-internal column, row by row.
+                # Original columns are identical across runs, so their mode is unchanged;
+                # coded columns become the majority vote.
+                agg = run_dfs[0].copy()
+                for col in [c for c in agg.columns if not c.startswith("_")]:
+                    stacked = pd.concat([rd[col] for rd in run_dfs], axis=1)
+                    agg[col] = stacked.mode(axis=1)[0]
+                agg = agg[[c for c in agg.columns if not c.startswith("_")]]
+                zf.writestr(f"{safe_name}.csv", agg.to_csv(index=False))
 
                 # Individual runs in subfolder
                 for i, run_enc in enumerate(sorted(runs)):

@@ -2158,12 +2158,6 @@ textarea.ta-fit{
   border-radius: 8px;
 }
 
-.cb-export-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
 .cb-export-title {
   font-size: 12.5px;
   font-weight: 600;
@@ -2203,11 +2197,6 @@ textarea.ta-fit{
   border-color: #7c4dab;
 }
 
-.cb-export-sub {
-  font-size: 11px;
-  color: #71717a;
-}
-
 .btn-export {
   display: inline-flex;
   align-items: center;
@@ -2232,22 +2221,6 @@ textarea.ta-fit{
   background: #d4d4d8;
   cursor: not-allowed;
 }
-
-.cb-export-options {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-  padding: 8px 12px;
-}
-
-.cb-export-label {
-  font-size: 11px;
-  color: #71717a;
-  margin-right: 2px;
-}
-
 
 .episode-def {
   display: block;

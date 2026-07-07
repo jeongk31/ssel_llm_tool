@@ -1,132 +1,72 @@
-# LLM Measurement Toolkit — SSELab
+# ChAT — Chat Annotation Toolkit
 
-A web application for converting qualitative communication episodes into structured experimental variables using multiple LLMs with weighted majority voting.
+A web application from the **Social Science Experimental Laboratory (NYU Abu Dhabi)** for
+coding qualitative communication data into structured variables using one or more LLMs.
+Upload a dataset, map your columns into communication **episodes**, define a **codebook**,
+and code every episode with one or more models (with multi-run majority voting), then
+download the results or a ready-to-run Python script.
 
 ## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 14 (App Router), TypeScript, React |
+| Frontend | Next.js (App Router), TypeScript, React |
 | Backend | Python, FastAPI, SQLAlchemy (async) |
-| Database | SQLite (via aiosqlite) |
-| LLM Providers | OpenAI, Anthropic, Google, Together AI, DeepSeek, Mistral |
+| Database | PostgreSQL (async via `asyncpg`) — required; see below |
+| LLM Providers | OpenAI, Google (Gemini), DeepSeek |
 | Styling | Custom CSS design system (no Tailwind) |
 
-## Project Structure
+## Project structure
 
 ```
 LLM_TOOL/
-├── frontend/                   # Next.js app
+├── frontend/                       # Next.js app
 │   ├── src/app/
-│   │   ├── layout.tsx          # Root layout
-│   │   ├── page.tsx            # Main Build & Run page
-│   │   └── globals.css         # Full design system (CSS custom properties)
-│   ├── src/lib/
-│   │   └── api.ts              # API client helper
-│   ├── next.config.ts          # Proxies /api/* to backend
-│   └── public/
-│       └── ssel_logo.png
+│   │   ├── page.tsx                # Main coding page (upload, mapping, codebook, run)
+│   │   ├── globals.css             # Design system
+│   │   └── tools/                  # HowToPage, GuidedTour, HelpTip
+│   └── next.config.ts              # Proxies /api/* and /admin to the backend
 │
-├── backend/                    # FastAPI app
-│   ├── app/
-│   │   ├── main.py             # App entry, CORS, routers
-│   │   ├── config.py           # Settings (DB URL, CORS origins)
-│   │   ├── models/
-│   │   │   └── database.py     # SQLAlchemy models (Project, PipelineRun)
-│   │   ├── routes/
-│   │   │   ├── files.py        # POST /api/files/upload
-│   │   │   ├── generate.py     # POST /api/generate/codebook, /prompt
-│   │   │   └── pipeline.py     # POST /api/pipeline/run, WebSocket
-│   │   └── services/providers/
-│   │       ├── base.py         # Abstract LLMProvider
-│   │       ├── openai_provider.py  # OpenAI-compatible provider
-│   │       └── __init__.py     # Provider registry + factory
-│   ├── requirements.txt
-│   └── .env                    # Local config
+├── backend/                        # FastAPI app
+│   └── app/
+│       ├── main.py                 # App entry, CORS, routers
+│       ├── config.py               # Settings (DATABASE_URL, CORS, admin password)
+│       ├── models/database.py      # SQLAlchemy: the single `usage_events` table
+│       ├── routes/
+│       │   ├── coding.py           # /api/coding/upload, /validate, /generate-script,
+│       │   │                       #   /download, and the /ws/coding/run WebSocket
+│       │   ├── agreement.py        # /api/agreement/cross-check, /compute
+│       │   └── analytics.py        # /api/analytics/track + /admin dashboard
+│       └── services/
+│           ├── coding_runner.py    # Live coding run (streams results)
+│           └── script_generator.py # Builds the downloadable standalone script
 │
-├── index.html                  # Original static prototype (reference)
-├── script.js                   # Original static prototype (reference)
-└── styles.css                  # Original static prototype (reference)
+└── DEPLOY.md                       # Storage, Railway / university deployment, /admin
 ```
 
-## Prerequisites
+## Data storage (important)
 
-- **Node.js** 18+ (`brew install node`)
-- **Python** 3.12+ (`python3 --version`)
-- **pip** (`pip3 --version`)
+The app requires **PostgreSQL**, selected entirely by the `DATABASE_URL` environment
+variable — there is **no SQLite fallback**, so a missing/invalid value is a loud startup
+error. Only one table (`usage_events`, for usage analytics) is used; it is created
+automatically on startup. See **[DEPLOY.md](./DEPLOY.md)** for local, Railway, and
+university-server setup and the `/admin` usage dashboard.
 
-## Setup
-
-### Backend
+## Running locally
 
 ```bash
+# 1. Postgres (local or Docker) — see DEPLOY.md
+export DATABASE_URL=postgresql://<user>@localhost:5432/chat
+
+# 2. Backend
 cd backend
-pip3 install -r requirements.txt
-```
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
 
-The SQLite database (`llm_toolkit.db`) is created automatically on first run.
-
-### Frontend
-
-```bash
+# 3. Frontend (separate terminal)
 cd frontend
 npm install
+npm run dev            # http://localhost:3000
 ```
 
-## Running
-
-Open two terminal windows:
-
-**Terminal 1 — Backend** (port 8000):
-```bash
-cd backend
-uvicorn app.main:app --reload
-```
-
-**Terminal 2 — Frontend** (port 3000):
-```bash
-cd frontend
-npm run dev
-```
-
-Open http://localhost:3000
-
-## API Documentation
-
-With the backend running, interactive API docs are at:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **OpenAPI spec**: http://localhost:8000/openapi.json
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | Health check |
-| POST | `/api/files/upload` | Upload CSV/Excel, returns parsed preview + columns |
-| POST | `/api/generate/codebook` | AI-generate codebook from experiment details |
-| POST | `/api/generate/prompt` | AI-generate measurement prompt |
-| POST | `/api/pipeline/run` | Start a pipeline run |
-| WS | `/api/ws/pipeline/{run_id}` | Stream pipeline progress in real-time |
-
-## How It Connects
-
-```
-Browser (localhost:3000)
-  │
-  ├── Page loads ──────► Next.js (frontend)
-  │
-  ├── /api/* calls ────► Next.js proxy ────► FastAPI (localhost:8000)
-  │
-  └── WebSocket ───────► Direct to FastAPI (ws://localhost:8000)
-```
-
-The frontend proxies all `/api/*` requests to the backend via `next.config.ts` rewrites. API keys entered by users are sent per-request and never stored.
-
-## Environment Variables
-
-**Backend** (`backend/.env`):
-```
-DATABASE_URL=sqlite+aiosqlite:///./llm_toolkit.db
-CORS_ORIGINS=["http://localhost:3000"]
-```
+API keys for the LLM providers are entered in the app UI per run (never stored server-side).

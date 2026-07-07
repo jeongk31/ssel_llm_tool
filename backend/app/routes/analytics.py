@@ -8,7 +8,8 @@ from collections import Counter
 from datetime import timedelta
 
 
-# created_at is stored as naive UTC (SQLite func.now()); UAE is a constant UTC+4 (no DST).
+# created_at is stored as naive UTC (Postgres func.now() with the default UTC session
+# timezone); UAE is a constant UTC+4 (no DST), so a fixed +4h offset is exact.
 def _to_uae(dt) -> str:
     if not dt:
         return ""
@@ -20,7 +21,9 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.database import get_db, UsageEvent
+from app.ratelimit import limiter
 
 
 # ── Geo-IP (best effort, cached per IP) ─────────────────────────────────────
@@ -71,13 +74,12 @@ def _client_ip(request: Request) -> str:
 router = APIRouter()          # /api/... (track is public; stats/dashboard require admin)
 admin_router = APIRouter()    # /admin (root, password protected)
 
-ADMIN_PASSWORD = "SSEL0000"
 _security = HTTPBasic()
 
 
 def require_admin(creds: HTTPBasicCredentials = Depends(_security)) -> bool:
-    """HTTP Basic auth — any username, password must match ADMIN_PASSWORD."""
-    if not secrets.compare_digest(creds.password or "", ADMIN_PASSWORD):
+    """HTTP Basic auth — any username, password must match settings.admin_password."""
+    if not secrets.compare_digest(creds.password or "", settings.admin_password):
         raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
     return True
 
@@ -90,12 +92,13 @@ def _int(v, default=0):
 
 
 @router.post("/analytics/track")
-async def track(payload: dict, request: Request, db: AsyncSession = Depends(get_db)):
+@limiter.limit("120/minute")
+async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_db)):
     event = str(payload.get("event", ""))[:20]
     if event not in ("visit", "run"):
         return {"ok": False}
-    providers = payload.get("providers") or []
-    models = payload.get("models") or []
+    providers = payload.get("providers") if isinstance(payload.get("providers"), list) else []
+    models = payload.get("models") if isinstance(payload.get("models"), list) else []
 
     ip = _client_ip(request)
     geo = await _geo_lookup(ip)
@@ -104,8 +107,8 @@ async def track(payload: dict, request: Request, db: AsyncSession = Depends(get_
     ev = UsageEvent(
         event=event,
         session_id=str(payload.get("session_id", ""))[:64],
-        providers=[str(p)[:40] for p in providers if isinstance(providers, list)][:20],
-        models=[str(m)[:80] for m in models if isinstance(models, list)][:20],
+        providers=[str(p)[:40] for p in providers][:20],
+        models=[str(m)[:80] for m in models][:20],
         num_models=_int(payload.get("num_models")),
         runs_per_model=_int(payload.get("runs_per_model")),
         aggregation=str(payload.get("aggregation", ""))[:20],

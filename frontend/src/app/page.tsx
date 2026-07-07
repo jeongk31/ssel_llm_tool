@@ -94,7 +94,7 @@ interface CodedValue {
 interface CodebookEntry {
   label: string;
   type: string;
-  level: "episode" | "sender";   // episode = one value per unit; sender = one value per participant
+  level: "episode" | "sender";   // episode = one value per episode; sender = one value per participant
   definition: string;           // definition of the variable/category itself
   values: CodedValue[];         // one definition per possible coded value
 }
@@ -521,12 +521,6 @@ function buildSlotPayload(slot: ModelSlot) {
   };
 }
 
-type Tool = "coding" | "catgen" | "newtool1" | "newtool2";
-const TOOLS: { value: Tool; label: string }[] = [
-  { value: "coding", label: "LLM Coding" },
-  { value: "catgen", label: "Category Generator" },
-];
-
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -822,7 +816,29 @@ export default function Home() {
 
   // ── File upload ───────────────────────────────────────────────────────────
 
+  // Delete the server's temp working files (uploaded dataset + results) for an
+  // upload/result. Called when a file is replaced or on Reset so nothing lingers.
+  const serverFilesRef = useRef<{ fileId?: string; resultPath?: string }>({});
+  const cleanupServerFiles = useCallback((fileId?: string, path?: string) => {
+    if (fileId === "__tour_sample__") fileId = undefined;
+    if (!fileId && !path) return;
+    try {
+      fetch("/api/coding/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: fileId ?? null, path: path ?? null }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {}
+  }, []);
+  useEffect(() => {
+    serverFilesRef.current = { fileId: uploadResult?.file_id, resultPath: runComplete?.file_path };
+  }, [uploadResult, runComplete]);
+
   const handleUpload = useCallback(async (file: File) => {
+    // Replacing the current file — clean up the previous one on the server first.
+    const prev = serverFilesRef.current;
+    cleanupServerFiles(prev.fileId, prev.resultPath);
     setUploading(true);
     setUploadError("");
     setUploadResult(null);
@@ -853,7 +869,7 @@ export default function Home() {
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [cleanupServerFiles]);
 
   const handleStepEnter = useCallback((s: TourStep) => {
     // Open/close the relevant popup for popup steps; close popups for section steps.
@@ -870,7 +886,7 @@ export default function Home() {
     tourSnap.current = {
       uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
       rowsAsUnits, contextColumns, contextDescriptions, codebook, participantsStr,
-      layoutMode,
+      layoutMode, activeTool,
     };
     setUploadResult(TOUR_SAMPLE_UPLOAD);
     setMessageColumn("Message");
@@ -900,6 +916,7 @@ export default function Home() {
       setCodebook(s.codebook as CodebookEntry[]);
       setParticipantsStr(s.participantsStr as string);
       setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
+      setActiveTool(s.activeTool as "coding" | "catgen" | "analysis" | "instructions");
       tourSnap.current = null;
     }
   };
@@ -1413,20 +1430,20 @@ export default function Home() {
           .filter((v) => v.value.trim() || v.definition.trim())
           .map((v) => `
             <tr class="value-row">
-              <td class="value-cell">${v.value}</td>
-              <td>${v.definition}</td>
-              <td class="muted">${v.examples || "—"}</td>
-              <td class="muted">${v.context || "—"}</td>
+              <td class="value-cell">${htmlEsc(v.value)}</td>
+              <td>${htmlEsc(v.definition)}</td>
+              <td class="muted">${htmlEsc(v.examples) || "—"}</td>
+              <td class="muted">${htmlEsc(v.context) || "—"}</td>
             </tr>`).join("");
 
         return `
           <div class="var-block">
             <div class="var-head">
               <span class="var-num">${i + 1}</span>
-              <span class="var-label">${e.label}</span>
-              <span class="var-meta">${e.type} · ${e.level === "sender" ? "per sender" : "per episode"}</span>
+              <span class="var-label">${htmlEsc(e.label)}</span>
+              <span class="var-meta">${htmlEsc(e.type)} · ${e.level === "sender" ? "per sender" : "per episode"}</span>
             </div>
-            <p class="var-def">${e.definition}</p>
+            <p class="var-def">${htmlEsc(e.definition)}</p>
             ${valueRows ? `
               <table class="value-table">
                 <thead><tr><th>Value</th><th>Definition</th><th>Examples</th><th>Context</th></tr></thead>
@@ -1733,6 +1750,7 @@ ${PDF_WATERMARK_HTML}
         order_column: orderColumn || null,
         order_direction: orderDirection,
         experiment_instructions: experimentInstructions,
+        empty_message_handling: emptyMessageHandling,
         codebook,
         participants,
         context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
@@ -1794,6 +1812,7 @@ ${PDF_WATERMARK_HTML}
 
   const handleReset = () => {
     if (!window.confirm("Reset everything and clear all saved fields? This cannot be undone.")) return;
+    cleanupServerFiles(uploadResult?.file_id, runComplete?.file_path);
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
@@ -1915,7 +1934,6 @@ ${PDF_WATERMARK_HTML}
                   <span className="episode-def-text"> the unit of analysis — a combination of messages exchanged through the same channel, or a collection of messages sent by one sender. Rows that share your chosen identifier(s) are merged into one episode.</span>
                 </div>
               </div>
-              {/* <button className="tour-help-btn" onClick={() => setTourOpen(true)} title="Guided walkthrough" aria-label="Start guided walkthrough">?</button> */}
               <button className="tour-help-btn" onClick={startTour} title="Guided walkthrough" aria-label="Start guided walkthrough">
                 <span className="tour-help-icon">?</span>
 
@@ -2077,7 +2095,7 @@ ${PDF_WATERMARK_HTML}
                           )}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
-                        <p className="hint mt-8">Each variable gets a <strong>definition</strong> for the category and a definition for every coded value, plus optional <strong>examples</strong> and <strong>context</strong>. <strong>Per episode</strong> = one value per unit; <strong>per sender</strong> = one per participant.</p>
+                        <p className="hint mt-8">Each variable gets a <strong>definition</strong> for the category and a definition for every coded value, plus optional <strong>examples</strong> and <strong>context</strong>. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one per participant.</p>
                         {hasSenderVar && (
                           <div className="f participants-block">
                             <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
@@ -2090,31 +2108,6 @@ ${PDF_WATERMARK_HTML}
                         + Add Variable
                       </button>
 
-                      {/* ── Codebook export ── */}
-                      {/* <div className="cb-export-row" style={{ marginTop: 8 }}>
-                        <button
-                          className="btn btn-ghost btn-xs"
-                          onClick={() => setShowCodebookExport((p) => !p)}
-                          disabled={!codebook.some((e) => e.label.trim())}
-                        >
-                          ↓ Export codebook
-                        </button>
-                      </div>
-
-                      {showCodebookExport && (
-                        <div className="cb-export-options">
-                          <span className="cb-export-label">Download as:</span>
-                          {(["json", "csv", "txt", "pdf", "xlsx"] as const).map((fmt) => (
-                            <button
-                              key={fmt}
-                              className="btn btn-outline btn-xs"
-                              onClick={() => { handleCodebookDownload(fmt); setShowCodebookExport(false); }}
-                            >
-                              .{fmt}
-                            </button>
-                          ))}
-                        </div>
-                      )} */}
                       {/* ── Codebook export ── */}
                       <div className="cb-export-block">
                         <div className="cb-export-divider" />
@@ -2955,7 +2948,7 @@ ${PDF_WATERMARK_HTML}
                   {!identityColumn ? (
                     <p><b>⚠ Sender column needed.</b> You defined a per-sender variable — tag a <b>Sender identity</b> column so each sender can be matched.</p>
                   ) : participants.length === 0 ? (
-                    <p><b>⚠ No participants declared.</b> Add participant names in the codebook (Coding Instructions &amp; Codebook → Participants).</p>
+                    <p><b>⚠ No participants declared.</b> Add participant names in the Codebook editor&apos;s Participants block.</p>
                   ) : sendersOk ? (
                     <p><b>✓ Senders match.</b> Every sender in <b>{identityColumn}</b> ({dataSenders.join(", ")}) is a declared participant.</p>
                   ) : (

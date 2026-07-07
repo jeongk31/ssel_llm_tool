@@ -192,7 +192,7 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Aggregation:</span>
-                Combine multiple models or runs by majority vote (mode) or average (mean). Mode is recommended for categorical and binary variables; mean for numeric or ordinal ones.
+                Combine multiple models or runs by majority vote (mode) or average (mean). Mode is recommended for categorical and binary variables; mean for numeric ones.
               </div>
               <p className="mt-12">
                 Expand <strong>Tuning</strong> on any model slot to adjust temperature, top-p, and max tokens per model.
