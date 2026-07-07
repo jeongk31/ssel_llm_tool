@@ -1,23 +1,27 @@
 # Deployment & Data Storage
 
-ChAT (Chat Annotation Toolkit) stores everything — including usage analytics — in a
-SQL database selected entirely by the **`DATABASE_URL`** environment variable. The same
-code runs on every environment; only that variable changes.
+ChAT (Chat Annotation Toolkit) stores its usage analytics in **PostgreSQL**, selected
+entirely by the **`DATABASE_URL`** environment variable. Postgres is **required** — there
+is no SQLite fallback, so a missing or misconfigured `DATABASE_URL` is a loud startup
+error rather than a silent switch to throwaway storage.
 
 | Environment | `DATABASE_URL` | Persistence |
 |---|---|---|
-| Local dev | *(unset)* → SQLite file at `backend/llm_toolkit.db` | Survives restarts on your machine |
+| Local dev | a Postgres URL you provide | Survives restarts |
 | Railway | `${{Postgres.DATABASE_URL}}` (managed Postgres) | Survives every deploy |
 | University server | Postgres URL you provide | Survives redeploys |
 
 The app auto-upgrades `postgres://` / `postgresql://` URLs to the async `postgresql+asyncpg://`
-driver, so you can paste a managed-Postgres URL verbatim.
+driver, so you can paste a managed-Postgres URL verbatim. If `DATABASE_URL` is unset,
+unresolved (e.g. `${{Postgres.DATABASE_URL}}` with no Postgres service), or not a Postgres
+URL, the backend raises a clear error on startup.
 
-## Tables are created automatically
+## The database has a single table
 
-On startup the backend runs `Base.metadata.create_all`, which creates any missing tables
-(`projects`, `pipeline_runs`, `usage_events`). You never run SQL by hand. A lightweight
-migration also adds any newly-introduced `usage_events` columns to an existing table.
+Only **`usage_events`** is used (visits + runs). It's created automatically on startup via
+`Base.metadata.create_all`; a lightweight migration adds any newly-introduced columns. You
+never run SQL by hand. (Legacy `projects` / `pipeline_runs` tables, if present from an older
+version, are dropped automatically on startup.)
 
 > Tables only appear **after the backend boots while connected to the target database.**
 > An empty database usually means it hasn't been redeployed yet, `DATABASE_URL` isn't
@@ -27,13 +31,19 @@ migration also adds any newly-introduced `usage_events` columns to an existing t
 
 ## Local development
 
-Nothing to configure. With no `DATABASE_URL`, data goes to `backend/llm_toolkit.db`
-(an absolute path, so it's the same file regardless of the directory you launch from).
-The file is gitignored, so it never syncs to GitHub.
+You need a Postgres to point at. Either run one locally (or via Docker) or reuse a
+managed one, then set `DATABASE_URL` before starting the backend:
 
 ```bash
+# example: local Postgres
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/chat
 cd backend
 python -m uvicorn app.main:app --reload --port 8000
+```
+
+Quick Postgres via Docker:
+```bash
+docker run --name chat-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chat -p 5432:5432 -d postgres:16
 ```
 
 ---
