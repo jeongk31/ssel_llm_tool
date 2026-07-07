@@ -92,16 +92,16 @@ psql    "<university DATABASE_URL>"     < analytics.sql
 
 ## Admin analytics
 
-- Dashboard: **`/admin`** — HTTP Basic auth, password **`SSEL0000`** (any username).
+- Dashboard: **`/admin`** — HTTP Basic auth (any username, password = your `ADMIN_PASSWORD`).
   Reachable at the app URL (`/admin` is proxied to the backend) or directly at the
   backend's `/admin`.
+- **Set `ADMIN_PASSWORD`** as an environment variable on the backend service (Railway →
+  Variables, or your server's env). It is intentionally **not** hardcoded. If it is unset,
+  the dashboard is **disabled** (returns 503) — it never falls back to a default password.
 - Records **metadata only** — never API keys or dataset content.
 - Timestamps are shown in **UAE time (GST, UTC+4)**.
 - The public `POST /api/analytics/track` endpoint records events; `stats`/`dashboard`/`admin`
   require the password.
-
-To change the admin password, edit `ADMIN_PASSWORD` in `backend/app/routes/analytics.py`
-(or lift it to an env var if you prefer not to hardcode it).
 
 ---
 
