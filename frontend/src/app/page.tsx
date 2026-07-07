@@ -2920,9 +2920,9 @@ ${PDF_WATERMARK_HTML}
                           {entry.values.map((v, vIdx) => (
                             <div className="cb-value-grid" key={vIdx}>
                               <input className="cb-value-key" type="text" value={v.value} readOnly={entry.type === "binary"} onChange={(e) => updateValue(idx, vIdx, "value", e.target.value)} placeholder="e.g. P" />
-                              <input type="text" value={v.definition} onChange={(e) => updateValue(idx, vIdx, "definition", e.target.value)} placeholder="What this value means" />
-                              <input type="text" value={v.examples} onChange={(e) => updateValue(idx, vIdx, "examples", e.target.value)} placeholder="examples" />
-                              <input type="text" value={v.context} onChange={(e) => updateValue(idx, vIdx, "context", e.target.value)} placeholder="context" />
+                              <textarea className="cb-val-ta" rows={1} value={v.definition} onChange={(e) => updateValue(idx, vIdx, "definition", e.target.value)} placeholder="What this value means" />
+                              <textarea className="cb-val-ta" rows={1} value={v.examples} onChange={(e) => updateValue(idx, vIdx, "examples", e.target.value)} placeholder="examples" />
+                              <textarea className="cb-val-ta" rows={1} value={v.context} onChange={(e) => updateValue(idx, vIdx, "context", e.target.value)} placeholder="context" />
                               {entry.type === "binary"
                                 ? <span />
                                 : <button className="row-rm" onClick={() => removeValueRow(idx, vIdx)} title="Remove value" disabled={entry.values.length <= 1}>×</button>}
