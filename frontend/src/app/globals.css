@@ -1997,6 +1997,21 @@ textarea.ta-fit{
   width:20px;height:20px;border-radius:50%;color:#fff;font-size:11px;font-weight:700}
 .colmap-guide-txt{line-height:1.45}
 
+/* episode-forming choice: two radio cards */
+.episode-choice{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 18px 8px;flex-shrink:0}
+.episode-opt{display:flex;align-items:flex-start;gap:10px;text-align:left;padding:11px 13px;
+  border:1.5px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;transition:.15s}
+.episode-opt:hover{border-color:var(--text-3)}
+.episode-opt.sel{border-color:#16a34a;background:#f0fdf4}
+.episode-opt-radio{flex-shrink:0;width:18px;height:18px;border-radius:50%;border:2px solid var(--border);
+  margin-top:1px;position:relative;transition:.15s}
+.episode-opt.sel .episode-opt-radio{border-color:#16a34a}
+.episode-opt.sel .episode-opt-radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:#16a34a}
+.episode-opt-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.episode-opt-title{font-size:12.5px;font-weight:600;color:var(--text)}
+.episode-opt.sel .episode-opt-title{color:#14532d}
+.episode-opt-desc{font-size:11px;line-height:1.4;color:var(--text-2)}
+
 /* order direction */
 .colmap-order-dir{
   display:flex;align-items:center;gap:12px;

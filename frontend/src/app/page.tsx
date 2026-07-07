@@ -2855,13 +2855,31 @@ ${PDF_WATERMARK_HTML}
               {/* Prominent instruction for the active step */}
               <div className="colmap-guide" style={{ borderColor: ROLE_META[activeRole].color, background: ROLE_META[activeRole].bg }}>
                 <span className="colmap-guide-num" style={{ background: ROLE_META[activeRole].color }}>{ROLE_ORDER.indexOf(activeRole) + 1}</span>
-                <span className="colmap-guide-txt">{ROLE_META[activeRole].hint}</span>
+                <span className="colmap-guide-txt">
+                  {activeRole === "identifier"
+                    ? (rowsAsUnits
+                        ? "Each row is coded as its own episode — no identifier columns needed."
+                        : "First choose how episodes are formed, then click the identifier column(s) in the table below.")
+                    : ROLE_META[activeRole].hint}
+                </span>
               </div>
 
               {activeRole === "identifier" && (
-                <div className="colmap-idmode">
-                  <button className={`idmode-pill ${!rowsAsUnits ? "on" : ""}`} onClick={() => setRowsAsUnits(false)}>Group rows by column(s)</button>
-                  <button className={`idmode-pill ${rowsAsUnits ? "on" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>Each row is its own episode</button>
+                <div className="episode-choice">
+                  <button className={`episode-opt ${!rowsAsUnits ? "sel" : ""}`} onClick={() => setRowsAsUnits(false)}>
+                    <span className="episode-opt-radio" />
+                    <span className="episode-opt-body">
+                      <span className="episode-opt-title">Group rows into one episode</span>
+                      <span className="episode-opt-desc">Rows that share the column(s) you tag below are merged into a single episode — e.g. all messages in the same session + round.</span>
+                    </span>
+                  </button>
+                  <button className={`episode-opt ${rowsAsUnits ? "sel" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>
+                    <span className="episode-opt-radio" />
+                    <span className="episode-opt-body">
+                      <span className="episode-opt-title">Each row is its own episode</span>
+                      <span className="episode-opt-desc">Every message row is coded on its own — no grouping, no identifier columns needed.</span>
+                    </span>
+                  </button>
                 </div>
               )}
               {activeRole === "order" && orderColumn && (
