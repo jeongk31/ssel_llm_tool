@@ -1,8 +1,7 @@
 import uuid
 import json
-from pathlib import Path
 
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, TypeDecorator, Integer, Boolean
+from sqlalchemy import Column, String, Text, DateTime, TypeDecorator, Integer, Boolean
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
@@ -10,7 +9,7 @@ from sqlalchemy.sql import func
 from app.config import settings
 
 
-# SQLite doesn't have native JSON — store as text, serialize/deserialize automatically
+# Store JSON as text and serialize/deserialize automatically (portable across backends)
 class JSONField(TypeDecorator):
     impl = Text
     cache_ok = True
@@ -22,32 +21,38 @@ class JSONField(TypeDecorator):
         return json.loads(value) if value is not None else None
 
 
-# Local SQLite fallback (backend/llm_toolkit.db), independent of the working directory.
-_SQLITE_FALLBACK = f"sqlite+aiosqlite:///{Path(__file__).resolve().parents[2] / 'llm_toolkit.db'}"
-
-
 def _async_url(url: str) -> str:
-    """Normalize a DATABASE_URL into a usable async SQLAlchemy URL.
+    """Require a PostgreSQL DATABASE_URL and return an async (asyncpg) SQLAlchemy URL.
 
-    Managed Postgres (Railway, Heroku, university servers) usually hands out
-    `postgres://` or `postgresql://`; SQLAlchemy async needs the asyncpg driver.
-    If the value is empty or an unresolved variable reference (e.g. Railway's
-    `${{Postgres.DATABASE_URL}}` when no Postgres service exists), fall back to
-    local SQLite so the app still boots instead of crashing on import.
+    There is NO SQLite fallback: a missing, unresolved, or non-Postgres value raises
+    a clear error at startup so misconfiguration is loud instead of silently using a
+    throwaway database. Managed Postgres hands out `postgres://` / `postgresql://`;
+    SQLAlchemy async needs the asyncpg driver.
     """
     url = (url or "").strip()
-    if not url or "${" in url or "://" not in url:
-        print(
-            f"WARNING: DATABASE_URL is unset or unresolved ({url!r}); falling back to "
-            f"local SQLite. Analytics will NOT persist across deploys until a valid "
-            f"Postgres DATABASE_URL is provided."
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. This app requires a PostgreSQL database. "
+            "Set DATABASE_URL to your Postgres connection string "
+            "(on Railway: add a Postgres service, then set DATABASE_URL=${{Postgres.DATABASE_URL}} "
+            "on the backend service and redeploy)."
         )
-        return _SQLITE_FALLBACK
+    if "${" in url:
+        raise RuntimeError(
+            f"DATABASE_URL is unresolved ({url!r}). The Postgres variable reference did not "
+            "resolve to a real value. Confirm the referenced service name is correct and that "
+            "the Postgres and backend services are in the same project/environment, then redeploy."
+        )
     if url.startswith("postgres://"):
         return "postgresql+asyncpg://" + url[len("postgres://"):]
+    if url.startswith("postgresql+"):  # already carries a driver (e.g. +asyncpg / +psycopg)
+        return url
     if url.startswith("postgresql://"):
         return "postgresql+asyncpg://" + url[len("postgresql://"):]
-    return url
+    scheme = url.split("://", 1)[0] if "://" in url else url
+    raise RuntimeError(
+        f"DATABASE_URL must be a PostgreSQL URL (postgres:// or postgresql://), got scheme {scheme!r}."
+    )
 
 
 engine = create_async_engine(_async_url(settings.database_url))
@@ -60,12 +65,19 @@ class Base(DeclarativeBase):
 
 async def init_db():
     async with engine.begin() as conn:
+        await conn.run_sync(_drop_legacy_tables)
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_migrate_usage_events)
 
 
+def _drop_legacy_tables(conn):
+    """The app only needs `usage_events`; drop unused legacy tables if present."""
+    for table in ("pipeline_runs", "projects"):
+        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {table}")
+
+
 def _migrate_usage_events(conn):
-    """Add any newly-introduced usage_events columns to an existing table (SQLite)."""
+    """Add any newly-introduced usage_events columns to an existing table."""
     from sqlalchemy import inspect
     insp = inspect(conn)
     if "usage_events" not in insp.get_table_names():
@@ -84,35 +96,6 @@ def _migrate_usage_events(conn):
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
-
-
-class Project(Base):
-    __tablename__ = "projects"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String(255), nullable=False)
-    hypothesis = Column(Text)
-    goals = Column(Text)
-    codebook = Column(JSONField, default=[])
-    prompt_template = Column(Text)
-    column_mapping = Column(JSONField, default={})
-    models_config = Column(JSONField, default={})
-    run_settings = Column(JSONField, default={"runs_per_model": 1, "retries": 1, "aggregation": "majority"})
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())
-
-
-class PipelineRun(Base):
-    __tablename__ = "pipeline_runs"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    project_id = Column(String(36), ForeignKey("projects.id"))
-    status = Column(String(20), default="pending")
-    config_snapshot = Column(JSONField, nullable=False)
-    progress = Column(JSONField, default={})
-    results = Column(JSONField, default=[])
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
 
 
 class UsageEvent(Base):
