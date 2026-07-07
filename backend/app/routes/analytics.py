@@ -5,6 +5,14 @@ import json
 import secrets
 import urllib.request
 from collections import Counter
+from datetime import timedelta
+
+
+# created_at is stored as naive UTC (SQLite func.now()); UAE is a constant UTC+4 (no DST).
+def _to_uae(dt) -> str:
+    if not dt:
+        return ""
+    return (dt + timedelta(hours=4)).strftime("%Y-%m-%d %H:%M:%S")
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -128,7 +136,7 @@ async def _compute_stats(db: AsyncSession) -> dict:
     for r in rows:
         country_c[r.country or "Unknown"] += 1
         if r.created_at:
-            day_c[str(r.created_at)[:10]] += 1
+            day_c[_to_uae(r.created_at)[:10]] += 1
     for r in runs:
         for p in (r.providers or []):
             provider_c[p] += 1
@@ -154,7 +162,7 @@ async def _compute_stats(db: AsyncSession) -> dict:
         "by_day": dict(sorted(day_c.items())),
         "events": [
             {
-                "at": str(r.created_at) if r.created_at else "",
+                "at": _to_uae(r.created_at),
                 "event": r.event,
                 "session": (r.session_id or "")[:8],
                 "country": r.country or "",
@@ -233,7 +241,7 @@ def _render_dashboard(s: dict) -> str:
   .log-wrap{{overflow:auto;max-width:100%}}
 </style></head><body>
 <h1>ChAT — Chat Annotation Toolkit · Usage</h1>
-<div class="sub">Metadata only — no API keys or dataset content is stored. Country/city are best-effort from IP. Refresh to update.</div>
+<div class="sub">Metadata only — no API keys or dataset content is stored. Times in UAE (GST, UTC+4); country/city best-effort from IP. Refresh to update.</div>
 <div class="cards">
   <div class="card"><div class="v">{s['visits']}</div><div class="l">Visits</div></div>
   <div class="card"><div class="v">{s['unique_visitors']}</div><div class="l">Unique visitors</div></div>
@@ -252,7 +260,7 @@ def _render_dashboard(s: dict) -> str:
 </div>
 <h3>Raw event log (latest {len(s['events'])})</h3>
 <div class="log-wrap"><table>
-  <thead><tr><th>When (UTC)</th><th>Event</th><th>Session</th><th>Location</th><th>IP</th><th>Models</th><th>Runs</th><th>Agg</th><th>Vars</th><th>Rows</th><th>Episodes</th><th>Per-sender</th><th>User agent</th></tr></thead>
+  <thead><tr><th>When (UAE / GST)</th><th>Event</th><th>Session</th><th>Location</th><th>IP</th><th>Models</th><th>Runs</th><th>Agg</th><th>Vars</th><th>Rows</th><th>Episodes</th><th>Per-sender</th><th>User agent</th></tr></thead>
   <tbody>{event_rows}</tbody>
 </table></div>
 </body></html>"""
