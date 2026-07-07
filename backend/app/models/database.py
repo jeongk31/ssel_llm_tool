@@ -1,5 +1,6 @@
 import uuid
 import json
+from pathlib import Path
 
 from sqlalchemy import Column, String, Text, ForeignKey, DateTime, TypeDecorator, Integer, Boolean
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -21,13 +22,27 @@ class JSONField(TypeDecorator):
         return json.loads(value) if value is not None else None
 
 
+# Local SQLite fallback (backend/llm_toolkit.db), independent of the working directory.
+_SQLITE_FALLBACK = f"sqlite+aiosqlite:///{Path(__file__).resolve().parents[2] / 'llm_toolkit.db'}"
+
+
 def _async_url(url: str) -> str:
-    """Normalize a DATABASE_URL into an async SQLAlchemy URL.
+    """Normalize a DATABASE_URL into a usable async SQLAlchemy URL.
 
     Managed Postgres (Railway, Heroku, university servers) usually hands out
     `postgres://` or `postgresql://`; SQLAlchemy async needs the asyncpg driver.
-    SQLite/other URLs are returned unchanged.
+    If the value is empty or an unresolved variable reference (e.g. Railway's
+    `${{Postgres.DATABASE_URL}}` when no Postgres service exists), fall back to
+    local SQLite so the app still boots instead of crashing on import.
     """
+    url = (url or "").strip()
+    if not url or "${" in url or "://" not in url:
+        print(
+            f"WARNING: DATABASE_URL is unset or unresolved ({url!r}); falling back to "
+            f"local SQLite. Analytics will NOT persist across deploys until a valid "
+            f"Postgres DATABASE_URL is provided."
+        )
+        return _SQLITE_FALLBACK
     if url.startswith("postgres://"):
         return "postgresql+asyncpg://" + url[len("postgres://"):]
     if url.startswith("postgresql://"):
