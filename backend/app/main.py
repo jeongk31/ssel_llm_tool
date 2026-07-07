@@ -11,9 +11,14 @@ from fastapi import Request
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.models.database import init_db
+    from app.models.database import init_db, engine
     await init_db()
-    print("ChAT (Chat Annotation Toolkit) API started (SQLite)")
+    dialect = engine.dialect.name  # "postgresql" when connected to Postgres, "sqlite" otherwise
+    host = engine.url.host or "local file"
+    print(f"ChAT (Chat Annotation Toolkit) API started — database: {dialect} @ {host}")
+    if dialect == "sqlite":
+        print("NOTE: running on SQLite — data will NOT persist across redeploys. "
+              "Set DATABASE_URL to your Postgres to persist.")
     yield
 
 
