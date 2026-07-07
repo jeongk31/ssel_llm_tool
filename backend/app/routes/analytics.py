@@ -78,8 +78,15 @@ _security = HTTPBasic()
 
 
 def require_admin(creds: HTTPBasicCredentials = Depends(_security)) -> bool:
-    """HTTP Basic auth — any username, password must match settings.admin_password."""
-    if not secrets.compare_digest(creds.password or "", settings.admin_password):
+    """HTTP Basic auth — any username, password must match settings.admin_password.
+
+    Fails closed: if ADMIN_PASSWORD is not set, the dashboard is disabled entirely
+    (no blank-password access).
+    """
+    expected = settings.admin_password or ""
+    if not expected:
+        raise HTTPException(status_code=503, detail="Admin dashboard is not configured (set ADMIN_PASSWORD).")
+    if not secrets.compare_digest(creds.password or "", expected):
         raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
     return True
 

@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     # Accepts a JSON array, a comma-separated list, or a single origin.
     cors_origins: str = "http://localhost:3000"
     max_concurrent_llm_calls: int = 5
-    # Password for the /admin usage dashboard (override via ADMIN_PASSWORD env var).
-    admin_password: str = "SSEL0000"
+    # Password for the /admin usage dashboard. MUST be set via the ADMIN_PASSWORD
+    # env var — if empty, the /admin dashboard is disabled (denies all access).
+    admin_password: str = ""
     # Max upload size in MB (override via MAX_UPLOAD_MB env var).
     max_upload_mb: int = 25
 
