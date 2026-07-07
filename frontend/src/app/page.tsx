@@ -129,13 +129,14 @@ interface UploadResult {
 
 // Column-mapping picker
 type ColRole = "message" | "identifier" | "identity" | "order" | "context";
-const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string }> = {
-  message:    { label: "Message",         short: "MSG", color: "#2563eb", bg: "#dbeafe" },
-  identifier: { label: "Identifier",      short: "ID",  color: "#16a34a", bg: "#dcfce7" },
-  identity:   { label: "Sender identity", short: "WHO", color: "#d97706", bg: "#fef3c7" },
-  order:      { label: "Order / time",    short: "ORD", color: "#7c3aed", bg: "#ede9fe" },
-  context:    { label: "Context",         short: "CTX", color: "#db2777", bg: "#fce7f3" },
+const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string; hint: string }> = {
+  message:    { label: "Message",         short: "MSG", color: "#2563eb", bg: "#dbeafe", hint: "Click the column that contains the message text." },
+  identifier: { label: "Episode identifier", short: "ID", color: "#16a34a", bg: "#dcfce7", hint: "Click the column(s) that define one episode — e.g. session + round. Rows sharing the same combination are merged into one episode." },
+  identity:   { label: "Sender",          short: "WHO", color: "#d97706", bg: "#fef3c7", hint: "Optional — click the column that says who sent each message." },
+  order:      { label: "Order",           short: "ORD", color: "#7c3aed", bg: "#ede9fe", hint: "Optional — click the column that orders messages within an episode." },
+  context:    { label: "Context",         short: "CTX", color: "#db2777", bg: "#fce7f3", hint: "Optional — click any extra columns the model should know about." },
 };
+const ROLE_ORDER: ColRole[] = ["message", "identifier", "identity", "order", "context"];
 
 
 
@@ -942,6 +943,10 @@ export default function Home() {
     else if (activeRole === "order") setOrderColumn(col);
     else if (activeRole === "identifier") { setIdentifierColumns((prev) => [...prev, col]); setRowsAsUnits(false); }
     else if (activeRole === "context") setContextColumns((prev) => [...prev, col]);
+
+    // Guide the user along: after tagging a single-select role, jump to the next step.
+    const nextStep: Partial<Record<ColRole, ColRole>> = { message: "identifier", identity: "order", order: "context" };
+    if (nextStep[activeRole]) setActiveRole(nextStep[activeRole]!);
   };
 
   // Final preprocessed rows (grouped + tagged), mirroring the backend.
@@ -2816,54 +2821,56 @@ ${PDF_WATERMARK_HTML}
               <div className="colmap-head">
                 <div>
                   <h2 className="colmap-title">Map your columns</h2>
-                  <p className="colmap-sub">Pick a role, click the columns to tag them, verify the identifiers, then proceed.</p>
+                  <p className="colmap-sub">Work through the steps — click a column below to tag it for the active step. Steps marked <span className="colmap-req">*</span> are required.</p>
                 </div>
                 <button className="modal-close" onClick={closeColumnModal} title="Close without saving">✕</button>
               </div>
 
-              {/* Square role tabs */}
-              <div className="colmap-roles-bar" id="tour-map-roles">
-                {(Object.keys(ROLE_META) as ColRole[]).map((role) => {
+              {/* Numbered step checklist (replaces the old role tabs) */}
+              <div className="colmap-steps" id="tour-map-roles">
+                {ROLE_ORDER.map((role, i) => {
                   const meta = ROLE_META[role];
+                  const required = role === "message" || role === "identifier";
                   const assigned = role === "identifier" && rowsAsUnits ? ["each row = episode"] : assignedFor(role);
-                  const optional = role !== "message" && role !== "identifier";
+                  const done = assigned.length > 0;
+                  const active = activeRole === role;
                   return (
-                    <button key={role} className={`role-brush ${activeRole === role ? "active" : ""}`}
-                      style={activeRole === role ? { borderColor: meta.color, background: meta.bg } : undefined}
+                    <button key={role} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}`}
+                      style={active ? { borderColor: meta.color, background: meta.bg } : undefined}
                       onClick={() => setActiveRole(role)}>
-                      <span className="role-dot" style={{ background: meta.color }} />
-                      <span className="role-brush-text">
-                        <span className="role-brush-name">{meta.label}{optional ? <span className="role-brush-opt"> · optional</span> : <span className="colmap-req">*</span>}</span>
-                        <span className="role-brush-val">{assigned.length ? assigned.join(", ") : "click columns to tag"}</span>
+                      <span className="colmap-step-num"
+                        style={done ? { background: meta.color, borderColor: meta.color, color: "#fff" }
+                          : active ? { borderColor: meta.color, color: meta.color } : undefined}>
+                        {done ? "✓" : i + 1}
+                      </span>
+                      <span className="colmap-step-body">
+                        <span className="colmap-step-name">{meta.label}{required ? <span className="colmap-req"> *</span> : <span className="colmap-step-opt"> · optional</span>}</span>
+                        <span className="colmap-step-val">{done ? assigned.join(", ") : required ? "not set — click here" : "none"}</span>
                       </span>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Contextual control for the active role */}
-              {activeRole === "identifier" ? (
-                <div>
-                  <div className="colmap-idmode">
-                    <button className={`idmode-pill ${!rowsAsUnits ? "on" : ""}`} onClick={() => setRowsAsUnits(false)}>Group rows by column(s)</button>
-                    <button className={`idmode-pill ${rowsAsUnits ? "on" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>Each row is its own episode</button>
-                  </div>
-                  {!rowsAsUnits && (
-                    <p className="colmap-autoid">Tag the column(s) that define one episode — e.g. session + round. Rows sharing the same combination are merged into one episode.</p>
-                  )}
+              {/* Prominent instruction for the active step */}
+              <div className="colmap-guide" style={{ borderColor: ROLE_META[activeRole].color, background: ROLE_META[activeRole].bg }}>
+                <span className="colmap-guide-num" style={{ background: ROLE_META[activeRole].color }}>{ROLE_ORDER.indexOf(activeRole) + 1}</span>
+                <span className="colmap-guide-txt">{ROLE_META[activeRole].hint}</span>
+              </div>
+
+              {activeRole === "identifier" && (
+                <div className="colmap-idmode">
+                  <button className={`idmode-pill ${!rowsAsUnits ? "on" : ""}`} onClick={() => setRowsAsUnits(false)}>Group rows by column(s)</button>
+                  <button className={`idmode-pill ${rowsAsUnits ? "on" : ""}`} onClick={() => { setRowsAsUnits(true); setIdentifierColumns([]); }}>Each row is its own episode</button>
                 </div>
-              ) : activeRole === "order" && orderColumn ? (
+              )}
+              {activeRole === "order" && orderColumn && (
                 <div className="colmap-order-dir">
                   <span>Order messages by <b>{orderColumn}</b>:</span>
                   <div className="seg">
                     <button className={orderDirection === "asc" ? "on" : ""} onClick={() => setOrderDirection("asc")}>Ascending</button>
                     <button className={orderDirection === "desc" ? "on" : ""} onClick={() => setOrderDirection("desc")}>Descending</button>
                   </div>
-                </div>
-              ) : (
-                <div className="colmap-current">
-                  <span className="role-dot" style={{ background: ROLE_META[activeRole].color }} />
-                  <span className="colmap-current-txt">Click a column header below to tag it as <b>{ROLE_META[activeRole].label}</b>.</span>
                 </div>
               )}
 
