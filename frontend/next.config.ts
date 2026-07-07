@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${backendUrl}/api/:path*`,
       },
+      {
+        // Password-protected admin analytics (served by the backend).
+        source: "/admin",
+        destination: `${backendUrl}/admin`,
+      },
     ];
   },
 };

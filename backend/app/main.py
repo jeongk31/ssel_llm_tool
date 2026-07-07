@@ -33,6 +33,7 @@ app.include_router(pipeline.router, prefix="/api")
 app.include_router(coding.router, prefix="/api")
 app.include_router(agreement.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(analytics.admin_router)  # /admin (password protected)
 
 
 

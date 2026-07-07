@@ -32,6 +32,24 @@ class Base(DeclarativeBase):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate_usage_events)
+
+
+def _migrate_usage_events(conn):
+    """Add any newly-introduced usage_events columns to an existing table (SQLite)."""
+    from sqlalchemy import inspect
+    insp = inspect(conn)
+    if "usage_events" not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns("usage_events")}
+    adds = {
+        "ip": "VARCHAR(64)", "country": "VARCHAR(80)", "country_code": "VARCHAR(4)",
+        "city": "VARCHAR(120)", "region": "VARCHAR(120)",
+        "user_agent": "TEXT", "referer": "TEXT",
+    }
+    for col, ddl in adds.items():
+        if col not in existing:
+            conn.exec_driver_sql(f"ALTER TABLE usage_events ADD COLUMN {col} {ddl}")
 
 
 async def get_db():
@@ -84,4 +102,12 @@ class UsageEvent(Base):
     num_rows = Column(Integer, default=0)
     num_episodes = Column(Integer, default=0)
     per_sender = Column(Boolean, default=False)
+    # request/location metadata
+    ip = Column(String(64))
+    country = Column(String(80))
+    country_code = Column(String(4))
+    city = Column(String(120))
+    region = Column(String(120))
+    user_agent = Column(Text)
+    referer = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
