@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
-import Instructions, { EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT } from "@/app/tools/HowToPage";
+import Instructions, { EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT, ContactForm } from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 
@@ -545,7 +545,7 @@ function buildSlotPayload(slot: ModelSlot) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<"coding" | "catgen" | "analysis" | "instructions">("coding");
+  const [activeTool, setActiveTool] = useState<"coding" | "catgen" | "analysis" | "instructions" | "contact">("coding");
   const [tourOpen, setTourOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
@@ -1948,6 +1948,7 @@ ${PDF_WATERMARK_HTML}
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn ChAT</button>
+            <button className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`} onClick={() => setActiveTool("contact")}>Contact Us</button>
           </div>
         </div>
         <div className="topbar-right">
@@ -2835,6 +2836,23 @@ ${PDF_WATERMARK_HTML}
           </div>
 
           {activeTool === "instructions" && <Instructions onNavigate={(tool) => setActiveTool(tool)} />}
+
+          {activeTool === "contact" && (
+            <div className="tool-page active">
+              <div className="tool-header">
+                <div>
+                  <h1>Contact Us</h1>
+                  <p className="tool-desc">Have a question, found a bug, or want to give feedback? Send us a message and we&apos;ll get back to you.</p>
+                </div>
+              </div>
+              <div className="tool-body">
+                <div className="ana-section mt-16">
+                  <div className="ana-section-h">Questions or concerns?</div>
+                  <div className="faq-contact"><ContactForm /></div>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
