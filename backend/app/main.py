@@ -7,7 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 
 from app.config import settings
 from app.ratelimit import limiter
-from app.routes import files, generate, coding, agreement, analytics
+from app.routes import files, generate, coding, agreement, analytics, contact
 
 
 @asynccontextmanager
@@ -52,6 +52,7 @@ app.include_router(generate.router, prefix="/api")
 app.include_router(coding.router, prefix="/api")
 app.include_router(agreement.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(contact.router, prefix="/api")
 app.include_router(analytics.admin_router)  # /admin (password protected)
 
 

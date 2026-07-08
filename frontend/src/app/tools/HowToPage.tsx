@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Section = "overview" | "coding" | "catgen" | "analysis" | "faq";
+type Section = "overview" | "coding" | "catgen" | "analysis" | "faq" | "demo";
 
 interface Props {
   onNavigate?: (tool: "coding" | "catgen" | "analysis") => void;
@@ -10,6 +10,7 @@ interface Props {
 
 const SECTIONS: { value: Section; label: string }[] = [
   // { value: "coding", label: "LLM Coding" },  // hidden for now
+  { value: "demo", label: "Demo video" },
   { value: "faq", label: "FAQ" },
 ];
 
@@ -36,11 +37,11 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
     a: <><strong>Binary</strong> is a fixed 0/1 outcome; <strong>Categorical</strong> is your own named set of values; <strong>Numeric</strong> returns a number; <strong>Text</strong> returns free-form text. Numeric and Text have no fixed value list.</>,
   },
   {
-    q: "What&apos;s the difference between per-episode and per-sender variables?",
+    q: "What's the difference between per-episode and per-sender variables?",
     a: <><strong>Per episode</strong> produces one value for the whole episode. <strong>Per sender</strong> produces one value per participant and expands into a column per participant (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). Declare participant names in the codebook so they match your sender column.</>,
   },
   {
-    q: "What does &ldquo;empty message handling&rdquo; do?",
+    q: "What does “empty message handling” do?",
     a: <>It controls rows whose message is blank: <strong>ignore</strong> skips them entirely, <strong>code</strong> sends them to the model anyway, and the default records them as empty with an error flag. Pick whichever matches how you want blanks treated.</>,
   },
   {
@@ -48,7 +49,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
     a: <>You can add several provider/model pairs and run each multiple times. More runs reduce variance at the cost of more API calls. Results are combined by <strong>majority vote (mode)</strong> — best for categorical/binary — or <strong>average (mean)</strong> for numeric variables.</>,
   },
   {
-    q: "What&apos;s the difference between &ldquo;Script only&rdquo; and &ldquo;Run Coding&rdquo;?",
+    q: "What's the difference between “Script only” and “Run Coding”?",
     a: <><strong>Script only</strong> downloads a ready-to-run Python script (it runs the first configured model). <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
   },
   {
@@ -150,8 +151,85 @@ function StepSection({ n, title, children }: { n: number; title: string; childre
   );
 }
 
+function DemoVideo() {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="ana-section mt-16">
+      <div className="ana-section-h">Demo video</div>
+      <div className="tool-desc">
+        {failed ? (
+          <div className="demo-placeholder">
+            <div className="demo-placeholder-icon">▶</div>
+            <p><strong>Demo video coming soon.</strong></p>
+          </div>
+        ) : (
+          <video controls className="howto-video" onError={() => setFailed(true)}>
+            <source src="/demos/coding-demo.mp4" type="video/mp4" />
+          </video>
+        )}
+        <p className="howto-cite mt-12">A short walkthrough: uploading data, mapping columns into episodes, building a codebook, and running the coding.</p>
+      </div>
+    </div>
+  );
+}
+
+function ContactForm() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [error, setError] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || !body.trim()) {
+      setError("Please fill in your name, email, and message.");
+      setStatus("error");
+      return;
+    }
+    setStatus("sending");
+    setError("");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, title, body }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || "Could not send your message. Please try again later.");
+      }
+      setStatus("sent");
+      setName(""); setEmail(""); setTitle(""); setBody("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send your message.");
+      setStatus("error");
+    }
+  };
+
+  if (status === "sent") {
+    return <p className="contact-sent">✓ Thanks — your message has been sent. We&apos;ll get back to you.</p>;
+  }
+
+  return (
+    <form className="contact-form" onSubmit={submit}>
+      <div className="contact-row">
+        <label>Name<input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required /></label>
+        <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required /></label>
+      </div>
+      <label>Title<input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Subject (optional)" /></label>
+      <label>Message<textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} placeholder="Your question or feedback…" required /></label>
+      {status === "error" && <p className="contact-err">{error}</p>}
+      <button className="btn btn-primary" type="submit" disabled={status === "sending"}>
+        {status === "sending" ? "Sending…" : "Send"}
+      </button>
+    </form>
+  );
+}
+
 export default function HowToPage({ onNavigate }: Props) {
-  const [activeSection, setActiveSection] = useState<Section>("faq");
+  const [activeSection, setActiveSection] = useState<Section>("demo");
 
   return (
     <div className="tool-page active">
@@ -278,6 +356,9 @@ export default function HowToPage({ onNavigate }: Props) {
         )}
         ── end LLM Coding section ── */}
 
+        {/* ── Demo video ── */}
+        {activeSection === "demo" && <DemoVideo />}
+
         {/* ── FAQ ── */}
         {activeSection === "faq" && (
           <>
@@ -296,9 +377,8 @@ export default function HowToPage({ onNavigate }: Props) {
             <div className="ana-section mt-16">
               <div className="ana-section-h">Questions or concerns?</div>
               <div className="faq-contact">
-                <p>Have a question that isn&apos;t answered here, found a bug, or want to give feedback? We&apos;d love to hear from you.</p>
-                <a className="btn btn-primary" href="mailto:jkl499@nyu.edu?subject=ChAT%20%E2%80%94%20Question%2FFeedback">Email us</a>
-                <p className="faq-contact-addr">or write to <a href="mailto:jkl499@nyu.edu">jkl499@nyu.edu</a></p>
+                <p>Have a question that isn&apos;t answered here, found a bug, or want to give feedback? Send a message below and we&apos;ll get back to you.</p>
+                <ContactForm />
               </div>
             </div>
           </>
