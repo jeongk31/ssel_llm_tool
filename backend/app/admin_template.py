@@ -46,14 +46,17 @@ ADMIN_HTML = r"""<!DOCTYPE html>
   .ev-visit{background:#e0e7ff;color:#3730a3} .ev-run{background:#dcfce7;color:#166534}
   .small{font-size:10.5px;max-width:230px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:bottom}
   /* messages */
-  .msg{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
-  .msg-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-  .msg-name{font-weight:700;font-size:13.5px}
-  .msg-email{font-size:12px;color:var(--mut)}
-  .msg-when{font-size:11px;color:#a1a1aa;margin-left:auto}
-  .msg-title{font-weight:600;font-size:13px;margin:2px 0 4px}
-  .msg-body{font-size:13px;color:#3f3f46;line-height:1.55;white-space:pre-wrap}
-  .msg-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
+  #msg-list{max-width:820px}
+  .msg{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:12px}
+  .msg-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:10px}
+  .msg-who{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .msg-name{font-weight:700;font-size:14px;color:var(--ink)}
+  .msg-email{font-size:12.5px;color:var(--mut);word-break:break-all}
+  .msg-meta{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .msg-when{font-size:11px;color:#a1a1aa;white-space:nowrap}
+  .msg-title{font-weight:600;font-size:13.5px;color:var(--ink);margin:0 0 6px;padding-top:10px;border-top:1px solid #f1f1f4}
+  .msg-body{font-size:13px;color:#3f3f46;line-height:1.6;white-space:pre-wrap;word-wrap:break-word}
+  .msg-actions{display:flex;gap:8px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid #f1f1f4}
   .st{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:10px;text-transform:uppercase;letter-spacing:.03em}
   .st-unresolved{background:#fef3c7;color:#b45309} .st-resolved{background:#dcfce7;color:#166534}
   .btn{font-family:inherit;font-size:12px;font-weight:600;border-radius:7px;padding:6px 12px;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink)}
@@ -140,6 +143,7 @@ document.querySelectorAll('.nav button').forEach(b => b.addEventListener('click'
   b.classList.add('active');
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + b.dataset.view).classList.add('active');
+  if (b.dataset.view === 'map') setTimeout(initMap, 30);  // init once the tab is visible & sized
 }));
 
 // ---- helpers ----
@@ -177,17 +181,22 @@ try {
   const ctry = entries(S.by_country).slice(0,10); mkChart('c-country','bar', ctry.map(x=>x[0]), ctry.map(x=>x[1]));
 } catch(e){ console.warn('charts', e); }
 
-// ---- map ----
-try {
-  const cc = S.by_country_code || {}; const values = {};
-  Object.keys(cc).forEach(k => { values[k.toUpperCase()] = cc[k]; values[k.toLowerCase()] = cc[k]; });
-  if (window.jsVectorMap) {
+// ---- map (init lazily when the tab is visible so it can measure its size) ----
+let mapInited = false;
+function initMap(){
+  if (mapInited) return; mapInited = true;
+  try {
+    if (!window.jsVectorMap) { console.warn('jsVectorMap not loaded'); return; }
+    const cc = S.by_country_code || {}; const values = {};
+    Object.keys(cc).forEach(k => { values[k.toUpperCase()] = cc[k]; values[k.toLowerCase()] = cc[k]; });
     new jsVectorMap({ selector:'#worldmap', map:'world', zoomButtons:true,
-      regionStyle:{ initial:{ fill:'#e3e5ea' } },
-      series:{ regions:[{ attribute:'fill', scale:['#e9d5ff', PUR], normalizeFunction:'polynomial', values }] },
-      onRegionTooltipShow(ev, tip, code){ tip.text(tip.text() + ' — ' + (values[code]||0) + ' events'); } });
-  }
-} catch(e){ console.warn('map', e); }
+      regionStyle:{ initial:{ fill:'#e5e7eb', stroke:'#fff', strokeWidth:.4 } },
+      series:{ regions:[{ attribute:'fill', scale:['#ddd6fe', PUR], normalizeFunction:'polynomial', values }] },
+      onRegionTooltipShow(ev, tooltip, code){
+        try { tooltip.text(tooltip.text() + ' — ' + (values[code] || 0) + ' events'); } catch(e){}
+      } });
+  } catch(e){ console.warn('map', e); mapInited = false; }
+}
 const crows = document.getElementById('country-rows');
 entries(S.by_country).forEach(([k,v]) => { const tr = el('tr'); tr.appendChild(el('td',null,k)); tr.appendChild(el('td',null,String(v))); crows.appendChild(tr); });
 if(!entries(S.by_country).length) crows.innerHTML = '<tr><td colspan="2" class="muted">No data yet</td></tr>';
@@ -236,11 +245,13 @@ function renderMessages(){
   items.forEach(m => {
     const box = el('div','msg');
     const top = el('div','msg-top');
-    top.appendChild(el('span','msg-name', m.name || 'Anonymous'));
-    top.appendChild(el('span','msg-email', m.email || ''));
-    const st = el('span', 'st st-' + m.status, m.status);
-    top.appendChild(st);
-    top.appendChild(el('span','msg-when', m.at || ''));
+    const who = el('div','msg-who');
+    who.appendChild(el('span','msg-name', m.name || 'Anonymous'));
+    who.appendChild(el('span','msg-email', m.email || ''));
+    const meta = el('div','msg-meta');
+    meta.appendChild(el('span', 'st st-' + m.status, m.status));
+    meta.appendChild(el('span','msg-when', m.at || ''));
+    top.appendChild(who); top.appendChild(meta);
     box.appendChild(top);
     if(m.title){ box.appendChild(el('div','msg-title', m.title)); }
     box.appendChild(el('div','msg-body', m.body || ''));

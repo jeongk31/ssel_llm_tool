@@ -173,7 +173,7 @@ function DemoVideo() {
   );
 }
 
-function ContactForm() {
+export function ContactForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
