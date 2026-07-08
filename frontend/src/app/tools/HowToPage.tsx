@@ -9,8 +9,60 @@ interface Props {
 }
 
 const SECTIONS: { value: Section; label: string }[] = [
-  { value: "coding", label: "LLM Coding" },
+  // { value: "coding", label: "LLM Coding" },  // hidden for now
   { value: "faq", label: "FAQ" },
+];
+
+// FAQ content — each entry renders as its own card.
+const FAQS: { q: string; a: React.ReactNode }[] = [
+  {
+    q: "What does ChAT do?",
+    a: <>ChAT (Chat Annotation Toolkit) codes qualitative communication data into structured variables using LLMs. You upload a dataset, map columns into communication <strong>episodes</strong>, define a <strong>codebook</strong>, and one or more models code every episode according to your definitions.</>,
+  },
+  {
+    q: "What is a communication episode?",
+    a: <>It&apos;s the unit of analysis — a combination of messages exchanged through the same channel, or a collection of messages sent by one sender. Rows that share the identifier column(s) you tag are merged into one episode. You can also choose &ldquo;each row is its own episode.&rdquo;</>,
+  },
+  {
+    q: "Do you store my dataset or my API keys?",
+    a: <>No. Your API keys are <strong>never</strong> saved anywhere on our side — not in the database, logs, or browser storage; they live only in memory during a run and travel over HTTPS. Your uploaded file is written to a temporary working file only so it can be processed, and it&apos;s deleted when you reset, upload a new file, or after 24 hours. The database only stores anonymous usage metadata (never keys or data).</>,
+  },
+  {
+    q: "How do I set up the codebook?",
+    a: <>Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Numeric, Text), a <strong>level</strong> (per episode = one value per episode, or per sender = one value per participant), and a <strong>definition</strong>. For Binary/Categorical variables, define every allowed <strong>value</strong> with its own definition (plus optional examples and context) — that guidance is what the model uses to code.</>,
+  },
+  {
+    q: "What do the variable types mean?",
+    a: <><strong>Binary</strong> is a fixed 0/1 outcome; <strong>Categorical</strong> is your own named set of values; <strong>Numeric</strong> returns a number; <strong>Text</strong> returns free-form text. Numeric and Text have no fixed value list.</>,
+  },
+  {
+    q: "What&apos;s the difference between per-episode and per-sender variables?",
+    a: <><strong>Per episode</strong> produces one value for the whole episode. <strong>Per sender</strong> produces one value per participant and expands into a column per participant (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). Declare participant names in the codebook so they match your sender column.</>,
+  },
+  {
+    q: "What does &ldquo;empty message handling&rdquo; do?",
+    a: <>It controls rows whose message is blank: <strong>ignore</strong> skips them entirely, <strong>code</strong> sends them to the model anyway, and the default records them as empty with an error flag. Pick whichever matches how you want blanks treated.</>,
+  },
+  {
+    q: "How many models and runs should I use, and how are they combined?",
+    a: <>You can add several provider/model pairs and run each multiple times. More runs reduce variance at the cost of more API calls. Results are combined by <strong>majority vote (mode)</strong> — best for categorical/binary — or <strong>average (mean)</strong> for numeric variables.</>,
+  },
+  {
+    q: "What&apos;s the difference between &ldquo;Script only&rdquo; and &ldquo;Run Coding&rdquo;?",
+    a: <><strong>Script only</strong> downloads a ready-to-run Python script (it runs the first configured model). <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
+  },
+  {
+    q: "Why is my run showing errors for some rows?",
+    a: <>Check the empty-message-handling setting and confirm your API key is valid for the selected model. After a run, the validation report lists the specific rows and lets you re-run only those.</>,
+  },
+  {
+    q: "Which LLM providers are supported?",
+    a: <>OpenAI, Google (Gemini), and DeepSeek. Each model slot takes its own API key.</>,
+  },
+  {
+    q: "If I refresh the page, do I lose my work?",
+    a: <>No — your dataset mapping, codebook, models, and settings are saved in your browser and restored automatically. The only thing not saved is your API key (for security), so you&apos;ll re-enter that. Use <strong>Reset</strong> to clear everything.</>,
+  },
 ];
 
 export const CODING_EXAMPLE_MULTI = `What we need you to do is code the messages that managers sent. Please mark a 1 for any comment that you think fits the category. You can code more than one category per message. Here are categories:
@@ -99,7 +151,7 @@ function StepSection({ n, title, children }: { n: number; title: string; childre
 }
 
 export default function HowToPage({ onNavigate }: Props) {
-  const [activeSection, setActiveSection] = useState<Section>("coding");
+  const [activeSection, setActiveSection] = useState<Section>("faq");
 
   return (
     <div className="tool-page active">
@@ -128,7 +180,7 @@ export default function HowToPage({ onNavigate }: Props) {
           </div>
         </div>
 
-        {/* ── LLM Coding ── */}
+        {/* ── LLM Coding section — hidden for now ──
         {activeSection === "coding" && (
           <>
             <div className="ana-section mt-16">
@@ -224,24 +276,32 @@ export default function HowToPage({ onNavigate }: Props) {
             )}
           </>
         )}
+        ── end LLM Coding section ── */}
 
         {/* ── FAQ ── */}
         {activeSection === "faq" && (
-          <div className="ana-section mt-16">
-            <div className="ana-section-h">Frequently Asked Questions</div>
-            <div className="tool-desc">
-              <div className="catgen-field">
-                <span className="catgen-label">Why is my run showing errors for some rows?</span>
-                Check the empty message handling setting and confirm your API key is valid for
-                the selected model.
-              </div>
-              <div className="catgen-field">
-                <span className="catgen-label">Why can't I compute agreement?</span>
-                You need at least two raters uploaded, episode columns selected, and analysis
-                variables selected, with a successful cross-check first.
+          <>
+            <div className="ana-section mt-16">
+              <div className="ana-section-h">Frequently Asked Questions</div>
+              <div className="faq-list">
+                {FAQS.map((f, i) => (
+                  <div className="faq-card" key={i}>
+                    <div className="faq-q">{f.q}</div>
+                    <div className="faq-a">{f.a}</div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+
+            <div className="ana-section mt-16">
+              <div className="ana-section-h">Questions or concerns?</div>
+              <div className="faq-contact">
+                <p>Have a question that isn&apos;t answered here, found a bug, or want to give feedback? We&apos;d love to hear from you.</p>
+                <a className="btn btn-primary" href="mailto:jkl499@nyu.edu?subject=ChAT%20%E2%80%94%20Question%2FFeedback">Email us</a>
+                <p className="faq-contact-addr">or write to <a href="mailto:jkl499@nyu.edu">jkl499@nyu.edu</a></p>
+              </div>
+            </div>
+          </>
         )}
 
       </div>

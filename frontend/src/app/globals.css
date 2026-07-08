@@ -258,6 +258,24 @@ body{
   font-size:11px;font-family:var(--mono);
 }
 
+/* FAQ cards */
+.faq-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.faq-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:9px;
+  padding:14px 16px;transition:border-color .15s,box-shadow .15s;
+}
+.faq-card:hover{border-color:var(--purple-border,#e9d5ff);box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.faq-q{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:6px}
+.faq-a{font-size:13px;line-height:1.6;color:var(--text-2)}
+.faq-a code{background:var(--surface-2,#f4f5f7);padding:1px 5px;border-radius:3px;font-size:11.5px;font-family:var(--mono);color:var(--purple)}
+.faq-a strong{color:var(--text)}
+/* contact block */
+.faq-contact{font-size:13px;color:var(--text-2);line-height:1.6}
+.faq-contact .btn{margin-top:10px}
+.faq-contact-addr{margin-top:10px;font-size:12.5px;color:var(--text-3)}
+.faq-contact a{color:var(--purple);text-decoration:none;font-weight:600}
+.faq-contact a:hover{text-decoration:underline}
+
 /* ═══════════════════════════════════════════════════ */
 /* PIPELINE LAYOUT (Build & Run)                       */
 /* ═══════════════════════════════════════════════════ */
