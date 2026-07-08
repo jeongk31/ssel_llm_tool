@@ -107,7 +107,16 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
     providers = payload.get("providers") if isinstance(payload.get("providers"), list) else []
     models = payload.get("models") if isinstance(payload.get("models"), list) else []
 
+    # Prefer the client-supplied public IP (the backend is behind the Next.js proxy,
+    # so request headers only show the proxy's address). Fall back to the header IP.
     ip = _client_ip(request)
+    client_ip = str(payload.get("client_ip") or "").strip()
+    if client_ip:
+        try:
+            ipaddress.ip_address(client_ip)
+            ip = client_ip
+        except ValueError:
+            pass
     geo = await _geo_lookup(ip)
     cc_header = request.headers.get("cf-ipcountry") or request.headers.get("x-vercel-ip-country") or ""
 
