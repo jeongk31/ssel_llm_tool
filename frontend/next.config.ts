@@ -17,9 +17,14 @@ const nextConfig: NextConfig = {
         destination: `${backendUrl}/api/:path*`,
       },
       {
-        // Password-protected admin analytics (served by the backend).
+        // Password-protected admin panel (served by the backend).
         source: "/admin",
         destination: `${backendUrl}/admin`,
+      },
+      {
+        // Sub-paths like /admin/messages/:id/status.
+        source: "/admin/:path*",
+        destination: `${backendUrl}/admin/:path*`,
       },
     ];
   },

@@ -18,11 +18,13 @@ def _to_uae(dt) -> str:
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.admin_template import ADMIN_HTML
 from app.config import settings
-from app.models.database import get_db, UsageEvent
+from app.models.database import get_db, UsageEvent, ContactMessage
 from app.ratelimit import limiter
 
 
@@ -150,10 +152,12 @@ async def _compute_stats(db: AsyncSession) -> dict:
     visits = [r for r in rows if r.event == "visit"]
     runs = [r for r in rows if r.event == "run"]
     provider_c, model_c, rpm_c, agg_c = Counter(), Counter(), Counter(), Counter()
-    country_c, day_c = Counter(), Counter()
+    country_c, cc_c, day_c = Counter(), Counter(), Counter()
     per_sender_runs = 0
     for r in rows:
         country_c[r.country or "Unknown"] += 1
+        if r.country_code and r.country and r.country != "Local":
+            cc_c[r.country_code.upper()] += 1
         if r.created_at:
             day_c[_to_uae(r.created_at)[:10]] += 1
     for r in runs:
@@ -174,6 +178,7 @@ async def _compute_stats(db: AsyncSession) -> dict:
         "sessions_that_ran": len({r.session_id for r in runs if r.session_id}),
         "per_sender_runs": per_sender_runs,
         "by_country": dict(country_c.most_common()),
+        "by_country_code": dict(cc_c.most_common()),
         "by_provider": dict(provider_c.most_common()),
         "by_model": dict(model_c.most_common()),
         "by_runs_per_model": dict(rpm_c.most_common()),
@@ -202,6 +207,35 @@ async def _compute_stats(db: AsyncSession) -> dict:
     }
 
 
+async def _fetch_messages(db: AsyncSession) -> list[dict]:
+    rows = (await db.execute(
+        select(ContactMessage).order_by(ContactMessage.created_at.desc())
+    )).scalars().all()
+    return [{
+        "id": m.id, "name": m.name or "", "email": m.email or "", "title": m.title or "",
+        "body": m.body or "", "status": m.status or "unresolved", "at": _to_uae(m.created_at),
+    } for m in rows]
+
+
+async def _admin_payload(db: AsyncSession) -> dict:
+    messages = await _fetch_messages(db)
+    return {
+        "stats": await _compute_stats(db),
+        "messages": messages,
+        "counts": {
+            "unresolved": sum(1 for m in messages if m["status"] == "unresolved"),
+            "resolved": sum(1 for m in messages if m["status"] == "resolved"),
+            "total": len(messages),
+        },
+    }
+
+
+def _render_admin(payload: dict) -> str:
+    # Escape </ so nothing in the data can prematurely close the <script> block.
+    data = json.dumps(payload).replace("</", "<\\/")
+    return ADMIN_HTML.replace("/*__DATA__*/", data)
+
+
 @router.get("/analytics/stats")
 async def stats(db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
     return await _compute_stats(db)
@@ -209,78 +243,25 @@ async def stats(db: AsyncSession = Depends(get_db), _: bool = Depends(require_ad
 
 @router.get("/analytics/dashboard", response_class=HTMLResponse)
 async def dashboard(db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
-    return HTMLResponse(_render_dashboard(await _compute_stats(db)))
+    return HTMLResponse(_render_admin(await _admin_payload(db)))
 
 
 @admin_router.get("/admin", response_class=HTMLResponse)
 async def admin(db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
-    return HTMLResponse(_render_dashboard(await _compute_stats(db)))
+    return HTMLResponse(_render_admin(await _admin_payload(db)))
 
 
-def _esc(v) -> str:
-    return str(v if v is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+class _StatusUpdate(BaseModel):
+    status: str
 
 
-def _render_dashboard(s: dict) -> str:
-    def table(title, d):
-        if not d:
-            return f"<h3>{title}</h3><p class='muted'>—</p>"
-        rows = "".join(f"<tr><td>{_esc(k)}</td><td>{v}</td></tr>" for k, v in d.items())
-        return f"<h3>{title}</h3><table>{rows}</table>"
-
-    event_rows = "".join(
-        f"<tr><td>{_esc(r['at'])}</td>"
-        f"<td><span class='ev ev-{r['event']}'>{r['event']}</span></td>"
-        f"<td>{_esc(r['session'])}</td>"
-        f"<td>{_esc((r['country'] + (' · ' + r['city'] if r['city'] else '')) or '—')}</td>"
-        f"<td class='mono'>{_esc(r['ip'])}</td>"
-        f"<td>{_esc(', '.join(r['models']) or '—')}</td>"
-        f"<td>{r['runs_per_model'] or ''}</td><td>{_esc(r['aggregation'])}</td>"
-        f"<td>{r['variables'] or ''}</td><td>{r['rows'] or ''}</td><td>{r['episodes'] or ''}</td>"
-        f"<td>{'yes' if r['per_sender'] else ''}</td>"
-        f"<td class='mono small'>{_esc(r['user_agent'])}</td></tr>"
-        for r in s["events"]
-    ) or "<tr><td colspan='13' class='muted'>No events yet</td></tr>"
-
-    html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>ChAT — Usage</title>
-<style>
-  body{{font-family:-apple-system,Segoe UI,sans-serif;padding:32px;color:#18181b;background:#f4f5f7}}
-  h1{{font-size:20px;margin:0 0 4px}} .sub{{color:#71717a;font-size:12px;margin-bottom:20px}}
-  h3{{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#7c4dab;margin:18px 0 6px}}
-  .cards{{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}}
-  .card{{background:#fff;border:1px solid #e3e5ea;border-radius:8px;padding:14px 18px;min-width:110px}}
-  .card .v{{font-size:24px;font-weight:700}} .card .l{{font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:.04em}}
-  .grid{{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}}
-  table{{border-collapse:collapse;background:#fff;border:1px solid #e3e5ea;border-radius:8px;overflow:hidden;font-size:12.5px}}
-  td,th{{padding:6px 12px;border-bottom:1px solid #f1f1f4;text-align:left;white-space:nowrap}}
-  th{{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#a1a1aa;background:#fafafa}}
-  .muted{{color:#a1a1aa}} .mono{{font-family:ui-monospace,Menlo,monospace}} .small{{font-size:10.5px;max-width:220px;overflow:hidden;text-overflow:ellipsis}}
-  .ev{{font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px}}
-  .ev-visit{{background:#e0e7ff;color:#3730a3}} .ev-run{{background:#dcfce7;color:#166534}}
-  .log-wrap{{overflow:auto;max-width:100%}}
-</style></head><body>
-<h1>ChAT — Chat Annotation Toolkit · Usage</h1>
-<div class="sub">Metadata only — no API keys or dataset content is stored. Times in UAE (GST, UTC+4); country/city best-effort from IP. Refresh to update.</div>
-<div class="cards">
-  <div class="card"><div class="v">{s['visits']}</div><div class="l">Visits</div></div>
-  <div class="card"><div class="v">{s['unique_visitors']}</div><div class="l">Unique visitors</div></div>
-  <div class="card"><div class="v">{s['countries']}</div><div class="l">Countries</div></div>
-  <div class="card"><div class="v">{s['runs']}</div><div class="l">Runs</div></div>
-  <div class="card"><div class="v">{s['sessions_that_ran']}</div><div class="l">Sessions that ran</div></div>
-  <div class="card"><div class="v">{s['per_sender_runs']}</div><div class="l">Per-sender runs</div></div>
-</div>
-<div class="grid">
-  <div>{table("By country", s['by_country'])}</div>
-  <div>{table("Runs by provider", s['by_provider'])}</div>
-  <div>{table("Runs by model", s['by_model'])}</div>
-  <div>{table("Runs / model", s['by_runs_per_model'])}</div>
-  <div>{table("Runs by aggregation", s['by_aggregation'])}</div>
-  <div>{table("Events by day", s['by_day'])}</div>
-</div>
-<h3>Raw event log (latest {len(s['events'])})</h3>
-<div class="log-wrap"><table>
-  <thead><tr><th>When (UAE / GST)</th><th>Event</th><th>Session</th><th>Location</th><th>IP</th><th>Models</th><th>Runs</th><th>Agg</th><th>Vars</th><th>Rows</th><th>Episodes</th><th>Per-sender</th><th>User agent</th></tr></thead>
-  <tbody>{event_rows}</tbody>
-</table></div>
-</body></html>"""
-    return html
+@admin_router.post("/admin/messages/{msg_id}/status")
+async def set_message_status(msg_id: str, upd: _StatusUpdate,
+                             db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
+    status = "resolved" if upd.status == "resolved" else "unresolved"
+    m = await db.get(ContactMessage, msg_id)
+    if not m:
+        raise HTTPException(404, "Message not found")
+    m.status = status
+    await db.commit()
+    return {"ok": True, "status": status}
