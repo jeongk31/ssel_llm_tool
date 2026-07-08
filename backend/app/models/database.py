@@ -123,3 +123,16 @@ class UsageEvent(Base):
     user_agent = Column(Text)
     referer = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ContactMessage(Base):
+    """Questions/concerns submitted through the contact form, managed in /admin."""
+    __tablename__ = "contact_messages"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(120))
+    email = Column(String(200))
+    title = Column(String(200))
+    body = Column(Text)
+    status = Column(String(20), default="unresolved")  # "unresolved" | "resolved"
+    created_at = Column(DateTime, server_default=func.now())
