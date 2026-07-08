@@ -13,21 +13,41 @@ const CODING_TOUR_STEPS: TourStep[] = [
     targetId: "tour-episode-preview", title: "Upload your dataset",
     body: (<p>Upload a CSV/Excel file with one message per row. We've loaded a small <strong>sample</strong> so you can follow along — the preview shows the original rows and, once you map columns, the merged <strong>episodes</strong>.</p>),
   },
-  // ── Map Columns popup ──
+  // ── Map Columns popup — walk each step/role ──
   {
-    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
-    targetId: "tour-map-roles", title: "Column roles",
-    body: (<p>This popup opens right after upload. Pick a <strong>role</strong> up here — Message, Identifier(s), Sender, Order, or Context — then click columns below to tag them. Each color marks one role.</p>),
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "message",
+    targetId: "tour-role-message", title: "Step 1 · Message",
+    body: (<p>This popup opens right after upload. Work down the numbered steps — click a step, then click the columns below to tag them. <strong>Message</strong> (required) is the column that holds the actual message text being coded.</p>),
+  },
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "identifier",
+    targetId: "tour-role-identifier", title: "Step 2 · Episode identifier",
+    body: (<p><strong>Episode identifier</strong> (required) defines what counts as one episode. Choose <em>Group rows</em> and tag the column(s) that group messages together (e.g. Session + Round) — or <em>Each row is its own episode</em>. Rows sharing the same values are merged into one episode.</p>),
+  },
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "identity",
+    targetId: "tour-role-identity", title: "Step 3 · Sender",
+    body: (<p><strong>Sender</strong> (optional) is the column saying who sent each message. Tag it when you have per-sender variables or want each message labelled by speaker.</p>),
+  },
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "order",
+    targetId: "tour-role-order", title: "Step 4 · Order",
+    body: (<p><strong>Order</strong> (optional) sequences messages within an episode. Tag a timestamp or turn-number column so the messages are read in the right order (ascending or descending).</p>),
+  },
+  {
+    sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "context",
+    targetId: "tour-role-context", title: "Step 5 · Context",
+    body: (<p><strong>Context</strong> (optional) tags any extra columns the model should know about (e.g. a channel or condition). You can describe what each one means so the model interprets it correctly.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
-    targetId: "tour-map-table", title: "Tag your columns",
-    body: (<p>Click a column header to tag it with the active role. Here <strong>Message</strong> is the text, <strong>Session + Round</strong> define an episode, <strong>Speaker</strong> is the sender, and <strong>Order</strong> sequences the messages.</p>),
+    targetId: "tour-map-table", title: "Tagging the columns",
+    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step's color. Click again to untag. Here <strong>Message</strong> is the text, <strong>Session + Round</strong> the episode, <strong>Speaker</strong> the sender, <strong>Order</strong> the sequence.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
-    targetId: "tour-map-proceed", title: "Proceed",
-    body: (<p>When your mapping is complete, click <strong>Proceed</strong>. Rows sharing your identifier(s) are merged into one tagged episode, shown in the preprocessed preview.</p>),
+    targetId: "tour-map-proceed", title: "Save & Proceed",
+    body: (<p>Once the required steps (Message + Episode identifier) are done, click <strong>Save &amp; Proceed</strong>. Rows sharing your identifier(s) are merged into one tagged episode, shown in the preprocessed preview.</p>),
   },
   // ── Section 2: Codebook ──
   {
@@ -731,7 +751,8 @@ export default function Home() {
         if (typeof s.experimentInstructions === "string") setExperimentInstructions(s.experimentInstructions);
         if (Array.isArray(s.codebook) && s.codebook.length) setCodebook(s.codebook);
         if (typeof s.participantsStr === "string") setParticipantsStr(s.participantsStr);
-        if (Array.isArray(s.modelSlots) && s.modelSlots.length) setModelSlots(s.modelSlots);
+        // Never restore a saved API key (and discard any key left by an older build).
+        if (Array.isArray(s.modelSlots) && s.modelSlots.length) setModelSlots(s.modelSlots.map((slot: ModelSlot) => ({ ...slot, apiKey: "" })));
         if (typeof s.runsPerModel === "number") setRunsPerModel(s.runsPerModel);
         if (s.aggregation === "mode" || s.aggregation === "mean") setAggregation(s.aggregation);
       }
@@ -746,7 +767,9 @@ export default function Home() {
       localStorage.setItem(PERSIST_KEY, JSON.stringify({
         uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
         contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
-        codebook, participantsStr, modelSlots, runsPerModel, aggregation,
+        codebook, participantsStr, runsPerModel, aggregation,
+        // Persist model slots WITHOUT the API key — keys are never saved anywhere.
+        modelSlots: modelSlots.map((s) => ({ ...s, apiKey: "" })),
       }));
     } catch {}
   }, [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
@@ -889,6 +912,7 @@ export default function Home() {
     if (s.open === "mapping") { setExpandedTable(null); setColumnModalOpen(true); }
     else if (s.open === "codebook") { setColumnModalOpen(false); setExpandedTable("codebook"); }
     else { setColumnModalOpen(false); setExpandedTable(null); }
+    if (s.mapRole) setActiveRole(s.mapRole as ColRole);
     if (s.panel) setOpenPanels((prev) => new Set(prev).add(s.panel as number));
   }, []);
 
@@ -2841,7 +2865,7 @@ ${PDF_WATERMARK_HTML}
                   const done = assigned.length > 0;
                   const active = activeRole === role;
                   return (
-                    <button key={role} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}`}
+                    <button key={role} id={`tour-role-${role}`} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}`}
                       style={active ? { borderColor: meta.color, background: meta.bg } : undefined}
                       onClick={() => setActiveRole(role)}>
                       <span className="colmap-step-num"

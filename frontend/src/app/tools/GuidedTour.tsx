@@ -19,6 +19,8 @@ export interface TourStep {
   mediaBox?: { x: number; y: number; w: number; h: number };
   /** if set, this step walks a popup that the parent opens (Map Columns / Codebook editor) */
   open?: "mapping" | "codebook";
+  /** for Map-Columns steps: which role/tab to activate so its instruction shows */
+  mapRole?: string;
 }
 
 interface Props {
