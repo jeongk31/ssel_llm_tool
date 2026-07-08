@@ -42,7 +42,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
     targetId: "tour-map-table", title: "Tagging the columns",
-    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step's color. Click again to untag. Here <strong>Message</strong> is the text, <strong>Session + Round</strong> the episode, <strong>Speaker</strong> the sender, <strong>Order</strong> the sequence.</p>),
+    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step&apos;s color. Click again to untag. Here the <strong>Message</strong> column is the Message, <strong>Session</strong> + <strong>Round</strong> are the Episode identifier, <strong>Speaker</strong> is the Sender, and <strong>Order</strong> is the Order.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
