@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     admin_password: str = ""
     # Max upload size in MB (override via MAX_UPLOAD_MB env var).
     max_upload_mb: int = 25
+    # Contact form → email (SMTP). Set these env vars to enable the form; if any of
+    # host/user/password is missing the endpoint returns 503 (form disabled).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    contact_to: str = "jkl499@nyu.edu"
+    contact_from: str = ""  # defaults to smtp_user when empty
 
     class Config:
         env_file = ".env"
