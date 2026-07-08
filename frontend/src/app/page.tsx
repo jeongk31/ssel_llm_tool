@@ -1996,7 +1996,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
                         <span className="panel-label">Upload Dataset</span>
-                        <HelpTip text="Upload a CSV or Excel file. Include an ID column and the column containing the text to code." />
+                        <HelpTip text="Upload a CSV or Excel file with one message per row. Next, map your columns: tag the message text and choose how rows form episodes (group by shared columns, or code each row on its own)." />
                         {uploadResult && <span className="tag">uploaded</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
@@ -2094,7 +2094,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="panel-head-left">
                         <span className="step-badge">2</span>
                         <span className="panel-label">Codebook</span>
-                        <HelpTip text="Define each variable to code: its type, level, a definition for the category, and a definition for every coded value (with optional examples and context)." />
+                        <HelpTip text="Define each variable to code: its label, type, level (per episode or per sender), a definition for the category, and a definition for every coded value — with optional examples and context." />
                         {codebook.some((e) => e.label.trim()) && (
                           <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
                         )}
@@ -2210,7 +2210,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
                         <span className="panel-label">Models &amp; Aggregation</span>
-                        <HelpTip text="Add model + API key pairs. Expand tuning to set temperature, top-p, and max tokens per model." />
+                        <HelpTip text="Add one or more provider + model + API key rows. Choose runs per model and how to combine results (majority vote or average). Expand Tuning for temperature, top-p, and max tokens per model." />
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
