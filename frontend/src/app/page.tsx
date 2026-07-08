@@ -670,11 +670,24 @@ export default function Home() {
   useEffect(() => { codedRowsRef.current = codedRows; }, [codedRows]);
 
   // ── Usage analytics (metadata only — never keys or data) ────────────────────
-  const trackEvent = (event: "visit" | "run") => {
+  // The backend sits behind the Next.js proxy, so it can't see the visitor's real
+  // IP. Resolve the client's public IP once (client-side) and send it in the payload.
+  const clientIpRef = useRef<string | null>(null);
+  const getClientIp = async (): Promise<string> => {
+    if (clientIpRef.current !== null) return clientIpRef.current;
+    try {
+      const r = await fetch("https://api.ipify.org?format=json");
+      const j = await r.json();
+      clientIpRef.current = typeof j?.ip === "string" ? j.ip : "";
+    } catch { clientIpRef.current = ""; }
+    return clientIpRef.current ?? "";
+  };
+  const trackEvent = async (event: "visit" | "run") => {
     try {
       let sid = localStorage.getItem("ssel_session_id");
       if (!sid) { sid = (crypto.randomUUID?.() ?? String(Date.now() + Math.random())); localStorage.setItem("ssel_session_id", sid); }
-      const body: Record<string, unknown> = { event, session_id: sid };
+      const client_ip = await getClientIp();
+      const body: Record<string, unknown> = { event, session_id: sid, client_ip };
       if (event === "run") {
         body.providers = modelSlots.map((s) => s.provider);
         body.models = modelSlots.map((s) => s.model);
