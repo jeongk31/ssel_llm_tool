@@ -136,8 +136,11 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
   const isPopup = !!step.open;
   let panelStyle: React.CSSProperties | undefined;
   if (isPopup && typeof window !== "undefined") {
-    const targetMidY = subRect ? subRect.top + subRect.height / 2 : window.innerHeight / 2;
-    const dockBottom = targetMidY < window.innerHeight / 2;
+    // Dock below by default so content at the top of the popup (e.g. the column
+    // headers) stays visible; only dock above when the highlighted target itself
+    // sits low on screen (e.g. the Save & Proceed footer).
+    const targetTop = subRect ? subRect.top : window.innerHeight * 0.35;
+    const dockBottom = targetTop < window.innerHeight * 0.6;
     panelStyle = dockBottom
       ? { top: "auto", bottom: 20, left: "50%", right: "auto", transform: "translateX(-50%)" }
       : { top: 20, bottom: "auto", left: "50%", right: "auto", transform: "translateX(-50%)" };
