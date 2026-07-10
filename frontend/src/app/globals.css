@@ -245,7 +245,12 @@ body{
 
 .howto-cite{font-size:12px;font-style:italic;color:var(--text-3);margin-top:6px}
 
-.howto-video{width:100%;border-radius:var(--radius);display:block}
+.howto-video{
+  display:block;width:auto;height:auto;
+  max-width:min(100%,960px);
+  max-height:calc(100vh - var(--topbar-h) - 252px);
+  margin:0 auto;border-radius:var(--radius);background:#000;
+}
 
 .howto-warning{
   background:var(--mid-bg);border:1px solid var(--mid);
