@@ -1,3 +1,4 @@
+import base64
 import time
 
 from openai import AsyncOpenAI
@@ -24,6 +25,40 @@ class OpenAICompatibleProvider(LLMProvider):
             temperature=params.get("temperature", 0.7),
             top_p=params.get("top_p", 1.0),
             max_tokens=params.get("max_tokens", 2048),
+        )
+
+        return {
+            "response": response.choices[0].message.content or "",
+            "tokens_used": response.usage.total_tokens if response.usage else 0,
+            "latency_ms": self._timed(start),
+        }
+
+    async def complete_with_pdf(
+        self, prompt: str, pdf_bytes: bytes, system_prompt: str = "", params: dict | None = None
+    ) -> dict:
+        params = params or {}
+        client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "file",
+                    "file": {"filename": "instructions.pdf", "file_data": f"data:application/pdf;base64,{b64}"},
+                },
+                {"type": "text", "text": prompt},
+            ],
+        })
+
+        start = time.time()
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=params.get("max_tokens", 8192),
         )
 
         return {

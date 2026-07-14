@@ -1866,6 +1866,26 @@ td.cm-off:hover{background:var(--bg)}
 .colmap-title{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-0.01em}
 .colmap-sub{font-size:12px;color:var(--text-2);margin-top:2px}
 
+/* Import-from-PDF modal */
+.ta-label-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.pdf-modal{
+  background:var(--surface);border-radius:var(--radius-lg);
+  width:96vw;max-width:720px;max-height:92vh;
+  display:flex;flex-direction:column;
+  box-shadow:0 12px 40px rgba(0,0,0,.25);
+}
+.pdf-modal-body{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.pdf-modal-body .slot-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pdf-modal-error{
+  font-size:12.5px;color:var(--bad,#b91c1c);
+  background:var(--bad-bg,#fef2f2);border:1px solid var(--bad-border,#fecaca);
+  border-radius:var(--radius);padding:8px 11px;
+}
+.pdf-modal-actions{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 18px;border-top:1px solid var(--border);flex-shrink:0;
+}
+
 /* wizard steps */
 .colmap-steps{
   display:flex;align-items:center;gap:6px;flex-wrap:wrap;
@@ -2023,6 +2043,8 @@ textarea.ta-fit{
   width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);
   font-size:11px;font-weight:700;color:var(--text-3);background:var(--surface)}
 .colmap-step-body{display:flex;flex-direction:column;min-width:0}
+.colmap-step-eyebrow{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);line-height:1.1;margin-bottom:2px}
+.colmap-step.active .colmap-step-eyebrow{color:var(--text-2)}
 .colmap-step-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .colmap-step-opt{font-weight:500;color:var(--text-3);font-size:10.5px}
 .colmap-step-val{font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
