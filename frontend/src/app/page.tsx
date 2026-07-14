@@ -11,7 +11,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-1", panel: 1, section: "Upload & Map Dataset",
     targetId: "tour-episode-preview", title: "Upload your dataset",
-    body: (<p>Upload a CSV/Excel file with one message per row. We've loaded a small <strong>sample</strong> so you can follow along — the preview shows the original rows and, once you map columns, the merged <strong>episodes</strong>.</p>),
+    body: (<p>We've loaded a sample data. Each row represents a message by sender. Later, we will explain how to define communication <strong>episodes</strong>, which are combinations of messages to be coded.</p>),
   },
   // ── Map Columns popup — walk each step/role ──
   {
@@ -27,7 +27,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "identity",
     targetId: "tour-role-identity", title: "Step 3 · Sender",
-    body: (<p><strong>Sender</strong> (optional) is the column saying who sent each message. Tag it when you have per-sender variables or want each message labelled by speaker.</p>),
+    body: (<p><strong>Sender</strong> (optional) is the column identifying the message sender in a given row. Tag this column when you have variables that are to be coded at the sender level.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "order",
@@ -37,7 +37,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "context",
     targetId: "tour-role-context", title: "Step 5 · Context",
-    body: (<p><strong>Context</strong> (optional) tags any extra columns the model should know about (e.g. a channel or condition). You can describe what each one means so the model interprets it correctly.</p>),
+    body: (<p><strong>Context</strong> (optional) tags any extra columns the model should know about (e.g. a characteristic of the communication channel or a treatment variable / condition). You should describe what each one means in the coding manual so the model interprets the context correctly.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
@@ -353,6 +353,31 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
   },
 ];
 
+// Curated list of providers/models that support native PDF (document + vision)
+// processing, used only by the "Import from PDF" converter for Experiment Instructions.
+// Keep in sync with PDF_CAPABLE_PROVIDERS in backend/app/routes/instructions.py.
+const PDF_MODELS: { provider: string; label: string; models: { value: string; label: string }[] }[] = [
+  {
+    provider: "openai", label: "OpenAI", models: [
+      { value: "gpt-4.1", label: "GPT-4.1" },
+      { value: "gpt-4o", label: "GPT-4o" },
+    ],
+  },
+  {
+    provider: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+      { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
+    ],
+  },
+  {
+    provider: "anthropic", label: "Anthropic (Claude)", models: [
+      { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
+      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+    ],
+  },
+];
+
 const CODEBOOK_TYPES = [
   { value: "binary", label: "Binary" },
   { value: "categorical", label: "Categorical" },
@@ -600,6 +625,49 @@ export default function Home() {
   const mapSnapshotRef = useRef<string | null>(null);
   const hydratedRef = useRef(false);
   const [experimentInstructions, setExperimentInstructions] = useState("");
+
+  // "Import from PDF" converter for the experiment instructions.
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfProvider, setPdfProvider] = useState<string>(PDF_MODELS[0].provider);
+  const [pdfModel, setPdfModel] = useState<string>(PDF_MODELS[0].models[0].value);
+  const [pdfApiKey, setPdfApiKey] = useState("");
+  const [pdfShowKey, setPdfShowKey] = useState(false);
+  const [pdfConverting, setPdfConverting] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [pdfResultText, setPdfResultText] = useState<string | null>(null);
+
+  const openPdfModal = () => {
+    setPdfFile(null); setPdfError(""); setPdfResultText(null); setPdfConverting(false);
+    setPdfModalOpen(true);
+  };
+  const closePdfModal = () => { if (!pdfConverting) setPdfModalOpen(false); };
+
+  const convertPdf = async () => {
+    if (!pdfFile) { setPdfError("Choose a PDF file first."); return; }
+    if (!pdfApiKey.trim()) { setPdfError("Enter an API key for the selected model."); return; }
+    setPdfConverting(true); setPdfError(""); setPdfResultText(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", pdfFile);
+      fd.append("provider", pdfProvider);
+      fd.append("model", pdfModel);
+      fd.append("api_key", pdfApiKey);
+      const res = await fetch("/api/instructions/convert-pdf", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || "Conversion failed.");
+      setPdfResultText(data.text || "");
+    } catch (e) {
+      setPdfError(e instanceof Error ? e.message : "Conversion failed.");
+    } finally {
+      setPdfConverting(false);
+    }
+  };
+
+  const applyPdfText = () => {
+    if (pdfResultText != null) setExperimentInstructions(pdfResultText);
+    setPdfModalOpen(false);
+  };
   const [codebook, setCodebook] = useState<CodebookEntry[]>([newEntry()]);
   const [participantsStr, setParticipantsStr] = useState("");
   const participants = useMemo(
@@ -2191,7 +2259,13 @@ ${PDF_WATERMARK_HTML}
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div className="f">
-                        <label>Describe the experiment context</label>
+                        <div className="ta-label-row">
+                          <label>Describe the experiment context</label>
+                          <button className="btn btn-outline btn-xs" type="button" onClick={openPdfModal} title="Convert a PDF of the instructions (including figures and tables) into text">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 5, verticalAlign: "-2px" }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                            Import from PDF
+                          </button>
+                        </div>
                         <textarea
                           className="ta-fit"
                           rows={16}
@@ -2199,7 +2273,7 @@ ${PDF_WATERMARK_HTML}
                           onChange={(e) => setExperimentInstructions(e.target.value)}
                           placeholder={EXAMPLE_INSTRUCTIONS}
                         />
-                        <p className="hint">Provide context about what the data represents and the research goals. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
+                        <p className="hint">Provide context about what the data represents and the research goals. Have a PDF with figures or tables? Use <strong>Import from PDF</strong> to convert it to text first. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
                       </div>
                     </div></div></div>
                   </div>
@@ -2856,6 +2930,101 @@ ${PDF_WATERMARK_HTML}
         </main>
       </div>
 
+      {/* Import-from-PDF popup: pick a vision-capable model → convert → review → use */}
+      {pdfModalOpen && (
+        <div className="colmap-overlay" onClick={closePdfModal}>
+          <div className="pdf-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="colmap-head">
+              <div>
+                <h2 className="colmap-title">Import instructions from PDF</h2>
+                <p className="colmap-sub">Only some models can read PDFs (including figures and tables). Pick one below to convert the document into text — you can review and edit it before using it. Your main coding run can still use any model you like.</p>
+              </div>
+              <button className="modal-close" onClick={closePdfModal} title="Close" disabled={pdfConverting}>✕</button>
+            </div>
+
+            <div className="pdf-modal-body">
+              <div className="f">
+                <label>PDF file</label>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => { setPdfFile(e.target.files?.[0] ?? null); setPdfError(""); setPdfResultText(null); }}
+                />
+                {pdfFile && <p className="hint">{pdfFile.name} · {(pdfFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+              </div>
+
+              <div className="slot-fields">
+                <div className="f">
+                  <label>Provider</label>
+                  <select
+                    value={pdfProvider}
+                    onChange={(e) => {
+                      const np = e.target.value;
+                      const ms = PDF_MODELS.find((p) => p.provider === np)?.models ?? [];
+                      setPdfProvider(np); setPdfModel(ms[0]?.value ?? "");
+                    }}
+                  >
+                    {PDF_MODELS.map((p) => <option key={p.provider} value={p.provider}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div className="f">
+                  <label>Model</label>
+                  <select value={pdfModel} onChange={(e) => setPdfModel(e.target.value)}>
+                    {(PDF_MODELS.find((p) => p.provider === pdfProvider)?.models ?? []).map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="f">
+                  <label>API Key</label>
+                  <div className="enc-key-wrap">
+                    <input
+                      type={pdfShowKey ? "text" : "password"}
+                      value={pdfApiKey}
+                      onChange={(e) => setPdfApiKey(e.target.value)}
+                      placeholder="sk-..."
+                    />
+                    <button className="enc-key-toggle" type="button" onClick={() => setPdfShowKey((v) => !v)} title={pdfShowKey ? "Hide key" : "Show key"}>
+                      {pdfShowKey ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {pdfError && <div className="pdf-modal-error">{pdfError}</div>}
+
+              {pdfResultText != null && (
+                <div className="f">
+                  <label>Converted text — review and edit before using</label>
+                  <textarea
+                    className="ta-fit"
+                    rows={12}
+                    value={pdfResultText}
+                    onChange={(e) => setPdfResultText(e.target.value)}
+                  />
+                  <p className="hint">Figures and images are described inline as <code>[FIGURE: …]</code>. Edit anything the model got wrong.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pdf-modal-actions">
+              <button className="btn btn-ghost btn-sm" onClick={closePdfModal} disabled={pdfConverting}>Cancel</button>
+              <div className="flex-1" />
+              <button className="btn btn-outline btn-sm" onClick={convertPdf} disabled={pdfConverting || !pdfFile}>
+                {pdfConverting ? "Converting…" : pdfResultText != null ? "Re-convert" : "Convert"}
+              </button>
+              {pdfResultText != null && (
+                <button className="btn btn-primary btn-sm" onClick={applyPdfText} disabled={pdfConverting}>Use this text</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Column-mapping popup: square role tabs → verify → proceed */}
       {columnModalOpen && uploadResult && (() => {
         const assignedFor = (role: ColRole): string[] =>
@@ -2892,6 +3061,7 @@ ${PDF_WATERMARK_HTML}
                         {done ? "✓" : i + 1}
                       </span>
                       <span className="colmap-step-body">
+                        <span className="colmap-step-eyebrow">Step {i + 1}</span>
                         <span className="colmap-step-name">{meta.label}{required ? <span className="colmap-req"> *</span> : <span className="colmap-step-opt"> · optional</span>}</span>
                         <span className="colmap-step-val">{done ? assigned.join(", ") : required ? "not set — click here" : "none"}</span>
                       </span>
