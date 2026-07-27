@@ -14,6 +14,10 @@ out/
 backend/.env
 .env.local
 
+# Private local operations and access notes
+SERVER_OPERATIONS_PRIVATE.md
+SFTP_CREDENTIALS.txt
+
 # IDE
 .vscode/
 .idea/
