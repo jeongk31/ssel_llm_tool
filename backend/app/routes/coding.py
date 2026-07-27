@@ -1,4 +1,5 @@
 import io
+import json
 import uuid
 import os
 import shutil
@@ -7,11 +8,12 @@ import time
 
 import pandas as pd
 from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.config import settings
 from app.ratelimit import limiter
+from app.streaming import with_keepalive
 from app.services.script_generator import generate_coding_script
 from app.services.coding_runner import run_coding
 
@@ -270,7 +272,105 @@ async def generate_script(request: Request, req: GenerateScriptRequest):
     }
 
 
-# ── WebSocket: Run coding with live progress ────────────────────────────────
+async def _coding_updates(config: dict):
+    """Yield coding progress events for HTTP streaming and legacy WebSockets."""
+    file_id = config.get("file_id")
+    if not file_id or file_id not in _uploaded_files:
+        yield {"type": "error", "message": "File not found. Please re-upload."}
+        return
+
+    file_info = _uploaded_files[file_id]
+    file_path = file_info["path"]
+
+    ext = file_path.rsplit(".", 1)[-1].lower()
+    if ext == "csv":
+        df = pd.read_csv(file_path)
+    else:
+        df = pd.read_excel(file_path)
+
+    message_column = config.get("message_column", "")
+    if message_column not in df.columns:
+        yield {"type": "error", "message": f"Column '{message_column}' not found in file."}
+        return
+
+    df = _group_units(
+        df,
+        message_column=message_column,
+        identifier_columns=config.get("identifier_columns") or [],
+        identity_column=config.get("identity_column"),
+        order_column=config.get("order_column"),
+        order_direction=config.get("order_direction", "asc"),
+    )
+
+    codebook = config.get("codebook", [])
+    participants = config.get("participants", []) or []
+    context = config.get("context", []) or []
+    model_slots = config.get("model_slots", [])
+    runs_per_model = config.get("runs_per_model", 1)
+    aggregation = config.get("aggregation", "mode")
+    row_indices = config.get("row_indices")
+
+    if not model_slots:
+        provider = config.get("provider", "")
+        model_id = config.get("model", "")
+        api_key = config.get("api_key", "")
+        if provider and api_key:
+            model_slots = [{"provider": provider, "model": model_id, "api_key": api_key}]
+
+    if not codebook or not model_slots:
+        yield {"type": "error", "message": "Missing required config fields."}
+        return
+
+    if row_indices is not None:
+        valid_indices = [i for i in row_indices if 0 <= i < len(df)]
+        df = df.iloc[valid_indices].reset_index(drop=True)
+    else:
+        valid_indices = None
+
+    async for update in run_coding(
+        df=df,
+        message_column=message_column,
+        experiment_instructions=config.get("experiment_instructions", ""),
+        coding_instructions=config.get("coding_instructions", ""),
+        codebook=codebook,
+        participants=participants,
+        context=context,
+        model_slots=model_slots,
+        runs_per_model=runs_per_model,
+        empty_message_handling=config.get("empty_message_handling", ""),
+        aggregation=aggregation,
+    ):
+        if valid_indices is not None and "index" in update:
+            idx = update["index"]
+            if 0 <= idx < len(valid_indices):
+                update["index"] = valid_indices[idx]
+        yield update
+
+
+async def _coding_ndjson(config: dict):
+    try:
+        yield json.dumps({"type": "started"}) + "\n"
+        async for update in with_keepalive(_coding_updates(config)):
+            yield json.dumps(update, ensure_ascii=False, default=str) + "\n"
+    except Exception as exc:
+        yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
+
+
+@router.post("/coding/run-stream")
+@limiter.limit("10/minute")
+async def run_coding_stream(request: Request, config: dict):
+    """Run coding over streaming HTTP for proxies that do not support WebSockets."""
+    return StreamingResponse(
+        _coding_ndjson(config),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── Legacy WebSocket: Run coding with live progress ─────────────────────────
 
 @router.websocket("/ws/coding/run")
 async def ws_run_coding(ws: WebSocket):
@@ -282,91 +382,8 @@ async def ws_run_coding(ws: WebSocket):
     await ws.accept()
 
     try:
-        # Receive config from client
-        # config = await ws.receive_json()
-
         config = await ws.receive_json()
-
-        file_id = config.get("file_id")
-        if not file_id or file_id not in _uploaded_files:
-            await ws.send_json({"type": "error", "message": "File not found. Please re-upload."})
-            await ws.close()
-            return
-
-        file_info = _uploaded_files[file_id]
-        file_path = file_info["path"]
-
-        # Load the DataFrame
-        ext = file_path.rsplit(".", 1)[-1].lower()
-        if ext == "csv":
-            df = pd.read_csv(file_path)
-        else:
-            df = pd.read_excel(file_path)
-
-        message_column = config.get("message_column", "")
-        if message_column not in df.columns:
-            await ws.send_json({"type": "error", "message": f"Column '{message_column}' not found in file."})
-            await ws.close()
-            return
-
-        # Collapse rows into units by identifier combination (with optional
-        # sender-identity tagging + ordering) before coding.
-        df = _group_units(
-            df,
-            message_column=message_column,
-            identifier_columns=config.get("identifier_columns") or [],
-            identity_column=config.get("identity_column"),
-            order_column=config.get("order_column"),
-            order_direction=config.get("order_direction", "asc"),
-        )
-
-        codebook = config.get("codebook", [])
-        participants = config.get("participants", []) or []
-        context = config.get("context", []) or []
-        model_slots = config.get("model_slots", [])
-        runs_per_model = config.get("runs_per_model", 1)
-        aggregation = config.get("aggregation", "mode")
-        row_indices = config.get("row_indices", None)  # list of 0-indexed row numbers, or null for all
-
-        # Support legacy single-model format
-        if not model_slots:
-            provider = config.get("provider", "")
-            model_id = config.get("model", "")
-            api_key = config.get("api_key", "")
-            if provider and api_key:
-                model_slots = [{"provider": provider, "model": model_id, "api_key": api_key}]
-
-        if not codebook or not model_slots:
-            await ws.send_json({"type": "error", "message": "Missing required config fields."})
-            await ws.close()
-            return
-
-        # Filter rows if indices provided
-        if row_indices is not None:
-            valid_indices = [i for i in row_indices if 0 <= i < len(df)]
-            df = df.iloc[valid_indices].reset_index(drop=True)
-        else:
-            valid_indices = None
-
-        # Stream coding progress
-        async for update in run_coding(
-            df=df,
-            message_column=message_column,
-            experiment_instructions=config.get("experiment_instructions", ""),
-            coding_instructions=config.get("coding_instructions", ""),
-            codebook=codebook,
-            participants=participants,
-            context=context,
-            model_slots=model_slots,
-            runs_per_model=runs_per_model,
-            empty_message_handling=config.get("empty_message_handling", ""), 
-            aggregation=aggregation,
-        ):
-            # Remap index back to original row positions when running a subset
-            if valid_indices is not None and "index" in update:
-                idx = update["index"]
-                if 0 <= idx < len(valid_indices):
-                    update["index"] = valid_indices[idx]
+        async for update in _coding_updates(config):
             await ws.send_json(update)
 
         await ws.close()

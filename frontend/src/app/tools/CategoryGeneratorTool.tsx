@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { streamJsonLines } from "@/lib/streamJsonLines";
 
 interface UploadResult {
   file_id: string;
@@ -33,6 +34,14 @@ interface Category {
   anchor_high?: string;
   // extract
   format?: string;
+}
+
+interface CategoryStreamMessage {
+  type: "started" | "keepalive" | "category" | "complete" | "error";
+  data?: Category;
+  index?: number;
+  total?: number;
+  message?: string;
 }
 
 interface ProviderModel {
@@ -71,7 +80,9 @@ export default function CategoryGenerator({ providers }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => streamAbortRef.current?.abort(), []);
 
   // // File upload state
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -147,13 +158,13 @@ export default function CategoryGenerator({ providers }: Props) {
     //   .filter(line => line.trim() !== "")
     //   .map((line, idx) => ({ id: idx + 1, text: line.trim() }));
 
-    const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
-    const ws = new WebSocket(`${apiBase.replace(/^http/, "ws")}/api/ws/generate/categories`);
-    wsRef.current = ws;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
+    try {
+      await streamJsonLines<CategoryStreamMessage>(
+        "/api/generate/categories-stream",
+        {
         api_key: genConfig.apiKey,
         model: genConfig.model,
         provider: genConfig.provider,
@@ -165,33 +176,28 @@ export default function CategoryGenerator({ providers }: Props) {
         references,
         message_column: messageColumn,       
         file_id: uploadResult?.file_id ?? null, 
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-
-      if (msg.type === "category") {
-        setCategories(prev => [...prev, msg.data]);
-        setProgress({ current: msg.index + 1, total: msg.total });
-      } else if (msg.type === "complete") {
-        setLoading(false);
-        setProgress(null);
-      } else if (msg.type === "error") {
-        alert(`Error: ${msg.message}`);
-        setLoading(false);
-        setProgress(null);
+        },
+        controller.signal,
+        (msg) => {
+          if (msg.type === "category" && msg.data) {
+            setCategories(prev => [...prev, msg.data!]);
+            setProgress({ current: (msg.index ?? 0) + 1, total: msg.total ?? 0 });
+          } else if (msg.type === "complete") {
+            setProgress(null);
+          } else if (msg.type === "error") {
+            alert(`Error: ${msg.message ?? "Category generation failed"}`);
+            setProgress(null);
+          }
+        },
+      );
+    } catch (e: unknown) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        alert(e instanceof Error ? e.message : "Streaming connection failed");
       }
-    };
-
-    ws.onerror = () => {
-      alert("WebSocket connection failed. Is the backend running?");
+    } finally {
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
       setLoading(false);
-    };
-
-    ws.onclose = () => {
-      setLoading(false);
-    };
+    }
   };
 
 

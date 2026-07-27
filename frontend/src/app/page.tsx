@@ -5,6 +5,7 @@ import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
 import Instructions, { EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT, ContactForm } from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
+import { streamJsonLines } from "@/lib/streamJsonLines";
 
 const CODING_TOUR_STEPS: TourStep[] = [
   // ── Section 1: Upload & map dataset ──
@@ -223,6 +224,20 @@ interface RunProgress {
   current: number;
   total: number;
   percent: number;
+}
+
+interface CodingStreamMessage {
+  type: "started" | "keepalive" | "progress" | "row" | "error" | "complete";
+  current?: number;
+  total?: number;
+  percent?: number;
+  index?: number;
+  original?: Record<string, unknown>;
+  coded?: Record<string, unknown>;
+  message?: string;
+  total_rows?: number;
+  coded_rows?: number;
+  file_path?: string;
 }
 
 interface ValidationIssue {
@@ -705,7 +720,7 @@ export default function Home() {
   const [runStartedAt, setRunStartedAt] = useState<string | null>(null);
   const [runFinishedAt, setRunFinishedAt] = useState<string | null>(null);
   const [runError, setRunError] = useState("");
-  const wsRef = useRef<WebSocket | null>(null);
+  const runAbortRef = useRef<AbortController | null>(null);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [hasRerun, setHasRerun] = useState(false);
   const codedRowsRef = useRef<CodedRow[]>([]);
@@ -1341,15 +1356,14 @@ export default function Home() {
     log("info", `Aggregation: ${aggregation} · File: ${uploadResult.file_name} (${uploadResult.row_count} rows)`);
     log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
 
-    const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
-    const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/coding/run`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    const controller = new AbortController();
+    runAbortRef.current = controller;
+    log("info", "Connected. Starting coding...");
 
-    ws.onopen = () => {
-      log("info", "Connected. Starting coding...");
-      ws.send(JSON.stringify({
+    try {
+      await streamJsonLines<CodingStreamMessage>(
+        "/api/coding/run-stream",
+        {
         file_id: uploadResult.file_id,
         message_column: messageColumn,
         identifier_columns: identifierColumns,
@@ -1365,52 +1379,56 @@ export default function Home() {
         runs_per_model: runsPerModel,
         aggregation,
         row_indices: null,
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "progress") {
-        setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
-        log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
-      } else if (msg.type === "row") {
-        setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
-        const issues = checkRow(msg.index, msg.coded, expandedVars);
-        for (const issue of issues) {
-          const detail = issue.issueType === "api_error"
-            ? `Row ${msg.index + 1}: ${issue.value}`
-            : `Row ${msg.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
-          setRunErrors((prev) => [...prev, detail]);
-          log("warn", detail);
-        }
-      } else if (msg.type === "error" && msg.index !== undefined) {
-        setRunErrors((prev) => [...prev, msg.message]);
-        log("error", msg.message);
-      } else if (msg.type === "error") {
-        setRunError(msg.message);
-        log("error", `Fatal: ${msg.message}`);
-        setRunning(false);
-      } else if (msg.type === "complete") {
-        setRunComplete({ total_rows: msg.total_rows, coded_rows: msg.coded_rows, file_path: msg.file_path });
-        log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
-        setRunning(false);
+        },
+        controller.signal,
+        (msg) => {
+          if (msg.type === "progress") {
+            setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
+            log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
+          } else if (msg.type === "row") {
+            const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
+            setCodedRows((prev) => [...prev, row]);
+            const issues = checkRow(row.index, row.coded, expandedVars);
+            for (const issue of issues) {
+              const detail = issue.issueType === "api_error"
+                ? `Row ${row.index + 1}: ${issue.value}`
+                : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+              setRunErrors((prev) => [...prev, detail]);
+              log("warn", detail);
+            }
+          } else if (msg.type === "error" && msg.index !== undefined) {
+            const message = msg.message ?? "Coding failed";
+            setRunErrors((prev) => [...prev, message]);
+            log("error", message);
+          } else if (msg.type === "error") {
+            const message = msg.message ?? "Coding failed";
+            setRunError(message);
+            log("error", `Fatal: ${message}`);
+          } else if (msg.type === "complete") {
+            setRunComplete({
+              total_rows: msg.total_rows!,
+              coded_rows: msg.coded_rows!,
+              file_path: msg.file_path!,
+            });
+            log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+          }
+        },
+      );
+    } catch (e: unknown) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        const message = e instanceof Error ? e.message : "Streaming connection failed";
+        log("error", `Coding connection failed: ${message}`);
+        setRunError(message);
       }
-    };
-
-    ws.onerror = () => {
-      log("error", "WebSocket connection failed. Is the backend running?");
-      setRunError("WebSocket connection failed");
+    } finally {
+      if (runAbortRef.current === controller) runAbortRef.current = null;
       setRunning(false);
-    };
-
-    ws.onclose = (event) => {
-      if (event.code !== 1000 && event.code !== 1005) log("warn", `WebSocket closed (code: ${event.code})`);
-      setRunning(false);
-    };
+    }
   };
 
   const handleStop = () => {
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    runAbortRef.current?.abort();
+    runAbortRef.current = null;
     log("warn", "Coding stopped by user.");
     setRunning(false);
   };
@@ -1820,7 +1838,7 @@ ${PDF_WATERMARK_HTML}
     return [...cols];
   })();
 
-  const handleRerun = (indices: number[] | null) => {
+  const handleRerun = async (indices: number[] | null) => {
     if (!uploadResult) return;
     setRunning(true);
     setRunProgress(null);
@@ -1839,15 +1857,14 @@ ${PDF_WATERMARK_HTML}
       log("info", "Re-running all rows from scratch...");
     }
 
-    const rawApi = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const apiBase = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
-    const wsUrl = `${apiBase.replace(/^http/, "ws")}/api/ws/coding/run`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    const controller = new AbortController();
+    runAbortRef.current = controller;
+    log("info", "Connected. Starting re-coding...");
 
-    ws.onopen = () => {
-      log("info", "Connected. Starting re-coding...");
-      ws.send(JSON.stringify({
+    try {
+      await streamJsonLines<CodingStreamMessage>(
+        "/api/coding/run-stream",
+        {
         file_id: uploadResult.file_id,
         message_column: messageColumn,
         identifier_columns: identifierColumns,
@@ -1863,54 +1880,55 @@ ${PDF_WATERMARK_HTML}
         runs_per_model: runsPerModel,
         aggregation,
         row_indices: indices,
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "progress") {
-        setRunProgress({ current: msg.current, total: msg.total, percent: msg.percent });
-        log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
-      } else if (msg.type === "row") {
-        if (indices) {
-          setCodedRows((prev) => prev.map((r) =>
-            r.index === msg.index ? { index: msg.index, original: msg.original, coded: msg.coded } : r
-          ));
-        } else {
-          setCodedRows((prev) => [...prev, { index: msg.index, original: msg.original, coded: msg.coded }]);
-        }
-        const issues = checkRow(msg.index, msg.coded, expandedVars);
-        for (const issue of issues) {
-          const detail = issue.issueType === "api_error"
-            ? `Row ${msg.index + 1}: ${issue.value}`
-            : `Row ${msg.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
-          setRunErrors((prev) => [...prev, detail]);
-          log("warn", detail);
-        }
-      } else if (msg.type === "error" && msg.index !== undefined) {
-        setRunErrors((prev) => [...prev, msg.message]);
-        log("error", msg.message);
-      } else if (msg.type === "error") {
-        setRunError(msg.message);
-        log("error", `Fatal: ${msg.message}`);
-        setRunning(false);
-      } else if (msg.type === "complete") {
-        setRunComplete({ total_rows: msg.total_rows, coded_rows: msg.coded_rows, file_path: msg.file_path });
-        log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
-        setRunning(false);
+        },
+        controller.signal,
+        (msg) => {
+          if (msg.type === "progress") {
+            setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
+            log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
+          } else if (msg.type === "row") {
+            const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
+            if (indices) {
+              setCodedRows((prev) => prev.map((r) => r.index === row.index ? row : r));
+            } else {
+              setCodedRows((prev) => [...prev, row]);
+            }
+            const issues = checkRow(row.index, row.coded, expandedVars);
+            for (const issue of issues) {
+              const detail = issue.issueType === "api_error"
+                ? `Row ${row.index + 1}: ${issue.value}`
+                : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+              setRunErrors((prev) => [...prev, detail]);
+              log("warn", detail);
+            }
+          } else if (msg.type === "error" && msg.index !== undefined) {
+            const message = msg.message ?? "Coding failed";
+            setRunErrors((prev) => [...prev, message]);
+            log("error", message);
+          } else if (msg.type === "error") {
+            const message = msg.message ?? "Coding failed";
+            setRunError(message);
+            log("error", `Fatal: ${message}`);
+          } else if (msg.type === "complete") {
+            setRunComplete({
+              total_rows: msg.total_rows!,
+              coded_rows: msg.coded_rows!,
+              file_path: msg.file_path!,
+            });
+            log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+          }
+        },
+      );
+    } catch (e: unknown) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        const message = e instanceof Error ? e.message : "Streaming connection failed";
+        log("error", `Coding connection failed: ${message}`);
+        setRunError(message);
       }
-    };
-
-    ws.onerror = () => {
-      log("error", "WebSocket connection failed.");
-      setRunError("WebSocket connection failed");
+    } finally {
+      if (runAbortRef.current === controller) runAbortRef.current = null;
       setRunning(false);
-    };
-
-    ws.onclose = (event) => {
-      if (event.code !== 1000 && event.code !== 1005) log("warn", `WebSocket closed (code: ${event.code})`);
-      setRunning(false);
-    };
+    }
   };
 
   // ── Reset ─────────────────────────────────────────────────────────────────
@@ -1919,7 +1937,8 @@ ${PDF_WATERMARK_HTML}
     if (!window.confirm("Reset everything and clear all saved fields? This cannot be undone.")) return;
     cleanupServerFiles(uploadResult?.file_id, runComplete?.file_path);
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    runAbortRef.current?.abort();
+    runAbortRef.current = null;
     setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
     setMessageColumn(""); setExperimentInstructions("");
     setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
