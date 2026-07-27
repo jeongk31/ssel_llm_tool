@@ -2020,7 +2020,28 @@ ${PDF_WATERMARK_HTML}
     <>
       <nav className="topbar">
         <div className="topbar-left">
-          <img src="/ssel_logo.png" alt="SSELab" className="topbar-logo" />
+          <div className="topbar-logos">
+            <a
+              href="https://nyuad.nyu.edu/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="topbar-logo-link"
+              aria-label="Visit the NYU Abu Dhabi website"
+              title="NYU Abu Dhabi"
+            >
+              <img src="/nyuad_logo.avif" alt="NYU Abu Dhabi" className="topbar-logo topbar-logo-nyuad" />
+            </a>
+            <a
+              href="https://ssel.abudhabi.nyu.edu/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="topbar-logo-link"
+              aria-label="Visit the Social Science Experimental Laboratory website"
+              title="Social Science Experimental Laboratory"
+            >
+              <img src="/ssel_logo.png" alt="SSELab" className="topbar-logo" />
+            </a>
+          </div>
           <div className="topbar-sep" />
           <span
             className="topbar-title topbar-title-link"
