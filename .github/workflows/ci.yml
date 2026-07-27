@@ -41,7 +41,11 @@ jobs:
           python - <<'PY'
           from app.main import app
 
-          paths = {route.path for route in app.routes}
+          paths = {
+              route.path
+              for route in app.routes
+              if hasattr(route, "path")
+          }
           required = {
               "/api/coding/run-stream",
               "/api/generate/categories-stream",
