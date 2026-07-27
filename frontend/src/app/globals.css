@@ -76,7 +76,17 @@ body{
   z-index:100;
 }
 .topbar-left{display:flex;align-items:center;gap:11px}
+.topbar-logos{display:flex;align-items:center;gap:10px}
+.topbar-logo-link{
+  display:inline-flex;align-items:center;
+  border-radius:4px;
+  outline:none;
+  transition:opacity .15s ease,box-shadow .15s ease;
+}
+.topbar-logo-link:hover{opacity:.8}
+.topbar-logo-link:focus-visible{box-shadow:0 0 0 2px var(--purple)}
 .topbar-logo{height:24px;width:auto}
+.topbar-logo-nyuad{height:24px}
 .topbar-sep{width:1px;height:20px;background:var(--border)}
 .topbar-title{font-weight:600;font-size:13px;color:var(--text);letter-spacing:-0.01em}
 .topbar-title-link{cursor:pointer;outline:none}
