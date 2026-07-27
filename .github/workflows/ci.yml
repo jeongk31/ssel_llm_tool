@@ -19,9 +19,9 @@ jobs:
     name: Backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -39,16 +39,17 @@ jobs:
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
         run: |
           python - <<'PY'
-          from app.main import app
+          from app.routes import coding, generate
 
           paths = {
               route.path
-              for route in app.routes
+              for router in (coding.router, generate.router)
+              for route in router.routes
               if hasattr(route, "path")
           }
           required = {
-              "/api/coding/run-stream",
-              "/api/generate/categories-stream",
+              "/coding/run-stream",
+              "/generate/categories-stream",
           }
           missing = required - paths
           if missing:
@@ -62,9 +63,9 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
