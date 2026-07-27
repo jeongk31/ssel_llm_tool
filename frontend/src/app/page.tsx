@@ -2031,6 +2031,7 @@ ${PDF_WATERMARK_HTML}
             >
               <img src="/nyuad_logo.avif" alt="NYU Abu Dhabi" className="topbar-logo topbar-logo-nyuad" />
             </a>
+            <div className="topbar-sep" aria-hidden="true" />
             <a
               href="https://ssel.abudhabi.nyu.edu/"
               target="_blank"
