@@ -6,12 +6,14 @@
 
 # router = APIRouter()
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import json
 
 from app.services.providers import get_provider
 from app.services.category_runner import run_category_generation
+from app.streaming import with_keepalive
 
 router = APIRouter()
 
@@ -111,25 +113,50 @@ async def generate_prompt(req: GenerateRequest):
 
 
 
+async def _category_updates(config: dict):
+    async for update in run_category_generation(
+        provider=config.get("provider", ""),
+        model=config.get("model", ""),
+        api_key=config.get("api_key", ""),
+        goals=config.get("goals", ""),
+        hypothesis=config.get("hypothesis", ""),
+        output_type=config.get("output_type", "classify"),
+        target_count=config.get("target_count"),
+        domain=config.get("domain", ""),
+        references=config.get("references", ""),
+        file_id=config.get("file_id"),
+        message_column=config.get("message_column"),
+    ):
+        yield update
+
+
+async def _category_ndjson(config: dict):
+    try:
+        yield json.dumps({"type": "started"}) + "\n"
+        async for update in with_keepalive(_category_updates(config)):
+            yield json.dumps(update, ensure_ascii=False, default=str) + "\n"
+    except Exception as exc:
+        yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
+
+
+@router.post("/generate/categories-stream")
+async def stream_categories(request: Request, config: dict):
+    return StreamingResponse(
+        _category_ndjson(config),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.websocket("/ws/generate/categories")
 async def ws_generate_categories(ws: WebSocket):
     await ws.accept()
     try:
         config = await ws.receive_json()
-
-        async for update in run_category_generation(
-            provider=config.get("provider", ""),
-            model=config.get("model", ""),
-            api_key=config.get("api_key", ""),
-            goals=config.get("goals", ""),
-            hypothesis=config.get("hypothesis", ""),
-            output_type=config.get("output_type", "classify"),
-            target_count=config.get("target_count"),
-            domain=config.get("domain", ""),
-            references=config.get("references", ""),
-            file_id=config.get("file_id"),           
-            message_column=config.get("message_column"), 
-        ):
+        async for update in _category_updates(config):
             await ws.send_json(update)
 
         await ws.close()
@@ -142,5 +169,3 @@ async def ws_generate_categories(ws: WebSocket):
             await ws.close()
         except Exception:
             pass
-
-

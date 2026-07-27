@@ -157,7 +157,9 @@ async def run_category_generation(
     provider_inst = _get_provider_instance(provider, model, api_key)
     print(f">>> provider instance created: {provider_inst}")
 
-# If a file was uploaded, sample rows from it
+    data_sample = None
+
+    # If a file was uploaded, sample rows from it
     if file_id and message_column:
         from app.routes.coding import _uploaded_files
         import pandas as pd
@@ -220,4 +222,3 @@ async def run_category_generation(
         await asyncio.sleep(0.4)
     print(">>> yielding complete")
     yield {"type": "complete", "total": total}
-
