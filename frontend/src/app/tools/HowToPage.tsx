@@ -4,7 +4,9 @@ import { useState } from "react";
 
 type Section = "overview" | "coding" | "catgen" | "analysis" | "faq" | "demo";
 
-const DEMO_VIDEO_SRC = "/demos/coding-demo.mp4?v=2";
+const DEMO_VIDEO_CDN_SRC =
+  "https://cdn.jsdelivr.net/gh/jeongk31/ssel_llm_tool@4cd7a00/frontend/public/demos/coding-demo.mp4";
+const DEMO_VIDEO_LOCAL_SRC = "/demos/coding-demo.mp4?v=2";
 
 interface Props {
   onNavigate?: (tool: "coding" | "catgen" | "analysis") => void;
@@ -166,7 +168,8 @@ function DemoVideo() {
           </div>
         ) : (
           <video controls preload="metadata" playsInline className="howto-video" onError={() => setFailed(true)}>
-            <source src={DEMO_VIDEO_SRC} type="video/mp4" />
+            <source src={DEMO_VIDEO_CDN_SRC} type="video/mp4" />
+            <source src={DEMO_VIDEO_LOCAL_SRC} type="video/mp4" />
           </video>
         )}
         <p className="howto-cite mt-12">A short walkthrough: uploading data, mapping columns into episodes, building a codebook, and running the coding.</p>
@@ -344,7 +347,8 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Demo video</div>
               <div className="tool-desc">
                 <video controls preload="metadata" playsInline className="howto-video">
-                  <source src={DEMO_VIDEO_SRC} type="video/mp4" />
+                  <source src={DEMO_VIDEO_CDN_SRC} type="video/mp4" />
+                  <source src={DEMO_VIDEO_LOCAL_SRC} type="video/mp4" />
                 </video>
               </div>
             </div>
