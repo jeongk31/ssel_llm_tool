@@ -4,6 +4,8 @@ import { useState } from "react";
 
 type Section = "overview" | "coding" | "catgen" | "analysis" | "faq" | "demo";
 
+const DEMO_VIDEO_SRC = "/demos/coding-demo.mp4?v=2";
+
 interface Props {
   onNavigate?: (tool: "coding" | "catgen" | "analysis") => void;
 }
@@ -163,8 +165,8 @@ function DemoVideo() {
             <p><strong>Demo video coming soon.</strong></p>
           </div>
         ) : (
-          <video controls className="howto-video" onError={() => setFailed(true)}>
-            <source src="/demos/coding-demo.mp4" type="video/mp4" />
+          <video controls preload="metadata" playsInline className="howto-video" onError={() => setFailed(true)}>
+            <source src={DEMO_VIDEO_SRC} type="video/mp4" />
           </video>
         )}
         <p className="howto-cite mt-12">A short walkthrough: uploading data, mapping columns into episodes, building a codebook, and running the coding.</p>
@@ -341,8 +343,8 @@ export default function HowToPage({ onNavigate }: Props) {
             <div className="ana-section mt-16">
               <div className="ana-section-h">Demo video</div>
               <div className="tool-desc">
-                <video controls className="howto-video">
-                  <source src="/demos/coding-demo.mp4" type="video/mp4" />
+                <video controls preload="metadata" playsInline className="howto-video">
+                  <source src={DEMO_VIDEO_SRC} type="video/mp4" />
                 </video>
               </div>
             </div>
