@@ -318,6 +318,9 @@ export default function HowToPage({ onNavigate }: Props) {
             </StepSection>
 
             <StepSection n={4} title="Models & Runs">
+              <div className="howto-warning mb-12">
+                <strong>Execution modes differ.</strong> <strong>Run Coding</strong> uses every configured model. The downloaded package currently runs only the first configured model; experienced users can modify the generated Python script for a custom multi-model workflow.
+              </div>
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>
                 Add one or more provider/model pairs, each with your own API key. Supported providers are OpenAI, Google (Gemini), and DeepSeek.
