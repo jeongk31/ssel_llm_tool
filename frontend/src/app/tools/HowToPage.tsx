@@ -34,7 +34,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "How do I set up the codebook?",
-    a: <>Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Numeric, Text), a <strong>level</strong> (per episode = one value per episode, or per sender = one value per participant), and a <strong>definition</strong>. For Binary/Categorical variables, define every allowed <strong>value</strong> with its own definition (plus optional examples and context) — that guidance is what the model uses to code.</>,
+    a: <>Each variable has a <strong>label</strong>, <strong>type</strong>, <strong>level</strong>, <strong>definition</strong>, and its own aggregation method. For Binary/Categorical variables, define every allowed <strong>value</strong> with its own definition (plus optional examples and context). Use majority vote for label outputs and average for numeric outputs.</>,
   },
   {
     q: "What do the variable types mean?",
@@ -50,11 +50,11 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "How many models and runs should I use, and how are they combined?",
-    a: <>You can add several provider/model pairs and run each multiple times. More runs reduce variance at the cost of more API calls. Results are combined by <strong>majority vote (mode)</strong> — best for categorical/binary — or <strong>average (mean)</strong> for numeric variables.</>,
+    a: <>You can add several provider/model pairs and run each multiple times. More runs reduce variance at the cost of more API calls. In the codebook, choose separately for each variable whether its results use <strong>majority vote (mode)</strong> or <strong>average (mean)</strong>.</>,
   },
   {
-    q: "What's the difference between “Script only” and “Run Coding”?",
-    a: <><strong>Script only</strong> downloads a ready-to-run Python script (it runs the first configured model). <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
+    q: "What's the difference between “Generate package” and “Run Coding”?",
+    a: <><strong>Generate package</strong> downloads a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements (the script runs the first configured model). <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
   },
   {
     q: "Why is my run showing errors for some rows?",
@@ -295,7 +295,7 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <StepSection n={2} title="Codebook">
               <p>
-                The codebook is the list of variables to code. Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Numeric, Text), a <strong>level</strong> (per episode = one value per episode, or per sender = one value per participant), and a <strong>definition</strong> of the category. For every allowed <strong>coded value</strong> you add, give a definition too — plus optional <strong>examples</strong> and <strong>context</strong>. All the coding guidance now lives in these definitions.
+                The codebook is the list of variables to code. Each variable has a <strong>label</strong>, a <strong>type</strong> (Binary, Categorical, Numeric, Text), a <strong>level</strong> (per episode or per sender), a <strong>definition</strong>, and an <strong>aggregation method</strong>. Choose majority vote for label outputs or average for numeric outputs. For every allowed <strong>coded value</strong>, provide a definition plus any useful examples and context.
               </p>
               <p className="mt-12"><strong>Example coding scheme</strong> (single-label — one category per episode):</p>
               <pre className="howto-example">{CODING_EXAMPLE_SINGLE}</pre>
@@ -311,12 +311,13 @@ export default function HowToPage({ onNavigate }: Props) {
               <p>
                 Paste the full instructions participants received — tasks, roles, payoffs, and communication rules. Include any extra context such as examples or on-screen prompts. Missing context is the most common cause of inconsistent coding.
               </p>
+              <p className="mt-12">If the instructions are in a PDF, use <strong>Import from PDF</strong>. A supported LLM provider and model converts the document—including figures and tables—into text that you can review and edit before using.</p>
               <p className="mt-12"><strong>Example:</strong></p>
               <pre className="howto-example">{EXAMPLE_INSTRUCTIONS}</pre>
               <p className="howto-cite">Experiment instructions adapted from {PAPER_CITATION_SHORT}.</p>
             </StepSection>
 
-            <StepSection n={4} title="Models & Aggregation">
+            <StepSection n={4} title="Models & Runs">
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>
                 Add one or more provider/model pairs, each with your own API key. Supported providers are OpenAI, Google (Gemini), and DeepSeek.
@@ -325,10 +326,7 @@ export default function HowToPage({ onNavigate }: Props) {
                 <span className="catgen-label">Runs per model:</span>
                 Run each model multiple times per row to enable voting. More runs reduce variance at the cost of more API calls.
               </div>
-              <div className="catgen-field">
-                <span className="catgen-label">Aggregation:</span>
-                Combine multiple models or runs by majority vote (mode) or average (mean). Mode is recommended for categorical and binary variables; mean for numeric ones.
-              </div>
+              <div className="catgen-field"><span className="catgen-label">Aggregation:</span> Set separately for each variable in the codebook.</div>
               <p className="mt-12">
                 Expand <strong>Tuning</strong> on any model slot to adjust temperature, top-p, and max tokens per model.
               </p>
@@ -338,7 +336,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Running it</div>
               <div className="tool-desc">
                 <p>
-                  <strong>Script only</strong> generates a downloadable Python script without running anything. <strong>Run Coding</strong> validates your API keys, then streams results live as each row is processed. When it finishes, a validation report flags out-of-range or failed rows so you can re-run just those.
+                  <strong>Generate package</strong> creates a ZIP with the Python script, its exact preprocessed CSV input, a README, and a requirements file. <strong>Run Coding</strong> validates your API keys, then streams results live as each row is processed. When it finishes, a validation report flags out-of-range or failed rows so you can re-run just those.
                 </p>
               </div>
             </div>

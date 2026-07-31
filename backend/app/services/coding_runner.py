@@ -149,12 +149,14 @@ def _parse_llm_json(text: str) -> dict | None:
 def _aggregate_results(
     all_coded: list[dict[str, Any]],
     labels: list[str],
-    aggregation: str,
+    aggregations: dict[str, str],
+    fallback: str = "mode",
 ) -> dict[str, Any]:
-    """Aggregate multiple coding results for one row using mode or mean."""
+    """Aggregate each coded variable using its own configured method."""
     result = {}
 
     for label in labels:
+        aggregation = aggregations.get(label, fallback)
         values = [e.get(label) for e in all_coded if e.get(label) is not None and "_error" not in e]
 
         if not values:
@@ -249,6 +251,14 @@ async def run_coding(
         providers = [{"instance": _get_provider_instance(provider_name, model_id, api_key), "label": f"{provider_name}/{model_id}"}]
 
     labels = _expanded_keys(codebook, participants)
+    aggregations: dict[str, str] = {}
+    for var in codebook:
+        method = var.get("aggregation") or aggregation
+        if var.get("level") == "sender" and participants:
+            for participant in participants:
+                aggregations[f"{var['label']}_{participant}"] = method
+        else:
+            aggregations[var["label"]] = method
     null_result = {label: None for label in labels}
     total = len(df)
     total_calls = len(providers) * runs_per_model
@@ -334,7 +344,7 @@ async def run_coding(
         # Aggregate for the streamed row (what the UI shows)
         if call_results:
             if use_voting:
-                coded = _aggregate_results(call_results, labels, aggregation)
+                coded = _aggregate_results(call_results, labels, aggregations, aggregation)
                 coded["_votes"] = len(call_results)
                 coded["_total_calls"] = total_calls
             else:
@@ -343,7 +353,7 @@ async def run_coding(
 
             # Add aggregated row to output
             if use_voting:
-                all_results.append({**original, "coder": f"__aggregated ({aggregation})", **{k: v for k, v in coded.items() if not k.startswith("_")}})
+                all_results.append({**original, "coder": "__aggregated (per-variable)", **{k: v for k, v in coded.items() if not k.startswith("_")}})
         else:
             coded = {**null_result, "_error": "all_calls_failed"}
 

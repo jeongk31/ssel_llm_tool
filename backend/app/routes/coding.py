@@ -5,10 +5,12 @@ import os
 import shutil
 import tempfile
 import time
+import re
+import zipfile
 
 import pandas as pd
 from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel
 
 from app.config import settings
@@ -204,6 +206,7 @@ class CodebookEntry(BaseModel):
     label: str
     type: str
     level: str = "episode"  # "episode" (one value per episode) or "sender" (one per participant)
+    aggregation: str = "mode"  # "mode" (majority vote) or "mean" (numeric average)
     definition: str = ""
     examples: str = ""
     context: str = ""
@@ -234,6 +237,10 @@ class GenerateScriptRequest(BaseModel):
     # Accepted so the field isn't silently dropped; the standalone script runs the
     # first configured model (see generate_coding_script header note).
     model_slots: list[dict] = []
+
+
+class GeneratePackageRequest(GenerateScriptRequest):
+    file_id: str
 
 
 @router.post("/coding/generate-script")
@@ -270,6 +277,117 @@ async def generate_script(request: Request, req: GenerateScriptRequest):
         "script": script_text,
         "filename": filename,
     }
+
+
+def _package_requirements(provider: str) -> str:
+    packages = ["pandas"]
+    if provider == "anthropic":
+        packages.append("anthropic")
+    elif provider == "gemini":
+        packages.append("google-genai")
+    else:
+        packages.append("openai")
+    return "\n".join(packages) + "\n"
+
+
+@router.post("/coding/generate-package")
+@limiter.limit("30/minute")
+async def generate_package(request: Request, req: GeneratePackageRequest):
+    """Download a self-contained ZIP with script, preprocessed data, and setup files."""
+    _validate_config(req)
+
+    file_info = _uploaded_files.get(req.file_id)
+    if not file_info:
+        raise HTTPException(404, "File not found. Please re-upload the dataset.")
+
+    file_path = file_info["path"]
+    try:
+        if file_path.rsplit(".", 1)[-1].lower() == "csv":
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+    except Exception:
+        raise HTTPException(400, "Could not read the uploaded dataset.")
+
+    if req.message_column not in df.columns:
+        raise HTTPException(400, f"Column '{req.message_column}' not found in the dataset.")
+
+    preprocessed = _group_units(
+        df,
+        message_column=req.message_column,
+        identifier_columns=req.identifier_columns,
+        identity_column=req.identity_column,
+        order_column=req.order_column,
+        order_direction=req.order_direction,
+    )
+
+    original_stem = req.file_name.rsplit(".", 1)[0] if "." in req.file_name else req.file_name
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(original_stem)).strip("._") or "dataset"
+    dataset_filename = f"{safe_stem}_preprocessed.csv"
+    script_filename = f"code_{safe_stem}.py"
+
+    # The packaged CSV is already grouped into episodes, so the script must use it
+    # directly rather than grouping and sender-tagging the same messages a second time.
+    script_text = generate_coding_script(
+        file_name=dataset_filename,
+        message_column=req.message_column,
+        experiment_instructions=req.experiment_instructions,
+        coding_instructions=req.coding_instructions,
+        codebook=[entry.model_dump() for entry in req.codebook],
+        provider=req.provider,
+        model=req.model,
+        api_key=req.api_key,
+        participants=req.participants,
+        context=[c.model_dump() for c in req.context],
+        identifier_columns=[],
+        identity_column=None,
+        order_column=None,
+        order_direction="asc",
+        empty_message_handling=req.empty_message_handling,
+    )
+
+    readme = f"""# ChAT coding package
+
+This package contains the coding configuration generated in ChAT and the exact
+preprocessed dataset it is configured to read.
+
+## Files
+
+- `{script_filename}` — generated Python coding script
+- `{dataset_filename}` — preprocessed communication episodes
+- `requirements.txt` — Python dependencies
+
+## Run
+
+1. Open a terminal in this folder.
+2. Install the dependencies:
+
+   `python3 -m pip install -r requirements.txt`
+
+3. Run the coding script:
+
+   `python3 {script_filename}`
+
+The script defaults to `{dataset_filename}` and writes
+`{safe_stem}_preprocessed_coded.csv` in this folder. You may optionally pass a
+different compatible CSV path as the first command-line argument.
+
+The generated script contains the API key entered in ChAT. Store the package
+securely and do not share or commit it to a public repository.
+"""
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(script_filename, script_text)
+        zf.writestr(dataset_filename, preprocessed.to_csv(index=False))
+        zf.writestr("README.md", readme)
+        zf.writestr("requirements.txt", _package_requirements(req.provider))
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="chat_{safe_stem}_package.zip"'},
+    )
 
 
 async def _coding_updates(config: dict):
@@ -556,6 +674,8 @@ def _validate_config(req: GenerateScriptRequest):
             raise HTTPException(400, f"Codebook entry {i + 1}: label is required")
         if not entry.type.strip():
             raise HTTPException(400, f"Codebook entry {i + 1}: type is required")
+        if entry.aggregation not in ("mode", "mean"):
+            raise HTTPException(400, f"Codebook entry {i + 1}: aggregation must be mode or mean")
         if entry.level == "sender" and not req.participants:
             raise HTTPException(400, "Per-sender variables require a participant list")
 
