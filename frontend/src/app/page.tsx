@@ -95,9 +95,14 @@ const CODING_TOUR_STEPS: TourStep[] = [
   },
   // ── Section 4: Models & Runs ──
   {
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
+    targetId: "tour-model-execution", title: "Browser vs downloaded package",
+    body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently uses only the first configured model</strong>; experienced users can extend its Python script for custom multi-model execution.</p>),
+  },
+  {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
     targetId: "tour-model-slots", title: "Models & API keys", mediaBox: { x: 5, y: 19, w: 89, h: 35 },
-    body: (<p>Add one or more provider + model + API key rows. Each runs independently.</p>),
+    body: (<p>Add one or more provider + model + API key configurations. <strong>Run Coding</strong> uses every configured model, and each runs independently.</p>),
   },
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
@@ -108,7 +113,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
     title: "Run it",
-    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your keys, streams results live, and flags out-of-range or failed rows for re-running.</p>),
+    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements. <strong>The package runs only the first configured model</strong>; multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
   },
 ];
 
@@ -2372,6 +2377,11 @@ ${PDF_WATERMARK_HTML}
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
+
+                      <div className="model-execution-note" id="tour-model-execution">
+                        <strong>Browser and package execution differ.</strong>
+                        <span><strong>Run Coding</strong> uses all models configured below. The downloaded package currently runs <strong>only the first configured model</strong>; its Python script can be customized for other local workflows.</span>
+                      </div>
 
                       <div className="model-slots" id="tour-model-slots">
                         {modelSlots.map((slot, idx) => {
