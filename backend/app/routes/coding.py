@@ -372,8 +372,8 @@ The script defaults to `{dataset_filename}` and writes
 `{safe_stem}_preprocessed_coded.csv` in this folder. You may optionally pass a
 different compatible CSV path as the first command-line argument.
 
-The generated script contains the API key entered in ChAT. Store the package
-securely and do not share or commit it to a public repository.
+The generated script does not contain your API key. When it starts, it reads the
+`CHAT_API_KEY` environment variable or securely prompts you to enter the key.
 """
 
     buf = io.BytesIO()
