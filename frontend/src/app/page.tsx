@@ -1222,50 +1222,8 @@ export default function Home() {
     modelSlots.every((s) => s.provider && s.model && s.apiKey.trim()) &&
     !rowFilterError;
 
-  const handleGenerate = async () => {
+  const handleDownloadPackage = async () => {
     if (!canGenerate || !uploadResult) return;
-    setGenerating(true);
-    setGenerateError("");
-    setResult(null);
-    setRightView("script");
-    setLayoutMode((m) => (m === "fill" ? "side" : m));
-    try {
-      const res = await fetch("/api/coding/generate-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_name: uploadResult.file_name,
-          message_column: messageColumn,
-          identifier_columns: identifierColumns,
-          identity_column: identityColumn || null,
-          order_column: orderColumn || null,
-          order_direction: orderDirection,
-          experiment_instructions: experimentInstructions,
-          empty_message_handling: emptyMessageHandling,
-          codebook,
-          participants,
-          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
-          provider,
-          model,
-          api_key: apiKey,
-          model_slots: modelSlots.map(buildSlotPayload),
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(body.detail || res.statusText);
-      }
-      const data: GenerateResult = await res.json();
-      setResult(data);
-    } catch (e: unknown) {
-      setGenerateError(e instanceof Error ? e.message : "Generation failed");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!result || !uploadResult) return;
     setGenerating(true);
     setGenerateError("");
     try {
@@ -1291,9 +1249,20 @@ export default function Home() {
           model_slots: modelSlots.map(buildSlotPayload),
         }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(body.detail || res.statusText);
+      const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
+      if (!res.ok || !contentType.includes("application/zip")) {
+        const raw = await res.text();
+        let detail = "";
+        if (contentType.includes("application/json")) {
+          try {
+            const parsed = JSON.parse(raw);
+            detail = typeof parsed?.detail === "string" ? parsed.detail : "";
+          } catch {}
+        }
+        if (!detail && raw.trim().startsWith("<")) {
+          detail = "The server returned an HTML error page instead of the coding package. Please try again; if the problem continues, re-upload the dataset.";
+        }
+        throw new Error(detail || res.statusText || "Package generation failed");
       }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
@@ -2534,7 +2503,7 @@ ${PDF_WATERMARK_HTML}
                 {/* Run bar */}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running} onClick={handleGenerate}>
+                  <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running} onClick={handleDownloadPackage}>
                     {generating ? <><span className="spinner" /> Generating</> : "Generate package"}
                   </button>
                   {running ? (
@@ -2749,7 +2718,7 @@ ${PDF_WATERMARK_HTML}
                     <div className="res-section mb-12">
                       <div className="res-section-h">
                         <span>Script Preview</span>
-                        <button className="btn btn-primary btn-xs" disabled={generating} onClick={handleDownload}>{generating ? "Preparing…" : "Download package (.zip)"}</button>
+                        <button className="btn btn-primary btn-xs" disabled={generating} onClick={handleDownloadPackage}>{generating ? "Preparing…" : "Download package (.zip)"}</button>
                       </div>
                       <div className="script-preview">
                         <pre className="code-block">{result.script}</pre>
