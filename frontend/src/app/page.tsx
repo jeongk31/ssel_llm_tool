@@ -108,7 +108,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
     title: "Run it",
-    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements. <strong>Run Coding</strong> validates your keys, streams results live, and flags out-of-range or failed rows for re-running.</p>),
+    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your keys, streams results live, and flags out-of-range or failed rows for re-running.</p>),
   },
 ];
 
@@ -1245,8 +1245,10 @@ export default function Home() {
           context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
           provider,
           model,
-          api_key: apiKey,
-          model_slots: modelSlots.map(buildSlotPayload),
+          // Generated packages never contain credentials; the local script reads
+          // CHAT_API_KEY or prompts securely when it starts.
+          api_key: "provided_at_runtime",
+          model_slots: [],
         }),
       });
       const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
@@ -1260,7 +1262,8 @@ export default function Home() {
           } catch {}
         }
         if (!detail && raw.trim().startsWith("<")) {
-          detail = "The server returned an HTML error page instead of the coding package. Please try again; if the problem continues, re-upload the dataset.";
+          const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+          detail = `The server returned an HTML error page instead of the coding package (HTTP ${res.status}${title ? `: ${title}` : ""}).`;
         }
         throw new Error(detail || res.statusText || "Package generation failed");
       }
@@ -1329,8 +1332,10 @@ export default function Home() {
           context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
           provider,
           model,
-          api_key: apiKey,
-          model_slots: modelSlots.map(buildSlotPayload),
+          // Script previews do not contain credentials. The actual browser run
+          // sends the entered key only to validation and coding endpoints below.
+          api_key: "provided_at_runtime",
+          model_slots: [],
         }),
       });
       if (!res.ok) {

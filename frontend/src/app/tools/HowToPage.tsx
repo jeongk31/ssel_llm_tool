@@ -54,7 +54,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between “Generate package” and “Run Coding”?",
-    a: <><strong>Generate package</strong> downloads a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements (the script runs the first configured model). <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
+    a: <><strong>Generate package</strong> downloads a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements (the script runs the first configured model). The package never contains your API key; the script reads <code>CHAT_API_KEY</code> or prompts securely at runtime. <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
   },
   {
     q: "Why is my run showing errors for some rows?",
@@ -336,7 +336,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Running it</div>
               <div className="tool-desc">
                 <p>
-                  <strong>Generate package</strong> creates a ZIP with the Python script, its exact preprocessed CSV input, a README, and a requirements file. <strong>Run Coding</strong> validates your API keys, then streams results live as each row is processed. When it finishes, a validation report flags out-of-range or failed rows so you can re-run just those.
+                  <strong>Generate package</strong> creates a ZIP with the Python script, its exact preprocessed CSV input, a README, and a requirements file. The API key is excluded; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results live as each row is processed. When it finishes, a validation report flags out-of-range or failed rows so you can re-run just those.
                 </p>
               </div>
             </div>

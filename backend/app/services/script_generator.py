@@ -97,6 +97,7 @@ import sys
 import json
 import time
 import argparse
+import getpass
 
 import pandas as pd
 {provider_imports}
@@ -104,7 +105,9 @@ import pandas as pd
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-API_KEY = {json.dumps(api_key)}
+API_KEY = os.environ.get("CHAT_API_KEY", "")
+if not API_KEY:
+    API_KEY = getpass.getpass("Enter the API key for {provider}: ")
 FILE_NAME = {json.dumps(file_name)}
 MESSAGE_COLUMN = {json.dumps(message_column)}
 IDENTIFIER_COLUMNS = {json.dumps(identifier_columns)}
