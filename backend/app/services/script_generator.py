@@ -105,6 +105,7 @@ import pandas as pd
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 API_KEY = {json.dumps(api_key)}
+FILE_NAME = {json.dumps(file_name)}
 MESSAGE_COLUMN = {json.dumps(message_column)}
 IDENTIFIER_COLUMNS = {json.dumps(identifier_columns)}
 IDENTITY_COLUMN = {json.dumps(identity_column)}
@@ -301,7 +302,8 @@ def save_results(df: pd.DataFrame, input_path: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="LLM-based coding of dataset rows")
-    parser.add_argument("file", help="Path to CSV or Excel file to code")
+    parser.add_argument("file", nargs="?", default=FILE_NAME,
+                        help=f"Path to CSV or Excel file to code (default: {{FILE_NAME}})")
     args = parser.parse_args()
 
     print(f"Loading dataset: {{args.file}}")

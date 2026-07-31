@@ -77,28 +77,38 @@ const CODING_TOUR_STEPS: TourStep[] = [
     targetId: "tour-cb-values", title: "Coded values",
     body: (<p>For Binary/Categorical, define <strong>every coded value</strong> — the value, its definition, and optional examples/context. This is the guidance the model uses to code each episode.</p>),
   },
+  {
+    sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
+    targetId: "tour-cb-aggregation", title: "Aggregate repeated calls",
+    body: (<p>Choose how repeated model calls are combined for this variable. Use <strong>majority vote</strong> for labels and free text, or <strong>average</strong> for numeric outputs. Each variable can use a different method.</p>),
+  },
   // ── Section 3: Experiment Instructions ──
   {
     sectionId: "coding-panel-3", panel: 3, section: "Experiment Instructions", media: "/tour/experiment.svg",
     title: "Experiment Instructions",
     body: (<p>Paste the full instructions participants received — tasks, roles, payoffs, and communication rules — so the model has the same context they did.</p>),
   },
-  // ── Section 4: Models & Aggregation ──
   {
-    sectionId: "coding-panel-4", panel: 4, section: "Models & Aggregation", media: "/tour/models.svg",
+    sectionId: "coding-panel-3", panel: 3, section: "Experiment Instructions",
+    targetId: "tour-pdf-import", title: "Import instructions from PDF",
+    body: (<p>If the instructions are in a PDF, including figures or tables, import it here. Choose a supported LLM provider and model to convert the document into editable text before using it as experiment context.</p>),
+  },
+  // ── Section 4: Models & Runs ──
+  {
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
     targetId: "tour-model-slots", title: "Models & API keys", mediaBox: { x: 5, y: 19, w: 89, h: 35 },
     body: (<p>Add one or more provider + model + API key rows. Each runs independently.</p>),
   },
   {
-    sectionId: "coding-panel-4", panel: 4, section: "Models & Aggregation", media: "/tour/models.svg",
-    targetId: "tour-aggregation", title: "Runs & aggregation", mediaBox: { x: 5, y: 64, w: 89, h: 30 },
-    body: (<p>Run each model several times and aggregate by majority vote or average across all calls.</p>),
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
+    targetId: "tour-runs", title: "Runs per model", mediaBox: { x: 5, y: 64, w: 89, h: 30 },
+    body: (<p>Choose how many independent calls each configured model makes for every episode. The results are then combined using the method selected separately for each codebook variable.</p>),
   },
   // ── Run ──
   {
     sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
     title: "Run it",
-    body: (<p><strong>Script only</strong> downloads a ready-to-run Python script. <strong>Run Coding</strong> validates your keys, streams results live, and flags out-of-range or failed rows for re-running.</p>),
+    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements. <strong>Run Coding</strong> validates your keys, streams results live, and flags out-of-range or failed rows for re-running.</p>),
   },
 ];
 
@@ -116,6 +126,7 @@ interface CodebookEntry {
   label: string;
   type: string;
   level: "episode" | "sender";   // episode = one value per episode; sender = one value per participant
+  aggregation: "mode" | "mean"; // how repeated model calls are combined for this variable
   definition: string;           // definition of the variable/category itself
   values: CodedValue[];         // one definition per possible coded value
 }
@@ -416,7 +427,8 @@ const binaryValues = (): CodedValue[] => [
   { value: "1", definition: "", examples: "", context: "" },
 ];
 // Binary variables have fixed 0/1 values; new variables default to binary.
-const newEntry = (): CodebookEntry => ({ label: "", type: "binary", level: "episode", definition: "", values: binaryValues() });
+const defaultAggregation = (type: string): "mode" | "mean" => type === "numeric" ? "mean" : "mode";
+const newEntry = (): CodebookEntry => ({ label: "", type: "binary", level: "episode", aggregation: "mode", definition: "", values: binaryValues() });
 const TYPE_HAS_VALUES = (t: string) => t === "binary" || t === "categorical";
 
 // Watermark applied to every generated PDF.
@@ -453,6 +465,7 @@ const tourSampleCodebook = (): CodebookEntry[] => [{
   label: "cooperation",
   type: "categorical",
   level: "episode",
+  aggregation: "mode",
   definition: "Does the episode reach a cooperative agreement?",
   values: [
     { value: "yes", definition: "Both players agree to cooperate", examples: "“let's both choose In”", context: "" },
@@ -651,6 +664,15 @@ export default function Home() {
   const [pdfConverting, setPdfConverting] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const [pdfResultText, setPdfResultText] = useState<string | null>(null);
+  const [pdfDragOver, setPdfDragOver] = useState(false);
+  const pdfFileRef = useRef<HTMLInputElement>(null);
+
+  const choosePdfFile = (file: File | null) => {
+    if (file && file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setPdfFile(null); setPdfError("Choose a PDF file."); return;
+    }
+    setPdfFile(file); setPdfError(""); setPdfResultText(null);
+  };
 
   const openPdfModal = () => {
     setPdfFile(null); setPdfError(""); setPdfResultText(null); setPdfConverting(false);
@@ -699,7 +721,6 @@ export default function Home() {
   // Model slots
   const [modelSlots, setModelSlots] = useState<ModelSlot[]>([{ ...EMPTY_SLOT }]);
   const [runsPerModel, setRunsPerModel] = useState(1);
-  const [aggregation, setAggregation] = useState<"mode" | "mean">("mode");
 
   // Legacy aliases
   const provider = modelSlots[0]?.provider ?? "openai";
@@ -796,7 +817,7 @@ export default function Home() {
         body.models = modelSlots.map((s) => s.model);
         body.num_models = modelSlots.length;
         body.runs_per_model = runsPerModel;
-        body.aggregation = aggregation;
+        body.aggregation = "per-variable";
         body.num_variables = codebook.filter((e) => e.label.trim()).length;
         body.num_rows = uploadResult?.row_count ?? 0;
         body.num_episodes = rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length;
@@ -832,12 +853,19 @@ export default function Home() {
         if (typeof s.rowsAsUnits === "boolean") setRowsAsUnits(s.rowsAsUnits);
         if (s.emptyMessageHandling === "ignore" || s.emptyMessageHandling === "code") setEmptyMessageHandling(s.emptyMessageHandling);
         if (typeof s.experimentInstructions === "string") setExperimentInstructions(s.experimentInstructions);
-        if (Array.isArray(s.codebook) && s.codebook.length) setCodebook(s.codebook);
+        if (Array.isArray(s.codebook) && s.codebook.length) {
+          const legacyAggregation = s.aggregation === "mean" ? "mean" : "mode";
+          setCodebook(s.codebook.map((entry: CodebookEntry) => ({
+            ...entry,
+            aggregation: entry.aggregation === "mode" || entry.aggregation === "mean"
+              ? entry.aggregation
+              : (entry.type === "numeric" ? "mean" : legacyAggregation),
+          })));
+        }
         if (typeof s.participantsStr === "string") setParticipantsStr(s.participantsStr);
         // Never restore a saved API key (and discard any key left by an older build).
         if (Array.isArray(s.modelSlots) && s.modelSlots.length) setModelSlots(s.modelSlots.map((slot: ModelSlot) => ({ ...slot, apiKey: "" })));
         if (typeof s.runsPerModel === "number") setRunsPerModel(s.runsPerModel);
-        if (s.aggregation === "mode" || s.aggregation === "mean") setAggregation(s.aggregation);
       }
     } catch {}
     hydratedRef.current = true;
@@ -850,14 +878,14 @@ export default function Home() {
       localStorage.setItem(PERSIST_KEY, JSON.stringify({
         uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
         contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
-        codebook, participantsStr, runsPerModel, aggregation,
+        codebook, participantsStr, runsPerModel,
         // Persist model slots WITHOUT the API key — keys are never saved anywhere.
         modelSlots: modelSlots.map((s) => ({ ...s, apiKey: "" })),
       }));
     } catch {}
   }, [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
       contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
-      codebook, participantsStr, modelSlots, runsPerModel, aggregation, tourOpen]);
+      codebook, participantsStr, modelSlots, runsPerModel, tourOpen]);
 
   // ── Popup save / discard ────────────────────────────────────────────────────
   const mapStateJSON = () => JSON.stringify({
@@ -1134,7 +1162,7 @@ export default function Home() {
       } else {
         values = e.values.length ? e.values : [{ ...EMPTY_VALUE }];
       }
-      return { ...e, type: newType, values };
+      return { ...e, type: newType, aggregation: defaultAggregation(newType), values };
     }));
   };
 
@@ -1236,13 +1264,50 @@ export default function Home() {
     }
   };
 
-  const handleDownload = () => {
-    if (!result) return;
-    const blob = new Blob([result.script], { type: "text/x-python" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = result.filename; a.click();
-    URL.revokeObjectURL(url);
+  const handleDownload = async () => {
+    if (!result || !uploadResult) return;
+    setGenerating(true);
+    setGenerateError("");
+    try {
+      const res = await fetch("/api/coding/generate-package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_id: uploadResult.file_id,
+          file_name: uploadResult.file_name,
+          message_column: messageColumn,
+          identifier_columns: identifierColumns,
+          identity_column: identityColumn || null,
+          order_column: orderColumn || null,
+          order_direction: orderDirection,
+          experiment_instructions: experimentInstructions,
+          empty_message_handling: emptyMessageHandling,
+          codebook,
+          participants,
+          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+          provider,
+          model,
+          api_key: apiKey,
+          model_slots: modelSlots.map(buildSlotPayload),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail || res.statusText);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || "chat_coding_package.zip";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      showToast("Coding package downloaded");
+    } catch (e: unknown) {
+      setGenerateError(e instanceof Error ? e.message : "Package download failed");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   // ── Console ───────────────────────────────────────────────────────────────
@@ -1353,7 +1418,7 @@ export default function Home() {
       return `${p?.label}/${m?.label}`;
     });
     log("info", `Models: ${modelNames.join(", ")} × ${runsPerModel} run${runsPerModel > 1 ? "s" : ""} each`);
-    log("info", `Aggregation: ${aggregation} · File: ${uploadResult.file_name} (${uploadResult.row_count} rows)`);
+    log("info", `Aggregation: configured per variable · File: ${uploadResult.file_name} (${uploadResult.row_count} rows)`);
     log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
 
     const controller = new AbortController();
@@ -1377,7 +1442,6 @@ export default function Home() {
         context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
         model_slots: modelSlots.map(buildSlotPayload),
         runs_per_model: runsPerModel,
-        aggregation,
         row_indices: null,
         },
         controller.signal,
@@ -1470,14 +1534,14 @@ export default function Home() {
       const level = e.level === "sender" ? "per sender" : "per episode";
       if (e.values.length === 0) {
         return [{
-          label: e.label, type: e.type, level, definition: e.definition,
+          label: e.label, type: e.type, level, aggregation: e.aggregation, definition: e.definition,
           value: "", value_definition: "", examples: "", context: "",
         }];
       }
       return e.values
         .filter((v) => v.value.trim() || v.definition.trim())
         .map((v) => ({
-          label: e.label, type: e.type, level, definition: e.definition,
+          label: e.label, type: e.type, level, aggregation: e.aggregation, definition: e.definition,
           value: v.value, value_definition: v.definition, examples: v.examples, context: v.context,
         }));
     });
@@ -1487,6 +1551,7 @@ export default function Home() {
         label: e.label,
         type: e.type,
         level: e.level,
+        aggregation: e.aggregation,
         definition: e.definition,
         values: e.values
           .filter((v) => v.value.trim() || v.definition.trim())
@@ -1500,10 +1565,10 @@ export default function Home() {
       downloadBlob(new Blob([data], { type: "application/json" }), `${filename}.json`);
 
     } else if (format === "csv") {
-      const header = "label,type,level,definition,value,value_definition,examples,context";
+      const header = "label,type,level,aggregation,definition,value,value_definition,examples,context";
       const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
       const rows = flatRows.map((r) =>
-        [r.label, r.type, r.level, r.definition, r.value, r.value_definition, r.examples, r.context]
+        [r.label, r.type, r.level, r.aggregation, r.definition, r.value, r.value_definition, r.examples, r.context]
           .map(esc).join(",")
       );
       downloadBlob(new Blob([[header, ...rows].join("\n")], { type: "text/csv" }), `${filename}.csv`);
@@ -1512,6 +1577,7 @@ export default function Home() {
       const lines = entries.map((e, i) => {
         const head = [
           `${i + 1}. ${e.label} (${e.type}, ${e.level === "sender" ? "per sender" : "per episode"})`,
+          `   Aggregation: ${e.aggregation === "mean" ? "average (mean)" : "majority vote (mode)"}`,
           `   Definition: ${e.definition}`,
         ];
         const valueLines = e.values
@@ -1532,6 +1598,7 @@ export default function Home() {
         Label: r.label,
         Type: r.type,
         Level: r.level,
+        Aggregation: r.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)",
         "Category Definition": r.definition,
         Value: r.value,
         "Value Definition": r.value_definition,
@@ -1540,7 +1607,7 @@ export default function Home() {
       }));
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [
-        { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 36 },
+        { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 36 },
         { wch: 10 }, { wch: 36 }, { wch: 28 }, { wch: 28 },
       ];
       const wb = XLSX.utils.book_new();
@@ -1564,7 +1631,7 @@ export default function Home() {
             <div class="var-head">
               <span class="var-num">${i + 1}</span>
               <span class="var-label">${htmlEsc(e.label)}</span>
-              <span class="var-meta">${htmlEsc(e.type)} · ${e.level === "sender" ? "per sender" : "per episode"}</span>
+              <span class="var-meta">${htmlEsc(e.type)} · ${e.level === "sender" ? "per sender" : "per episode"} · ${e.aggregation === "mean" ? "average" : "majority vote"}</span>
             </div>
             <p class="var-def">${htmlEsc(e.definition)}</p>
             ${valueRows ? `
@@ -1620,7 +1687,7 @@ export default function Home() {
         .replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
       const DASH = "---";
       const blocks = entries.map((e) => {
-        const meta = `${e.type}, ${e.level === "sender" ? "per sender" : "per episode"}`;
+        const meta = `${e.type}, ${e.level === "sender" ? "per sender" : "per episode"}, ${e.aggregation === "mean" ? "average" : "majority vote"}`;
         const header = `\\multicolumn{3}{@{}l}{\\textbf{${esc(e.label)}} \\quad \\textit{(${esc(meta)})}} \\\\`;
         const def = e.definition.trim() ? `\\multicolumn{3}{@{}p{\\linewidth}}{${esc(e.definition)}} \\\\` : "";
         const vals = e.values.filter((v) => v.value.trim() || v.definition.trim());
@@ -1694,7 +1761,7 @@ ${blocks}
     });
     const cbRows = codebook.filter((e) => e.label.trim()).map((e) => {
       const vals = TYPE_HAS_VALUES(e.type) ? e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") : "—";
-      return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${htmlEsc(vals)}</td></tr>`;
+      return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${e.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)"}</td><td>${htmlEsc(vals)}</td></tr>`;
     });
 
     const kv = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`;
@@ -1724,7 +1791,6 @@ ${PDF_WATERMARK_HTML}
   ${kv("Episodes coded", `${runComplete.coded_rows} of ${runComplete.total_rows}`)}
   ${kv("Errors", errs > 0 ? `<span class="pill" style="background:#fee2e2;color:#b91c1c">${errs}</span>` : "0")}
   ${kv("API calls", `${modelSlots.length} model${modelSlots.length !== 1 ? "s" : ""} × ${runsPerModel} run${runsPerModel !== 1 ? "s" : ""} = ${totalCalls} per episode`)}
-  ${kv("Aggregation", aggregation === "mode" ? "Majority vote (mode)" : "Average (mean)")}
 </table>
 
 <h2>Dataset</h2>
@@ -1752,7 +1818,7 @@ ${PDF_WATERMARK_HTML}
 
 <h2>Codebook (${codebook.filter((e) => e.label.trim()).length} variable${codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""})</h2>
 <table>
-  <thead><tr><th>Label</th><th>Type</th><th>Level</th><th>Values</th></tr></thead>
+  <thead><tr><th>Label</th><th>Type</th><th>Level</th><th>Aggregation</th><th>Values</th></tr></thead>
   <tbody>${rowsHtml(cbRows)}</tbody>
 </table>
 </body></html>`;
@@ -1878,7 +1944,6 @@ ${PDF_WATERMARK_HTML}
         context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
         model_slots: modelSlots.map(buildSlotPayload),
         runs_per_model: runsPerModel,
-        aggregation,
         row_indices: indices,
         },
         controller.signal,
@@ -1944,7 +2009,7 @@ ${PDF_WATERMARK_HTML}
     setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
     setContextColumns([]); setContextDescriptions({}); setRowsAsUnits(false); setEmptyMessageHandling("ignore");
     setCodebook([newEntry()]); setParticipantsStr(""); setRowFilter(""); setRowFilterError("");
-    setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1); setAggregation("mode");
+    setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1);
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunError(""); setValidationReport(null); setHasRerun(false);
@@ -2203,7 +2268,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="panel-head-left">
                         <span className="step-badge">2</span>
                         <span className="panel-label">Codebook</span>
-                        <HelpTip text="Define each variable to code: its label, type, level (per episode or per sender), a definition for the category, and a definition for every coded value — with optional examples and context." />
+                        <HelpTip text="Define each variable to code: its label, type, level, aggregation method, category definition, and coded-value definitions with optional examples and context." />
                         {codebook.some((e) => e.label.trim()) && (
                           <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
                         )}
@@ -2231,7 +2296,7 @@ ${PDF_WATERMARK_HTML}
                             codebook.map((e, i) => e.label.trim() ? (
                               <div className="cb-sum-row" key={i}>
                                 <span className="cb-sum-label">{e.label}</span>
-                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per episode"}</span>
+                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per episode"} · {e.aggregation === "mean" ? "average" : "majority vote"}</span>
                                 <span className="cb-sum-vals">{
                                   e.type === "numeric" ? "number"
                                   : e.type === "text" ? "free text"
@@ -2242,7 +2307,7 @@ ${PDF_WATERMARK_HTML}
                           )}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
-                        <p className="hint mt-8">Each variable gets a <strong>definition</strong> for the category and a definition for every coded value, plus optional <strong>examples</strong> and <strong>context</strong>. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one per participant.</p>
+                        <p className="hint mt-8">Each variable has its own <strong>aggregation method</strong>, category definition, and coded-value guidance. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one per participant.</p>
                         {hasSenderVar && (
                           <div className="f participants-block">
                             <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
@@ -2302,7 +2367,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="f">
                         <div className="ta-label-row">
                           <label>Describe the experiment context</label>
-                          <button className="btn btn-outline btn-xs" type="button" onClick={openPdfModal} title="Convert a PDF of the instructions (including figures and tables) into text">
+                          <button id="tour-pdf-import" className="btn btn-outline btn-xs" type="button" onClick={openPdfModal} title="Convert a PDF of the instructions (including figures and tables) into text">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 5, verticalAlign: "-2px" }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                             Import from PDF
                           </button>
@@ -2319,13 +2384,13 @@ ${PDF_WATERMARK_HTML}
                     </div></div></div>
                   </div>
 
-                  {/* Panel 4: Models & Aggregation */}
+                  {/* Panel 4: Models & Runs */}
                   <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(4)}>
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
-                        <span className="panel-label">Models &amp; Aggregation</span>
-                        <HelpTip text="Add one or more provider + model + API key rows. Choose runs per model and how to combine results (majority vote or average). Expand Tuning for temperature, top-p, and max tokens per model." />
+                        <span className="panel-label">Models &amp; Runs</span>
+                        <HelpTip text="Add one or more provider + model + API key configurations and choose runs per model. Aggregation is selected separately for each codebook variable. Tuning controls temperature, top-p, and max tokens per model." />
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
@@ -2444,7 +2509,7 @@ ${PDF_WATERMARK_HTML}
                         + Add Model
                       </button>
 
-                      <div className="enc-voting-settings" id="tour-aggregation">
+                      <div className="enc-voting-settings" id="tour-runs">
                         <div className="enc-voting-row">
                           <div className="f voting-runs">
                             <label>Runs per model <span className="fv">{runsPerModel}×</span></label>
@@ -2453,21 +2518,12 @@ ${PDF_WATERMARK_HTML}
                               onChange={(e) => setRunsPerModel(Number(e.target.value))}
                             />
                           </div>
-                          <div className="f voting-agg">
-                            <label>Aggregation</label>
-                            <select value={aggregation} onChange={(e) => setAggregation(e.target.value as "mode" | "mean")}>
-                              <option value="mode">Mode (majority vote)</option>
-                              <option value="mean">Mean (average)</option>
-                            </select>
-                          </div>
                         </div>
                         <div className="enc-voting-summary">
                           <span className="enc-voting-calc">
                             {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""} = <strong>{modelSlots.length * runsPerModel}</strong> calls/row
                           </span>
-                          {modelSlots.length * runsPerModel > 1 && (
-                            <span className="enc-voting-agg">{aggregation === "mode" ? "Majority vote" : "Average"} across all calls</span>
-                          )}
+                          {modelSlots.length * runsPerModel > 1 && <span className="enc-voting-agg">Aggregated per codebook variable</span>}
                         </div>
                       </div>
                     </div></div></div>
@@ -2479,7 +2535,7 @@ ${PDF_WATERMARK_HTML}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
                   <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running} onClick={handleGenerate}>
-                    {generating ? <><span className="spinner" /> Generating</> : "Script only"}
+                    {generating ? <><span className="spinner" /> Generating</> : "Generate package"}
                   </button>
                   {running ? (
                     <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
@@ -2693,7 +2749,7 @@ ${PDF_WATERMARK_HTML}
                     <div className="res-section mb-12">
                       <div className="res-section-h">
                         <span>Script Preview</span>
-                        <button className="btn btn-primary btn-xs" onClick={handleDownload}>Download .py</button>
+                        <button className="btn btn-primary btn-xs" disabled={generating} onClick={handleDownload}>{generating ? "Preparing…" : "Download package (.zip)"}</button>
                       </div>
                       <div className="script-preview">
                         <pre className="code-block">{result.script}</pre>
@@ -2986,12 +3042,31 @@ ${PDF_WATERMARK_HTML}
             <div className="pdf-modal-body">
               <div className="f">
                 <label>PDF file</label>
+                <div
+                  className={`dropzone pdf-dropzone${pdfDragOver ? " drag-active" : ""}`}
+                  onClick={() => pdfFileRef.current?.click()}
+                  onDrop={(e) => {
+                    e.preventDefault(); setPdfDragOver(false);
+                    choosePdfFile(e.dataTransfer.files?.[0] ?? null);
+                  }}
+                  onDragOver={(e) => { e.preventDefault(); setPdfDragOver(true); }}
+                  onDragLeave={() => setPdfDragOver(false)}
+                >
+                  <div className="dz-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="28" height="28">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M8 15h8M12 11v8" />
+                    </svg>
+                  </div>
+                  <p className="dz-text">{pdfFile ? pdfFile.name : "Drop a PDF file here, or click to browse"}</p>
+                  {pdfFile && <span className="chip-meta">{(pdfFile.size / 1024 / 1024).toFixed(2)} MB</span>}
+                </div>
                 <input
+                  ref={pdfFileRef}
+                  className="input-hidden"
                   type="file"
                   accept="application/pdf,.pdf"
-                  onChange={(e) => { setPdfFile(e.target.files?.[0] ?? null); setPdfError(""); setPdfResultText(null); }}
+                  onChange={(e) => choosePdfFile(e.target.files?.[0] ?? null)}
                 />
-                {pdfFile && <p className="hint">{pdfFile.name} · {(pdfFile.size / 1024 / 1024).toFixed(2)} MB</p>}
               </div>
 
               <div className="slot-fields">
@@ -3287,6 +3362,17 @@ ${PDF_WATERMARK_HTML}
                       <div className="cb-field">
                         <label>Category definition</label>
                         <textarea rows={2} value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures and how to decide it" />
+                      </div>
+
+                      <div className="cb-aggregation" id={idx === 0 ? "tour-cb-aggregation" : undefined}>
+                        <div>
+                          <label>Aggregate repeated calls</label>
+                          <p>How results from multiple models or runs are combined for this variable.</p>
+                        </div>
+                        <select value={entry.aggregation} onChange={(e) => updateCodebook(idx, "aggregation", e.target.value)}>
+                          <option value="mode">Majority vote (mode)</option>
+                          <option value="mean">Average (mean)</option>
+                        </select>
                       </div>
 
                       {!TYPE_HAS_VALUES(entry.type) ? (
