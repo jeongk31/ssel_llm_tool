@@ -30,7 +30,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Do you store my dataset or my API keys?",
-    a: <>No. Your API keys are <strong>never</strong> saved anywhere on our side — not in the database, logs, or browser storage; they live only in memory during a run and travel over HTTPS. Your uploaded file is written to a temporary working file only so it can be processed, and it&apos;s deleted when you reset, upload a new file, or after 24 hours. The database only stores anonymous usage metadata (never keys or data).</>,
+    a: <>Your API keys are <strong>never</strong> saved — not in the database, logs, or browser storage; they live only in memory during a run and travel over HTTPS. To restore your work after a refresh or browser restart, ChAT keeps a copy of the current dataset in this browser on your device. It is not stored in ChAT&apos;s database. The server uses a temporary working copy. Reset and successful dataset replacement request best-effort immediate cleanup; scheduled cleanup removes temporary files after they pass the 24-hour threshold. <strong>Reset</strong> also removes the browser copy. Usage metadata is <strong>not anonymous</strong>: the database records a browser session identifier, IP address, best-effort location, user agent, referrer, event time, and run configuration such as selected providers/models and run, variable, row, and episode counts. It never stores API keys or dataset contents.</>,
   },
   {
     q: "How do I set up the codebook?",
@@ -66,7 +66,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "If I refresh the page, do I lose my work?",
-    a: <>No — your dataset mapping, codebook, models, and settings are saved in your browser and restored automatically. The only thing not saved is your API key (for security), so you&apos;ll re-enter that. Use <strong>Reset</strong> to clear everything.</>,
+    a: <>Normally, no. In the same browser and website, ChAT saves the current dataset, mapping, codebook, models, and settings locally and restores them automatically. API keys are deliberately not saved, so you must re-enter them. If you clear site data, use private browsing, switch browsers or devices, or the browser removes local storage, you will need to re-upload the dataset. Use <strong>Reset</strong> to clear the saved project and local dataset copy.</>,
   },
 ];
 

@@ -33,6 +33,12 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q backend/app
 
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+        run: python -m unittest discover -s tests -v
+
       - name: Verify application routes
         working-directory: backend
         env:
@@ -49,6 +55,7 @@ jobs:
           }
           required = {
               "/coding/run-stream",
+              "/coding/upload-status/{file_id}",
               "/generate/categories-stream",
           }
           missing = required - paths

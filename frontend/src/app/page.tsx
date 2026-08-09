@@ -5,14 +5,20 @@ import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
 import Instructions, { EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT, ContactForm } from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
-import { streamJsonLines } from "@/lib/streamJsonLines";
+import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
+import {
+  clearStoredUpload,
+  getStoredUpload,
+  saveStoredUpload,
+  type StoredUploadMetadata,
+} from "@/lib/uploadPersistence";
 
 const CODING_TOUR_STEPS: TourStep[] = [
   // ── Section 1: Upload & map dataset ──
   {
     sectionId: "coding-panel-1", panel: 1, section: "Upload & Map Dataset",
     targetId: "tour-episode-preview", title: "Upload your dataset",
-    body: (<p>We've loaded a sample data. Each row represents a message by sender. Later, we will explain how to define communication <strong>episodes</strong>, which are combinations of messages to be coded.</p>),
+    body: (<p>We have loaded a sample dataset. Each row represents a message by a sender. Later, we explain how to define communication <strong>episodes</strong>, which are combinations of messages to be coded.</p>),
   },
   // ── Map Columns popup — walk each step/role ──
   {
@@ -164,6 +170,82 @@ interface UploadResult {
   preview: Record<string, unknown>[];
 }
 
+type UploadAvailability = "none" | "restoring" | "ready" | "reupload-required";
+
+class UploadUnavailableError extends Error {
+  readonly code: string;
+
+  constructor(message = "The uploaded dataset is no longer available on the server.", code = "UPLOAD_GONE") {
+    super(message);
+    this.name = "UploadUnavailableError";
+    this.code = code;
+  }
+}
+
+const isRestorableUploadCode = (code: unknown): code is "UPLOAD_GONE" | "UPLOAD_EXPIRED" =>
+  code === "UPLOAD_GONE" || code === "UPLOAD_EXPIRED";
+
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException && error.name === "AbortError";
+
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (signal?.aborted) throw new DOMException("The coding action was stopped.", "AbortError");
+};
+
+async function waitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  throwIfAborted(signal);
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("The coding action was stopped.", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener("abort", onAbort); resolve(value); },
+      (error) => { signal.removeEventListener("abort", onAbort); reject(error); },
+    );
+  });
+}
+
+const sameColumns = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((column, index) => column === right[index]);
+
+async function parseUploadResponse(response: Response): Promise<UploadResult> {
+  const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
+  const raw = await response.text();
+  if (!contentType.includes("application/json")) {
+    const html = raw.trim().startsWith("<");
+    throw new Error(
+      html
+        ? `The server returned an HTML page instead of upload data (HTTP ${response.status}).`
+        : `The upload response had an unexpected content type (HTTP ${response.status}).`,
+    );
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`The server returned invalid upload data (HTTP ${response.status}).`);
+  }
+
+  if (!response.ok) {
+    const detail = typeof data === "object" && data !== null && "detail" in data
+      ? String((data as { detail?: unknown }).detail ?? "")
+      : "";
+    throw new Error(detail || response.statusText || `Upload failed (${response.status}).`);
+  }
+
+  const candidate = data as Partial<UploadResult>;
+  const valid =
+    typeof candidate.file_id === "string" && candidate.file_id.length > 0 &&
+    typeof candidate.file_name === "string" &&
+    Array.isArray(candidate.columns) && candidate.columns.every((column) => typeof column === "string") &&
+    typeof candidate.row_count === "number" && Number.isFinite(candidate.row_count) && candidate.row_count >= 0 &&
+    Array.isArray(candidate.preview) && candidate.preview.every((row) => typeof row === "object" && row !== null && !Array.isArray(row));
+  if (!valid) throw new Error("The server returned an incomplete upload response. Please try again.");
+
+  return candidate as UploadResult;
+}
+
 // Column-mapping picker
 type ColRole = "message" | "identifier" | "identity" | "order" | "context";
 const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string; hint: string }> = {
@@ -250,6 +332,7 @@ interface CodingStreamMessage {
   index?: number;
   original?: Record<string, unknown>;
   coded?: Record<string, unknown>;
+  code?: string;
   message?: string;
   total_rows?: number;
   coded_rows?: number;
@@ -634,8 +717,20 @@ export default function Home() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [uploadNotice, setUploadNotice] = useState("");
+  const [uploadAvailability, setUploadAvailability] = useState<UploadAvailability>("none");
+  const [uploadMeta, setUploadMeta] = useState<StoredUploadMetadata | null>(null);
+  const [persistenceReady, setPersistenceReady] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const liveUploadIdRef = useRef<string | null>(null);
+  const restoreStartedRef = useRef(false);
+  const restorePromiseRef = useRef<Promise<UploadResult | null> | null>(null);
+  const uploadPreflightRef = useRef<{ fileId: string; promise: Promise<UploadResult> } | null>(null);
+  const uploadRequestRef = useRef<{ token: number; controller: AbortController } | null>(null);
+  const uploadTokenRef = useRef(0);
+  const uploadLifecycleRef = useRef(0);
+  const codingActionBusyRef = useRef(false);
 
 
   // Form state
@@ -747,6 +842,8 @@ export default function Home() {
   const [runFinishedAt, setRunFinishedAt] = useState<string | null>(null);
   const [runError, setRunError] = useState("");
   const runAbortRef = useRef<AbortController | null>(null);
+  const runActionGenerationRef = useRef(0);
+  const runActionRef = useRef<{ token: number; controller: AbortController } | null>(null);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [hasRerun, setHasRerun] = useState(false);
   const codedRowsRef = useRef<CodedRow[]>([]);
@@ -847,7 +944,33 @@ export default function Home() {
       const raw = localStorage.getItem(PERSIST_KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        if (s.uploadResult !== undefined) setUploadResult(s.uploadResult);
+        const storedMeta = s.uploadMeta && typeof s.uploadMeta === "object"
+          ? s.uploadMeta as Partial<StoredUploadMetadata>
+          : null;
+        const legacyUpload = s.uploadResult && typeof s.uploadResult === "object"
+          ? s.uploadResult as Partial<UploadResult>
+          : null;
+        const restoredMeta: StoredUploadMetadata | null = storedMeta && typeof storedMeta.name === "string"
+          ? {
+              name: storedMeta.name,
+              type: typeof storedMeta.type === "string" ? storedMeta.type : "",
+              size: typeof storedMeta.size === "number" ? storedMeta.size : 0,
+              lastModified: typeof storedMeta.lastModified === "number" ? storedMeta.lastModified : 0,
+              columns: Array.isArray(storedMeta.columns) ? storedMeta.columns.filter((c): c is string => typeof c === "string") : [],
+            }
+          : legacyUpload && typeof legacyUpload.file_name === "string"
+            ? {
+                name: legacyUpload.file_name,
+                type: "",
+                size: 0,
+                lastModified: 0,
+                columns: Array.isArray(legacyUpload.columns) ? legacyUpload.columns.filter((c): c is string => typeof c === "string") : [],
+              }
+            : null;
+        if (restoredMeta) {
+          setUploadMeta(restoredMeta);
+          setUploadAvailability("restoring");
+        }
         if (typeof s.messageColumn === "string") setMessageColumn(s.messageColumn);
         if (Array.isArray(s.identifierColumns)) setIdentifierColumns(s.identifierColumns);
         if (typeof s.identityColumn === "string") setIdentityColumn(s.identityColumn);
@@ -874,21 +997,21 @@ export default function Home() {
       }
     } catch {}
     hydratedRef.current = true;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPersistenceReady(true);
   }, []);
   // Save on any change (skip during the guided tour, which loads sample data).
   useEffect(() => {
-    if (!hydratedRef.current || tourOpen) return;
+    if (!hydratedRef.current || !persistenceReady || tourOpen) return;
     try {
       localStorage.setItem(PERSIST_KEY, JSON.stringify({
-        uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+        uploadMeta, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
         contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
         codebook, participantsStr, runsPerModel,
         // Persist model slots WITHOUT the API key — keys are never saved anywhere.
         modelSlots: modelSlots.map((s) => ({ ...s, apiKey: "" })),
       }));
     } catch {}
-  }, [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+  }, [persistenceReady, uploadMeta, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
       contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
       codebook, participantsStr, modelSlots, runsPerModel, tourOpen]);
 
@@ -987,13 +1110,20 @@ export default function Home() {
     serverFilesRef.current = { fileId: uploadResult?.file_id, resultPath: runComplete?.file_path };
   }, [uploadResult, runComplete]);
 
-  const handleUpload = useCallback(async (file: File) => {
-    // Replacing the current file — clean up the previous one on the server first.
-    const prev = serverFilesRef.current;
-    cleanupServerFiles(prev.fileId, prev.resultPath);
-    setUploading(true);
-    setUploadError("");
-    setUploadResult(null);
+  const invalidateRunArtifacts = () => {
+    runActionGenerationRef.current += 1;
+    runActionRef.current?.controller.abort();
+    runActionRef.current = null;
+    runAbortRef.current?.abort();
+    runAbortRef.current = null;
+    codingActionBusyRef.current = false;
+    setGenerating(false); setGenerateError(""); setResult(null);
+    setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
+    setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError("");
+    setValidationReport(null); setHasRerun(false); setConsoleLogs([]); setRightView("script");
+  };
+
+  const resetMapping = () => {
     setMessageColumn("");
     setIdentifierColumns([]);
     setIdentityColumn("");
@@ -1003,25 +1133,337 @@ export default function Home() {
     setContextDescriptions({});
     setRowsAsUnits(false);
     setActiveRole("message");
+  };
+
+  const uploadDataset = async (
+    file: File,
+    options: {
+      source: "manual" | "restore";
+      expectedColumns?: string[];
+      storedMetadata?: StoredUploadMetadata;
+      persistFile?: boolean;
+      invalidateArtifacts?: boolean;
+      openMapping?: boolean;
+      lifecycle?: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<UploadResult | null> => {
+    if (tourOpen) return null;
+    if ((running || generating || codingActionBusyRef.current) && options.source === "manual") {
+      setUploadError("Wait for the current coding action to finish before replacing the dataset.");
+      if (fileRef.current) fileRef.current.value = "";
+      return null;
+    }
+    // Keep replacement deterministic: a second picker/drop action cannot race
+    // the first response or overwrite the browser copy out of order.
+    if (uploadRequestRef.current) {
+      if (options.source === "manual") setUploadError("Wait for the current dataset upload to finish.");
+      if (fileRef.current) fileRef.current.value = "";
+      return null;
+    }
+
+    throwIfAborted(options.signal);
+    const lifecycle = options.lifecycle ?? uploadLifecycleRef.current;
+    const token = ++uploadTokenRef.current;
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort();
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+    uploadRequestRef.current = { token, controller };
+    const isCurrent = () =>
+      uploadRequestRef.current?.token === token && uploadLifecycleRef.current === lifecycle;
+    const previousFiles = { ...serverFilesRef.current };
+    const previousAvailability = uploadAvailability;
+    setUploading(true);
+    setUploadError("");
+    setUploadNotice("");
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("/api/coding/upload", { method: "POST", body: formData });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(body.detail || res.statusText);
+      const res = await fetch("/api/coding/upload", { method: "POST", body: formData, signal: controller.signal });
+      const data = await parseUploadResponse(res);
+      if (!isCurrent()) {
+        cleanupServerFiles(data.file_id);
+        return null;
       }
-      const data: UploadResult = await res.json();
+      const expectedColumns = options.expectedColumns
+        ?? uploadResult?.columns
+        ?? uploadMeta?.columns
+        ?? [];
+      const schemaMatches = expectedColumns.length > 0 && sameColumns(expectedColumns, data.columns);
+
+      let metadata = options.storedMetadata ?? {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified,
+        columns: [...data.columns],
+      };
+      let storageWarning = "";
+      if (options.persistFile !== false) {
+        try {
+          metadata = await saveStoredUpload(file, data.columns);
+        } catch {
+          storageWarning = "Dataset uploaded, but this browser could not save a restorable copy. You will need to re-upload it after refreshing.";
+        }
+      }
+      if (!isCurrent()) {
+        // Reset may have happened while IndexedDB was writing. Remove both the
+        // late browser record and the newly accepted server upload.
+        if (options.persistFile !== false) {
+          try { await clearStoredUpload(); } catch {}
+        }
+        cleanupServerFiles(data.file_id);
+        return null;
+      }
+
+      if (options.invalidateArtifacts !== false) invalidateRunArtifacts();
+      if (!schemaMatches) resetMapping();
       setUploadResult(data);
-      setActiveRole("message");
-      setColumnModalOpen(true);
-      showToast(`Uploaded ${data.file_name} (${data.row_count} rows)`);
+      setUploadMeta({ ...metadata, columns: [...data.columns] });
+      setUploadAvailability("ready");
+      liveUploadIdRef.current = data.file_id;
+      serverFilesRef.current = {
+        fileId: data.file_id,
+        resultPath: options.invalidateArtifacts === false ? previousFiles.resultPath : undefined,
+      };
+      if (options.openMapping ?? options.source === "manual") setColumnModalOpen(true);
+
+      // Replacement is transactional: only after the new upload and browser copy
+      // are accepted do we remove the prior server-side upload/result.
+      if (previousFiles.fileId && previousFiles.fileId !== data.file_id) {
+        cleanupServerFiles(
+          previousFiles.fileId,
+          options.invalidateArtifacts === false ? undefined : previousFiles.resultPath,
+        );
+      } else if (options.invalidateArtifacts !== false && previousFiles.resultPath) {
+        cleanupServerFiles(undefined, previousFiles.resultPath);
+      }
+
+      setUploadError("");
+      setUploadNotice(storageWarning);
+      showToast(`${options.source === "restore" ? "Restored" : "Uploaded"} ${data.file_name} (${data.row_count} rows)`);
+      return data;
     } catch (e: unknown) {
+      if (!isCurrent() || isAbortError(e)) return null;
+      setUploadNotice("");
       setUploadError(e instanceof Error ? e.message : "Upload failed");
+      if (options.source === "restore") {
+        setUploadResult(null);
+        setUploadAvailability(uploadMeta || options.storedMetadata ? "reupload-required" : "none");
+        liveUploadIdRef.current = null;
+      } else {
+        setUploadAvailability(previousAvailability);
+      }
+      return null;
     } finally {
-      setUploading(false);
+      options.signal?.removeEventListener("abort", abortFromCaller);
+      if (uploadRequestRef.current?.token === token) {
+        uploadRequestRef.current = null;
+        setUploading(false);
+      }
+      if (fileRef.current) fileRef.current.value = "";
     }
-  }, [cleanupServerFiles]);
+  };
+
+  const restoreSavedUpload = async (force = false, signal?: AbortSignal): Promise<UploadResult | null> => {
+    throwIfAborted(signal);
+    if (!force && uploadAvailability === "ready" && uploadResult && liveUploadIdRef.current === uploadResult.file_id) {
+      return uploadResult;
+    }
+    if (restorePromiseRef.current) return waitWithAbort(restorePromiseRef.current, signal);
+
+    const lifecycle = uploadLifecycleRef.current;
+    const restorePromise = (async () => {
+      setUploadAvailability("restoring");
+      try {
+        const stored = await getStoredUpload();
+        throwIfAborted(signal);
+        if (uploadLifecycleRef.current !== lifecycle || tourOpen) return null;
+        if (!stored) {
+          setUploadResult(null);
+          setUploadAvailability(uploadMeta ? "reupload-required" : "none");
+          return null;
+        }
+
+        // Never restore a different browser-stored file over the project metadata.
+        if (uploadMeta) {
+          const sameName = stored.metadata.name === uploadMeta.name;
+          const sameSize = uploadMeta.size === 0 || stored.metadata.size === uploadMeta.size;
+          const sameModified = uploadMeta.lastModified === 0 || stored.metadata.lastModified === uploadMeta.lastModified;
+          if (!sameName || !sameSize || !sameModified) {
+            setUploadResult(null);
+            setUploadAvailability("reupload-required");
+            setUploadError("The saved browser file does not match this project. Re-upload the original dataset.");
+            return null;
+          }
+        }
+
+        const restored = await uploadDataset(stored.file, {
+          source: "restore",
+          expectedColumns: uploadMeta?.columns.length ? uploadMeta.columns : stored.metadata.columns,
+          storedMetadata: stored.metadata,
+          persistFile: false,
+          invalidateArtifacts: false,
+          openMapping: false,
+          lifecycle,
+          signal,
+        });
+        throwIfAborted(signal);
+        return restored;
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        if (uploadLifecycleRef.current !== lifecycle) return null;
+        setUploadResult(null);
+        setUploadAvailability(uploadMeta ? "reupload-required" : "none");
+        setUploadError(error instanceof Error ? error.message : "Could not restore the saved dataset.");
+        return null;
+      }
+    })();
+    restorePromiseRef.current = restorePromise;
+    try {
+      return await waitWithAbort(restorePromise, signal);
+    } finally {
+      if (restorePromiseRef.current === restorePromise) restorePromiseRef.current = null;
+    }
+  };
+
+  const preflightUpload = async (candidate: UploadResult, signal?: AbortSignal): Promise<UploadResult> => {
+    throwIfAborted(signal);
+    const response = await fetch(`/api/coding/upload-status/${encodeURIComponent(candidate.file_id)}`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal,
+    });
+    const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
+    const raw = await response.text();
+    type UploadStatusResponse = { ok?: unknown; code?: unknown; detail?: unknown; file_id?: unknown };
+    let data: UploadStatusResponse | null = null;
+    if (contentType.includes("application/json")) {
+      try { data = JSON.parse(raw) as UploadStatusResponse; } catch {
+        throw new Error(`The server returned invalid upload-status data (HTTP ${response.status}).`);
+      }
+    }
+
+    const headerCode = response.headers.get("X-ChAT-Error-Code");
+    const responseCode = headerCode || (typeof data?.code === "string" ? data.code : null);
+    const detail = typeof data?.detail === "string" ? data.detail : "";
+    if (!response.ok) {
+      if (isRestorableUploadCode(responseCode)) {
+        throw new UploadUnavailableError(detail || "The uploaded dataset must be restored.", responseCode);
+      }
+      throw new Error(detail || `Could not verify the uploaded dataset (HTTP ${response.status}).`);
+    }
+    if (!data || data.ok !== true || data.file_id !== candidate.file_id) {
+      throw new Error("The server returned an unexpected upload-status response.");
+    }
+    return candidate;
+  };
+
+  // Every server-dependent action uses this same readiness check. It never trusts
+  // a file_id recovered from localStorage: the page must have uploaded the File in
+  // this browser session and the backend must confirm that handle is still live.
+  const ensureUploadReady = async (signal?: AbortSignal): Promise<UploadResult> => {
+    throwIfAborted(signal);
+    let candidate = uploadAvailability === "ready"
+      && uploadResult
+      && liveUploadIdRef.current === uploadResult.file_id
+      ? uploadResult
+      : await restoreSavedUpload(true, signal);
+    throwIfAborted(signal);
+    if (!candidate) {
+      throw new Error("Re-upload the original dataset before continuing. Your mapping and coding configuration have been kept.");
+    }
+
+    if (!signal && uploadPreflightRef.current?.fileId === candidate.file_id) {
+      return uploadPreflightRef.current.promise;
+    }
+    const promise = preflightUpload(candidate, signal);
+    uploadPreflightRef.current = { fileId: candidate.file_id, promise };
+    try {
+      candidate = await promise;
+      return candidate;
+    } finally {
+      if (uploadPreflightRef.current?.promise === promise) uploadPreflightRef.current = null;
+    }
+  };
+
+  // If (and only if) the server returns ChAT's stable stale-upload code, restore
+  // the IndexedDB File and retry the requested operation once with its fresh ID.
+  const withReadyUpload = async <T,>(
+    operation: (activeUpload: UploadResult) => Promise<T>,
+    options: { initialUpload?: UploadResult; recovery?: { used: boolean }; signal?: AbortSignal } = {},
+  ): Promise<T> => {
+    const recovery = options.recovery ?? { used: false };
+    let freshUpload: UploadResult | null = options.initialUpload ?? null;
+    while (true) {
+      try {
+        throwIfAborted(options.signal);
+        const activeUpload = freshUpload ?? await ensureUploadReady(options.signal);
+        throwIfAborted(options.signal);
+        freshUpload = null;
+        const result = await operation(activeUpload);
+        throwIfAborted(options.signal);
+        return result;
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        if (!(error instanceof UploadUnavailableError) || recovery.used) {
+          if (error instanceof UploadUnavailableError) {
+            liveUploadIdRef.current = null;
+            setUploadAvailability("reupload-required");
+            setUploadNotice("");
+            setUploadError(error.message);
+          }
+          throw error;
+        }
+        recovery.used = true;
+        liveUploadIdRef.current = null;
+        setUploadAvailability("restoring");
+        setUploadError("");
+        setUploadNotice("");
+        freshUpload = await restoreSavedUpload(true, options.signal);
+        throwIfAborted(options.signal);
+        if (!freshUpload) {
+          throw new Error("The saved dataset could not be restored. Re-upload the original file; your mapping and coding configuration have been kept.");
+        }
+      }
+    }
+  };
+
+  const handleUpload = async (file: File) => {
+    if (tourOpen) return;
+    if (uploadRequestRef.current) {
+      setUploadError("Wait for the current dataset upload to finish.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    const lifecycle = ++uploadLifecycleRef.current;
+    await uploadDataset(file, {
+      source: "manual",
+      persistFile: true,
+      invalidateArtifacts: true,
+      openMapping: true,
+      lifecycle,
+    });
+  };
+
+  const handleRetrySavedUpload = async () => {
+    if (!uploadMeta || uploading || uploadRequestRef.current || codingActionBusyRef.current || tourOpen) return;
+    setUploadError("");
+    await restoreSavedUpload(true);
+  };
+
+  // A persisted file_id is never treated as live. Re-upload the original File from
+  // IndexedDB once after hydration to obtain a new server handle for this page load.
+  useEffect(() => {
+    if (!persistenceReady || restoreStartedRef.current) return;
+    restoreStartedRef.current = true;
+    // uploadMeta is written synchronously to localStorage with the project. If
+    // it is absent (notably just after Reset), never revive an orphaned IDB blob.
+    if (!uploadMeta) return;
+    void restoreSavedUpload();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistenceReady]);
 
   const handleStepEnter = useCallback((s: TourStep) => {
     // Open/close the relevant popup for popup steps; close popups for section steps.
@@ -1036,12 +1478,25 @@ export default function Home() {
   // populated, then restore the user's real state when the tour closes.
   const tourSnap = useRef<Record<string, unknown> | null>(null);
   const startTour = () => {
+    if (tourOpen) return;
+    if (uploading || running || generating || codingActionBusyRef.current
+        || uploadAvailability === "restoring" || uploadRequestRef.current || restorePromiseRef.current) {
+      showToast("Wait for dataset restoration to finish, then start the tour.");
+      return;
+    }
     tourSnap.current = {
       uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
       rowsAsUnits, contextColumns, contextDescriptions, codebook, participantsStr,
-      layoutMode, activeTool,
+      layoutMode, activeTool, uploadAvailability, uploadMeta, uploadError, uploadNotice,
+      liveUploadId: liveUploadIdRef.current,
+      serverFiles: { ...serverFilesRef.current },
     };
     setUploadResult(TOUR_SAMPLE_UPLOAD);
+    setUploadAvailability("ready");
+    setUploadError("");
+    setUploadNotice("");
+    liveUploadIdRef.current = TOUR_SAMPLE_UPLOAD.file_id;
+    serverFilesRef.current = { fileId: TOUR_SAMPLE_UPLOAD.file_id };
     setMessageColumn("Message");
     setIdentifierColumns(["Session", "Round"]);
     setIdentityColumn("Speaker");
@@ -1070,6 +1525,12 @@ export default function Home() {
       setParticipantsStr(s.participantsStr as string);
       setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
       setActiveTool(s.activeTool as "coding" | "catgen" | "analysis" | "instructions");
+      setUploadAvailability(s.uploadAvailability as UploadAvailability);
+      setUploadMeta(s.uploadMeta as StoredUploadMetadata | null);
+      setUploadError(s.uploadError as string);
+      setUploadNotice(s.uploadNotice as string);
+      liveUploadIdRef.current = s.liveUploadId as string | null;
+      serverFilesRef.current = s.serverFiles as { fileId?: string; resultPath?: string };
       tourSnap.current = null;
     }
   };
@@ -1217,64 +1678,80 @@ export default function Home() {
     (rowsAsUnits || identifierColumns.length > 0) &&
     sendersOk;
 
-  const canGenerate =
+  const canGenerate = Boolean(
+    uploadAvailability === "ready" &&
     uploadResult &&
+    liveUploadIdRef.current === uploadResult.file_id &&
+    !uploading &&
     mappingComplete &&
     experimentInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type) &&
     (!hasSenderVar || participants.length > 0) &&
     modelSlots.length > 0 &&
     modelSlots.every((s) => s.provider && s.model && s.apiKey.trim()) &&
-    !rowFilterError;
+    !rowFilterError
+  );
 
   const handleDownloadPackage = async () => {
-    if (!canGenerate || !uploadResult) return;
+    if (!canGenerate || !uploadResult || codingActionBusyRef.current) return;
+    codingActionBusyRef.current = true;
     setGenerating(true);
     setGenerateError("");
     try {
-      const res = await fetch("/api/coding/generate-package", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_id: uploadResult.file_id,
-          file_name: uploadResult.file_name,
-          message_column: messageColumn,
-          identifier_columns: identifierColumns,
-          identity_column: identityColumn || null,
-          order_column: orderColumn || null,
-          order_direction: orderDirection,
-          experiment_instructions: experimentInstructions,
-          empty_message_handling: emptyMessageHandling,
-          codebook,
-          participants,
-          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
-          provider,
-          model,
-          // Generated packages never contain credentials; the local script reads
-          // CHAT_API_KEY or prompts securely when it starts.
-          api_key: "provided_at_runtime",
-          model_slots: [],
-        }),
+      const download = await withReadyUpload(async (activeUpload) => {
+        const res = await fetch("/api/coding/generate-package", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file_id: activeUpload.file_id,
+            file_name: activeUpload.file_name,
+            message_column: messageColumn,
+            identifier_columns: identifierColumns,
+            identity_column: identityColumn || null,
+            order_column: orderColumn || null,
+            order_direction: orderDirection,
+            experiment_instructions: experimentInstructions,
+            empty_message_handling: emptyMessageHandling,
+            codebook,
+            participants,
+            context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+            provider,
+            model,
+            // Generated packages never contain credentials; the local script reads
+            // CHAT_API_KEY or prompts securely when it starts.
+            api_key: "provided_at_runtime",
+            model_slots: [],
+          }),
+        });
+        const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
+        if (!res.ok || !contentType.includes("application/zip")) {
+          const raw = await res.text();
+          let detail = "";
+          let responseCode: string | null = null;
+          if (contentType.includes("application/json")) {
+            try {
+              const parsed = JSON.parse(raw) as { detail?: unknown; code?: unknown };
+              detail = typeof parsed.detail === "string" ? parsed.detail : "";
+              responseCode = typeof parsed.code === "string" ? parsed.code : null;
+            } catch {}
+          }
+          const errorCode = res.headers.get("X-ChAT-Error-Code") || responseCode;
+          if (isRestorableUploadCode(errorCode)) {
+            throw new UploadUnavailableError(detail || "The uploaded dataset must be restored.", errorCode);
+          }
+          if (!detail && raw.trim().startsWith("<")) {
+            const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+            detail = `The server returned an HTML error page instead of the coding package (HTTP ${res.status}${title ? `: ${title}` : ""}).`;
+          }
+          throw new Error(detail || res.statusText || "Package generation failed");
+        }
+        return {
+          blob: await res.blob(),
+          filename: (res.headers.get("Content-Disposition") || "").match(/filename="?([^";]+)"?/)?.[1]
+            || "chat_coding_package.zip",
+        };
       });
-      const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
-      if (!res.ok || !contentType.includes("application/zip")) {
-        const raw = await res.text();
-        let detail = "";
-        if (contentType.includes("application/json")) {
-          try {
-            const parsed = JSON.parse(raw);
-            detail = typeof parsed?.detail === "string" ? parsed.detail : "";
-          } catch {}
-        }
-        if (!detail && raw.trim().startsWith("<")) {
-          const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
-          detail = `The server returned an HTML error page instead of the coding package (HTTP ${res.status}${title ? `: ${title}` : ""}).`;
-        }
-        throw new Error(detail || res.statusText || "Package generation failed");
-      }
-      const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || "chat_coding_package.zip";
+      const { blob, filename } = download;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = filename; a.click();
@@ -1284,6 +1761,7 @@ export default function Home() {
       setGenerateError(e instanceof Error ? e.message : "Package download failed");
     } finally {
       setGenerating(false);
+      codingActionBusyRef.current = false;
     }
   };
 
@@ -1295,11 +1773,43 @@ export default function Home() {
     setTimeout(() => consoleRef.current?.scrollTo({ top: consoleRef.current.scrollHeight }), 50);
   };
 
+  const beginRunAction = () => {
+    if (codingActionBusyRef.current) return null;
+    codingActionBusyRef.current = true;
+    const action = {
+      token: ++runActionGenerationRef.current,
+      controller: new AbortController(),
+    };
+    runActionRef.current = action;
+    runAbortRef.current = action.controller;
+    return action;
+  };
+
+  const isCurrentRunAction = (action: { token: number; controller: AbortController }) =>
+    runActionGenerationRef.current === action.token
+    && runActionRef.current?.token === action.token
+    && !action.controller.signal.aborted;
+
+  const assertCurrentRunAction = (action: { token: number; controller: AbortController }) => {
+    if (!isCurrentRunAction(action)) throw new DOMException("The coding action was stopped.", "AbortError");
+  };
+
+  const finishRunAction = (action: { token: number; controller: AbortController }) => {
+    if (runActionRef.current?.token !== action.token || runActionGenerationRef.current !== action.token) return;
+    runActionRef.current = null;
+    if (runAbortRef.current === action.controller) runAbortRef.current = null;
+    codingActionBusyRef.current = false;
+    setRunning(false);
+  };
+
   // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
     if (!canGenerate || !uploadResult) return;
-
+    const action = beginRunAction();
+    if (!action) return;
+    const signal = action.controller.signal;
+    const uploadRecovery = { used: false };
     setRunning(true);
     setRunProgress(null);
     setCodedRows([]);
@@ -1316,15 +1826,25 @@ export default function Home() {
     setLayoutMode((m) => (m === "fill" ? "side" : m));
     setRunStartedAt(new Date().toISOString());
     setRunFinishedAt(null);
-    trackEvent("run");
+    log("info", "Checking the uploaded dataset...");
 
-    log("info", "Generating coding script...");
+    let stage: "preflight" | "script" | "validation" | "stream" = "preflight";
     try {
+      const activeUpload = await withReadyUpload(
+        async (readyUpload) => readyUpload,
+        { recovery: uploadRecovery, signal },
+      );
+      assertCurrentRunAction(action);
+      trackEvent("run");
+
+      stage = "script";
+      log("info", "Generating coding script...");
       const res = await fetch("/api/coding/generate-script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal,
         body: JSON.stringify({
-          file_name: uploadResult.file_name,
+          file_name: activeUpload.file_name,
           message_column: messageColumn,
           identifier_columns: identifierColumns,
           identity_column: identityColumn || null,
@@ -1348,21 +1868,16 @@ export default function Home() {
         throw new Error(body.detail || res.statusText);
       }
       const data: GenerateResult = await res.json();
+      assertCurrentRunAction(action);
       setResult(data);
       log("info", `Script generated: ${data.filename}`);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Script generation failed";
-      log("error", `Script generation failed: ${msg}`);
-      setGenerateError(msg);
-      setRunning(false);
-      return;
-    }
 
-    log("info", "Validating API keys and models...");
-    try {
+      stage = "validation";
+      log("info", "Validating API keys and models...");
       const valRes = await fetch("/api/coding/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal,
         body: JSON.stringify({
           model_slots: modelSlots.map((s) => ({
             provider: s.provider,
@@ -1373,105 +1888,133 @@ export default function Home() {
       });
       if (!valRes.ok) throw new Error("Validation request failed");
       const valData = await valRes.json();
+      assertCurrentRunAction(action);
       for (const r of valData.results) {
         if (r.ok) log("info", `  ${r.label} — OK`);
         else log("error", `  ${r.label} — FAILED: ${r.error}`);
       }
       if (!valData.ok) {
         log("error", "Validation failed. Fix the errors above before running.");
-        setRunning(false);
         return;
       }
       log("info", "All models validated successfully.");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Validation failed";
-      log("error", `Validation error: ${msg}`);
-      setRunning(false);
-      return;
-    }
 
-    log("info", "Connecting to coding service...");
-    const modelNames = modelSlots.map((s) => {
-      const p = PROVIDERS.find((p) => p.value === s.provider);
-      const m = p?.models.find((m) => m.value === s.model);
-      return `${p?.label}/${m?.label}`;
-    });
-    log("info", `Models: ${modelNames.join(", ")} × ${runsPerModel} run${runsPerModel > 1 ? "s" : ""} each`);
-    log("info", `Aggregation: configured per variable · File: ${uploadResult.file_name} (${uploadResult.row_count} rows)`);
-    log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
+      stage = "stream";
+      log("info", "Connecting to coding service...");
+      const modelNames = modelSlots.map((s) => {
+        const p = PROVIDERS.find((p) => p.value === s.provider);
+        const m = p?.models.find((m) => m.value === s.model);
+        return `${p?.label}/${m?.label}`;
+      });
+      log("info", `Models: ${modelNames.join(", ")} × ${runsPerModel} run${runsPerModel > 1 ? "s" : ""} each`);
+      log("info", `Aggregation: configured per variable · File: ${activeUpload.file_name} (${activeUpload.row_count} rows)`);
+      log("info", `Codebook: ${codebook.filter((e) => e.label.trim()).map((e) => e.label).join(", ")}`);
+      log("info", "Connected. Starting coding...");
 
-    const controller = new AbortController();
-    runAbortRef.current = controller;
-    log("info", "Connected. Starting coding...");
-
-    try {
-      await streamJsonLines<CodingStreamMessage>(
-        "/api/coding/run-stream",
-        {
-        file_id: uploadResult.file_id,
-        message_column: messageColumn,
-        identifier_columns: identifierColumns,
-        identity_column: identityColumn || null,
-        order_column: orderColumn || null,
-        order_direction: orderDirection,
-        experiment_instructions: experimentInstructions,
-        empty_message_handling: emptyMessageHandling,
-        codebook,
-        participants,
-        context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
-        model_slots: modelSlots.map(buildSlotPayload),
-        runs_per_model: runsPerModel,
-        row_indices: null,
-        },
-        controller.signal,
-        (msg) => {
-          if (msg.type === "progress") {
-            setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
-            log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
-          } else if (msg.type === "row") {
-            const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
-            setCodedRows((prev) => [...prev, row]);
-            const issues = checkRow(row.index, row.coded, expandedVars);
-            for (const issue of issues) {
-              const detail = issue.issueType === "api_error"
-                ? `Row ${row.index + 1}: ${issue.value}`
-                : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
-              setRunErrors((prev) => [...prev, detail]);
-              log("warn", detail);
-            }
-          } else if (msg.type === "error" && msg.index !== undefined) {
-            const message = msg.message ?? "Coding failed";
-            setRunErrors((prev) => [...prev, message]);
-            log("error", message);
-          } else if (msg.type === "error") {
-            const message = msg.message ?? "Coding failed";
-            setRunError(message);
-            log("error", `Fatal: ${message}`);
-          } else if (msg.type === "complete") {
-            setRunComplete({
-              total_rows: msg.total_rows!,
-              coded_rows: msg.coded_rows!,
-              file_path: msg.file_path!,
-            });
-            log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+      await withReadyUpload(async (streamUpload) => {
+        assertCurrentRunAction(action);
+        try {
+          await streamJsonLines<CodingStreamMessage>(
+            "/api/coding/run-stream",
+            {
+              file_id: streamUpload.file_id,
+              message_column: messageColumn,
+              identifier_columns: identifierColumns,
+              identity_column: identityColumn || null,
+              order_column: orderColumn || null,
+              order_direction: orderDirection,
+              experiment_instructions: experimentInstructions,
+              empty_message_handling: emptyMessageHandling,
+              codebook,
+              participants,
+              context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+              model_slots: modelSlots.map(buildSlotPayload),
+              runs_per_model: runsPerModel,
+              row_indices: null,
+            },
+            signal,
+            (msg) => {
+              assertCurrentRunAction(action);
+              if (msg.type === "progress") {
+                setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
+                log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
+              } else if (msg.type === "row") {
+                const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
+                setCodedRows((prev) => [...prev, row]);
+                const issues = checkRow(row.index, row.coded, expandedVars);
+                for (const issue of issues) {
+                  const detail = issue.issueType === "api_error"
+                    ? `Row ${row.index + 1}: ${issue.value}`
+                    : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+                  setRunErrors((prev) => [...prev, detail]);
+                  log("warn", detail);
+                }
+              } else if (msg.type === "error" && isRestorableUploadCode(msg.code)) {
+                throw new UploadUnavailableError(msg.message || "The uploaded dataset must be restored.", msg.code);
+              } else if (msg.type === "error" && msg.index !== undefined) {
+                const message = msg.message ?? "Coding failed";
+                setRunErrors((prev) => [...prev, message]);
+                log("error", message);
+              } else if (msg.type === "error") {
+                const message = msg.message ?? "Coding failed";
+                setRunError(message);
+                log("error", `Fatal: ${message}`);
+              } else if (msg.type === "complete") {
+                setRunComplete({
+                  total_rows: msg.total_rows!,
+                  coded_rows: msg.coded_rows!,
+                  file_path: msg.file_path!,
+                });
+                log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+              }
+            },
+          );
+          assertCurrentRunAction(action);
+        } catch (error) {
+          if (error instanceof StreamResponseError && isRestorableUploadCode(error.code)) {
+            throw new UploadUnavailableError(error.message, error.code);
           }
-        },
-      );
+          throw error;
+        }
+      }, { initialUpload: activeUpload, recovery: uploadRecovery, signal });
     } catch (e: unknown) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
-        const message = e instanceof Error ? e.message : "Streaming connection failed";
+      if (isAbortError(e) || !isCurrentRunAction(action)) return;
+      const message = e instanceof Error ? e.message : "Coding failed";
+      if (stage === "preflight") {
+        setGenerateError(message);
+      } else if (stage === "script") {
+        log("error", `Script generation failed: ${message}`);
+        setGenerateError(message);
+      } else if (stage === "validation") {
+        log("error", `Validation error: ${message}`);
+      } else {
         log("error", `Coding connection failed: ${message}`);
         setRunError(message);
       }
     } finally {
-      if (runAbortRef.current === controller) runAbortRef.current = null;
-      setRunning(false);
+      finishRunAction(action);
     }
   };
 
   const handleStop = () => {
-    runAbortRef.current?.abort();
+    const action = runActionRef.current;
+    if (!action) return;
+    runActionGenerationRef.current += 1;
+    runActionRef.current = null;
+    codingActionBusyRef.current = false;
+    action.controller.abort();
     runAbortRef.current = null;
+    uploadPreflightRef.current = null;
+    restorePromiseRef.current = null;
+    if (uploadRequestRef.current) {
+      uploadLifecycleRef.current += 1;
+      uploadRequestRef.current.controller.abort();
+      uploadRequestRef.current = null;
+      setUploading(false);
+    }
+    if (!liveUploadIdRef.current && uploadMeta) {
+      setUploadAvailability("reupload-required");
+    }
     log("warn", "Coding stopped by user.");
     setRunning(false);
   };
@@ -1884,7 +2427,11 @@ ${PDF_WATERMARK_HTML}
   })();
 
   const handleRerun = async (indices: number[] | null) => {
-    if (!uploadResult) return;
+    if (!uploadResult || uploadAvailability !== "ready") return;
+    const action = beginRunAction();
+    if (!action) return;
+    const signal = action.controller.signal;
+    const uploadRecovery = { used: false };
     setRunning(true);
     setRunProgress(null);
     setRunErrors([]);
@@ -1902,88 +2449,121 @@ ${PDF_WATERMARK_HTML}
       log("info", "Re-running all rows from scratch...");
     }
 
-    const controller = new AbortController();
-    runAbortRef.current = controller;
-    log("info", "Connected. Starting re-coding...");
-
+    let stage: "preflight" | "stream" = "preflight";
     try {
-      await streamJsonLines<CodingStreamMessage>(
-        "/api/coding/run-stream",
-        {
-        file_id: uploadResult.file_id,
-        message_column: messageColumn,
-        identifier_columns: identifierColumns,
-        identity_column: identityColumn || null,
-        order_column: orderColumn || null,
-        order_direction: orderDirection,
-        experiment_instructions: experimentInstructions,
-        empty_message_handling: emptyMessageHandling,
-        codebook,
-        participants,
-        context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
-        model_slots: modelSlots.map(buildSlotPayload),
-        runs_per_model: runsPerModel,
-        row_indices: indices,
-        },
-        controller.signal,
-        (msg) => {
-          if (msg.type === "progress") {
-            setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
-            log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
-          } else if (msg.type === "row") {
-            const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
-            if (indices) {
-              setCodedRows((prev) => prev.map((r) => r.index === row.index ? row : r));
-            } else {
-              setCodedRows((prev) => [...prev, row]);
-            }
-            const issues = checkRow(row.index, row.coded, expandedVars);
-            for (const issue of issues) {
-              const detail = issue.issueType === "api_error"
-                ? `Row ${row.index + 1}: ${issue.value}`
-                : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
-              setRunErrors((prev) => [...prev, detail]);
-              log("warn", detail);
-            }
-          } else if (msg.type === "error" && msg.index !== undefined) {
-            const message = msg.message ?? "Coding failed";
-            setRunErrors((prev) => [...prev, message]);
-            log("error", message);
-          } else if (msg.type === "error") {
-            const message = msg.message ?? "Coding failed";
-            setRunError(message);
-            log("error", `Fatal: ${message}`);
-          } else if (msg.type === "complete") {
-            setRunComplete({
-              total_rows: msg.total_rows!,
-              coded_rows: msg.coded_rows!,
-              file_path: msg.file_path!,
-            });
-            log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
-          }
-        },
+      const activeUpload = await withReadyUpload(
+        async (readyUpload) => readyUpload,
+        { recovery: uploadRecovery, signal },
       );
+      assertCurrentRunAction(action);
+      stage = "stream";
+      log("info", "Connected. Starting re-coding...");
+      await withReadyUpload(async (streamUpload) => {
+        assertCurrentRunAction(action);
+        try {
+          await streamJsonLines<CodingStreamMessage>(
+            "/api/coding/run-stream",
+            {
+              file_id: streamUpload.file_id,
+              message_column: messageColumn,
+              identifier_columns: identifierColumns,
+              identity_column: identityColumn || null,
+              order_column: orderColumn || null,
+              order_direction: orderDirection,
+              experiment_instructions: experimentInstructions,
+              empty_message_handling: emptyMessageHandling,
+              codebook,
+              participants,
+              context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+              model_slots: modelSlots.map(buildSlotPayload),
+              runs_per_model: runsPerModel,
+              row_indices: indices,
+            },
+            signal,
+            (msg) => {
+              assertCurrentRunAction(action);
+              if (msg.type === "progress") {
+                setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
+                log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
+              } else if (msg.type === "row") {
+                const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
+                if (indices) {
+                  setCodedRows((prev) => prev.map((r) => r.index === row.index ? row : r));
+                } else {
+                  setCodedRows((prev) => [...prev, row]);
+                }
+                const issues = checkRow(row.index, row.coded, expandedVars);
+                for (const issue of issues) {
+                  const detail = issue.issueType === "api_error"
+                    ? `Row ${row.index + 1}: ${issue.value}`
+                    : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+                  setRunErrors((prev) => [...prev, detail]);
+                  log("warn", detail);
+                }
+              } else if (msg.type === "error" && isRestorableUploadCode(msg.code)) {
+                throw new UploadUnavailableError(msg.message || "The uploaded dataset must be restored.", msg.code);
+              } else if (msg.type === "error" && msg.index !== undefined) {
+                const message = msg.message ?? "Coding failed";
+                setRunErrors((prev) => [...prev, message]);
+                log("error", message);
+              } else if (msg.type === "error") {
+                const message = msg.message ?? "Coding failed";
+                setRunError(message);
+                log("error", `Fatal: ${message}`);
+              } else if (msg.type === "complete") {
+                setRunComplete({
+                  total_rows: msg.total_rows!,
+                  coded_rows: msg.coded_rows!,
+                  file_path: msg.file_path!,
+                });
+                log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+              }
+            },
+          );
+          assertCurrentRunAction(action);
+        } catch (error) {
+          if (error instanceof StreamResponseError && isRestorableUploadCode(error.code)) {
+            throw new UploadUnavailableError(error.message, error.code);
+          }
+          throw error;
+        }
+      }, { initialUpload: activeUpload, recovery: uploadRecovery, signal });
     } catch (e: unknown) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
-        const message = e instanceof Error ? e.message : "Streaming connection failed";
-        log("error", `Coding connection failed: ${message}`);
-        setRunError(message);
-      }
+      if (isAbortError(e) || !isCurrentRunAction(action)) return;
+      const message = e instanceof Error ? e.message : "Coding failed";
+      log("error", `${stage === "preflight" ? "Dataset check" : "Coding connection"} failed: ${message}`);
+      setRunError(message);
     } finally {
-      if (runAbortRef.current === controller) runAbortRef.current = null;
-      setRunning(false);
+      finishRunAction(action);
     }
   };
 
   // ── Reset ─────────────────────────────────────────────────────────────────
 
   const handleReset = () => {
+    if (tourOpen) return;
+    if (codingActionBusyRef.current) {
+      showToast(running ? "Stop the coding run before resetting." : "Wait for the current coding action to finish before resetting.");
+      return;
+    }
     if (!window.confirm("Reset everything and clear all saved fields? This cannot be undone.")) return;
-    cleanupServerFiles(uploadResult?.file_id, runComplete?.file_path);
+    const filesToClean = { ...serverFilesRef.current };
+    cleanupServerFiles(filesToClean.fileId, filesToClean.resultPath);
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
+    uploadLifecycleRef.current += 1;
+    uploadTokenRef.current += 1;
+    uploadRequestRef.current?.controller.abort();
+    uploadRequestRef.current = null;
+    restorePromiseRef.current = null;
+    uploadPreflightRef.current = null;
+    restoreStartedRef.current = true;
+    liveUploadIdRef.current = null;
+    serverFilesRef.current = {};
+    void clearStoredUpload().catch(() => {});
     runAbortRef.current?.abort();
     runAbortRef.current = null;
-    setUploadResult(null); setUploading(false); setUploadError(""); setDragOver(false);
+    setUploadResult(null); setUploadMeta(null); setUploadAvailability("none");
+    setUploading(false); setUploadError(""); setUploadNotice(""); setDragOver(false);
     setMessageColumn(""); setExperimentInstructions("");
     setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
     setContextColumns([]); setContextDescriptions({}); setRowsAsUnits(false); setEmptyMessageHandling("ignore");
@@ -1991,7 +2571,7 @@ ${PDF_WATERMARK_HTML}
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1);
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
-    setRunComplete(null); setRunError(""); setValidationReport(null); setHasRerun(false);
+    setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError(""); setValidationReport(null); setHasRerun(false);
     setAnalysisRaters([]); setAnalysisResults(null); setAnalysisError("");
     setCrossCheckResult(null); setEpisodeColumns([]); setAnalysisVariables([]);
     setConsoleLogs([]); setRightView("script"); setExpandedTable(null);
@@ -2150,16 +2730,26 @@ ${PDF_WATERMARK_HTML}
                         <span className="step-badge">1</span>
                         <span className="panel-label">Upload Dataset</span>
                         <HelpTip text="Upload a CSV or Excel file with one message per row. Next, map your columns: tag the message text and choose how rows form episodes (group by shared columns, or code each row on its own)." />
-                        {uploadResult && <span className="tag">uploaded</span>}
+                        {uploadAvailability === "ready" && uploadResult && <span className="tag">uploaded</span>}
+                        {uploadAvailability === "restoring" && <span className="tag">restoring…</span>}
+                        {uploadAvailability === "reupload-required" && <span className="tag">re-upload required</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div
                         className={`dropzone${dragOver ? " drag-active" : ""}`}
-                        onClick={() => fileRef.current?.click()}
-                        onDrop={(e) => { setDragOver(false); onDrop(e); }}
-                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                        aria-disabled={uploading || uploadAvailability === "restoring"}
+                        onClick={() => { if (!uploading && uploadAvailability !== "restoring") fileRef.current?.click(); }}
+                        onDrop={(e) => {
+                          setDragOver(false);
+                          if (!uploading && uploadAvailability !== "restoring") onDrop(e);
+                          else e.preventDefault();
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!uploading && uploadAvailability !== "restoring") setDragOver(true);
+                        }}
                         onDragLeave={() => setDragOver(false)}
                       >
                         <div className="dz-icon">
@@ -2168,11 +2758,41 @@ ${PDF_WATERMARK_HTML}
                           </svg>
                         </div>
                         <p className="dz-text">
-                          {uploading ? <><span className="spinner" /> Uploading...</> : "Drop a CSV or Excel file here, or click to browse"}
+                          {uploadAvailability === "restoring"
+                            ? <><span className="spinner" /> Restoring saved dataset...</>
+                            : uploading
+                              ? <><span className="spinner" /> Uploading...</>
+                              : "Drop a CSV or Excel file here, or click to browse"}
                         </p>
                       </div>
-                      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={onFileChange} className="input-hidden" />
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        disabled={uploading || uploadAvailability === "restoring"}
+                        onClick={(e) => { e.currentTarget.value = ""; }}
+                        onChange={onFileChange}
+                        className="input-hidden"
+                      />
+                      {uploadAvailability === "reupload-required" && (
+                        <div className="mt-8">
+                          <p className="recap-warn">
+                            Retry the saved copy, or re-upload {uploadMeta?.name ? <strong>{uploadMeta.name}</strong> : "the original dataset"}. Your column mapping and coding configuration have been kept.
+                          </p>
+                          {uploadMeta && (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-xs mt-8"
+                              disabled={uploading || !!uploadRequestRef.current || codingActionBusyRef.current}
+                              onClick={handleRetrySavedUpload}
+                            >
+                              Retry saved dataset
+                            </button>
+                          )}
+                        </div>
+                      )}
                       {uploadError && <p className="enc-error">{uploadError}</p>}
+                      {uploadNotice && <p className="hint">{uploadNotice}</p>}
                       {uploadResult && (
                         <div className="mt-12" id="tour-episode-preview">
                           <div className="file-chip">

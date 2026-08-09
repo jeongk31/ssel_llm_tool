@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import uuid
 import os
 import shutil
@@ -7,10 +8,11 @@ import tempfile
 import time
 import re
 import zipfile
+from dataclasses import dataclass
 
 import pandas as pd
 from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.responses import FileResponse, StreamingResponse, Response, JSONResponse
 from pydantic import BaseModel
 
 from app.config import settings
@@ -22,11 +24,219 @@ from app.services.coding_runner import run_coding
 router = APIRouter()
 
 # In-memory store for uploaded files (file_id → {path, filename, created})
+# This is only a cache. New uploads are also recorded in a deterministic temp
+# directory so another worker (or a restarted process sharing the same temp
+# filesystem) can recover the mapping safely.
 _uploaded_files: dict[str, dict] = {}
 
 # Temp files live under the system temp dir with these prefixes.
 _TEMP_PREFIXES = ("llm_upload_", "llm_coding_")
 _TEMP_TTL_SECONDS = 24 * 60 * 60  # delete working files after 24 hours
+_UPLOAD_MAX_FUTURE_SKEW_SECONDS = 5 * 60
+_UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_UPLOAD_METADATA_FILENAME = ".chat-upload.json"
+
+
+@dataclass(frozen=True)
+class UploadResolutionError(Exception):
+    """A stable, user-actionable upload lookup failure."""
+
+    status_code: int
+    code: str
+    detail: str
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+def _upload_dir_for_id(file_id: str) -> str | None:
+    """Return the deterministic upload directory for a well-formed ID."""
+    if not isinstance(file_id, str) or not _UPLOAD_ID_RE.fullmatch(file_id):
+        return None
+    return os.path.join(tempfile.gettempdir(), f"llm_upload_{file_id}")
+
+
+def _upload_error_response(
+    exc: UploadResolutionError,
+    *,
+    include_ok: bool = False,
+) -> JSONResponse:
+    # Preserve the established string-valued ``detail`` while adding a stable
+    # machine-readable code for clients that can offer automatic recovery.
+    content = {"detail": exc.detail, "code": exc.code}
+    if include_ok:
+        content["ok"] = False
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content,
+        headers={
+            "Cache-Control": "no-store",
+            "X-ChAT-Error-Code": exc.code,
+        },
+    )
+
+
+def _store_uploaded_file(content: bytes, filename: str, ext: str) -> tuple[str, dict]:
+    """Persist a new upload with recoverable metadata and return its cache entry."""
+    file_id = uuid.uuid4().hex
+    tmp_dir = _upload_dir_for_id(file_id)
+    if tmp_dir is None:  # uuid4().hex is always valid; guard future changes.
+        raise RuntimeError("Could not allocate an upload identifier")
+
+    safe_name = os.path.basename((filename or "upload").replace("\\", "/")) or "upload"
+    stored_filename = f"dataset.{ext}"
+    tmp_path = os.path.join(tmp_dir, stored_filename)
+    created = time.time()
+
+    os.mkdir(tmp_dir, 0o700)
+    try:
+        with open(tmp_path, "xb") as f:
+            f.write(content)
+
+        metadata = {
+            "version": 1,
+            "file_id": file_id,
+            "filename": safe_name,
+            "stored_filename": stored_filename,
+            "created": created,
+        }
+        metadata_tmp = os.path.join(tmp_dir, _UPLOAD_METADATA_FILENAME + ".tmp")
+        metadata_path = os.path.join(tmp_dir, _UPLOAD_METADATA_FILENAME)
+        with open(metadata_tmp, "x", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False)
+        os.replace(metadata_tmp, metadata_path)
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+
+    info = {"path": os.path.realpath(tmp_path), "filename": safe_name, "created": created}
+    _uploaded_files[file_id] = info
+    return file_id, info
+
+
+def _resolve_legacy_cached_upload(file_id: str, now: float) -> dict | None:
+    """Validate a pre-migration cache entry created by the older random-dir code."""
+    info = _uploaded_files.get(file_id)
+    if not info:
+        return None
+    created = info.get("created")
+    path = info.get("path")
+    try:
+        created = float(created)
+    except (TypeError, ValueError):
+        created = 0.0
+    cached_dir = _temp_dir_for(path) if path else None
+    deterministic_dir = _upload_dir_for_id(file_id)
+    if (
+        cached_dir
+        and deterministic_dir
+        and os.path.realpath(cached_dir) == os.path.realpath(deterministic_dir)
+    ):
+        # A new-format upload without its metadata is not a legacy upload. Do
+        # not let a stale per-process cache bypass metadata validation.
+        _uploaded_files.pop(file_id, None)
+        return None
+    if not math.isfinite(created) or created > now + _UPLOAD_MAX_FUTURE_SKEW_SECONDS:
+        _cleanup_file_id(file_id)
+        raise UploadResolutionError(
+            410, "UPLOAD_GONE", "Uploaded dataset metadata is unavailable. Please re-upload it."
+        )
+    if now - created >= _TEMP_TTL_SECONDS:
+        _cleanup_file_id(file_id)
+        raise UploadResolutionError(
+            410, "UPLOAD_EXPIRED", "Upload expired after 24 hours. Please re-upload the dataset."
+        )
+    if not path or _temp_dir_for(path) is None or not os.path.isfile(path):
+        _uploaded_files.pop(file_id, None)
+        raise UploadResolutionError(
+            410, "UPLOAD_GONE", "Uploaded dataset is no longer available. Please re-upload it."
+        )
+    return {"path": path, "filename": info.get("filename") or "upload", "created": created}
+
+
+def resolve_uploaded_file(file_id: str, *, now: float | None = None) -> dict:
+    """Resolve and validate an upload from shared temp metadata.
+
+    New uploads live in ``<tmp>/llm_upload_<file_id>`` with a small metadata
+    record. This makes the opaque ID recoverable after a process restart and
+    across workers that share the same temp filesystem, without extending the
+    24-hour data-retention window.
+    """
+    upload_dir = _upload_dir_for_id(file_id)
+    if upload_dir is None:
+        raise UploadResolutionError(
+            404,
+            "UPLOAD_NOT_FOUND",
+            "Upload not found. Please re-upload the dataset.",
+        )
+
+    current_time = time.time() if now is None else now
+    metadata_path = os.path.join(upload_dir, _UPLOAD_METADATA_FILENAME)
+
+    if (
+        not os.path.isdir(upload_dir)
+        or os.path.islink(upload_dir)
+        or not os.path.isfile(metadata_path)
+        or os.path.islink(metadata_path)
+    ):
+        legacy = _resolve_legacy_cached_upload(file_id, current_time)
+        if legacy is not None:
+            return legacy
+        if os.path.isdir(upload_dir) and not os.path.islink(upload_dir):
+            _remove_temp_dir(upload_dir)
+        # A syntactically valid ID may have existed in a previous process or on
+        # an ephemeral filesystem. Treat it as gone rather than malformed.
+        raise UploadResolutionError(
+            410, "UPLOAD_GONE", "Uploaded dataset is no longer available. Please re-upload it."
+        )
+
+    try:
+        with open(metadata_path, encoding="utf-8") as f:
+            metadata = json.load(f)
+        if metadata.get("file_id") != file_id:
+            raise ValueError("metadata ID mismatch")
+        created = float(metadata["created"])
+        if (
+            not math.isfinite(created)
+            or created > current_time + _UPLOAD_MAX_FUTURE_SKEW_SECONDS
+        ):
+            raise ValueError("invalid upload creation time")
+        stored_filename = str(metadata["stored_filename"])
+        display_filename = str(metadata.get("filename") or "upload")
+        if (
+            os.path.basename(stored_filename) != stored_filename
+            or stored_filename == _UPLOAD_METADATA_FILENAME
+        ):
+            raise ValueError("unsafe stored filename")
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        _uploaded_files.pop(file_id, None)
+        _remove_temp_dir(upload_dir)
+        raise UploadResolutionError(
+            410, "UPLOAD_GONE", "Uploaded dataset metadata is unavailable. Please re-upload it."
+        )
+
+    if current_time - created >= _TEMP_TTL_SECONDS:
+        _uploaded_files.pop(file_id, None)
+        _remove_temp_dir(upload_dir)
+        raise UploadResolutionError(
+            410, "UPLOAD_EXPIRED", "Upload expired after 24 hours. Please re-upload the dataset."
+        )
+
+    upload_dir_real = os.path.realpath(upload_dir)
+    file_path = os.path.realpath(os.path.join(upload_dir, stored_filename))
+    if (
+        not file_path.startswith(upload_dir_real + os.sep)
+        or not os.path.isfile(file_path)
+    ):
+        _uploaded_files.pop(file_id, None)
+        _remove_temp_dir(upload_dir)
+        raise UploadResolutionError(
+            410, "UPLOAD_GONE", "Uploaded dataset is no longer available. Please re-upload it."
+        )
+
+    info = {"path": file_path, "filename": display_filename, "created": created}
+    _uploaded_files[file_id] = info
+    return info
 
 
 def _temp_dir_for(path: str) -> str | None:
@@ -58,12 +268,23 @@ def _cleanup_file_id(file_id: str) -> None:
     info = _uploaded_files.pop(file_id, None)
     if info and info.get("path"):
         _remove_temp_dir(info["path"])
+    # The deterministic directory is sufficient for cleanup even when this
+    # process has no cache entry (for example after a restart or on a worker
+    # that did not receive the upload request).
+    upload_dir = _upload_dir_for_id(file_id)
+    if upload_dir:
+        _remove_temp_dir(upload_dir)
 
 
 def sweep_temp_files(max_age_seconds: int = _TEMP_TTL_SECONDS) -> None:
     """Delete ChAT temp dirs older than the TTL (24h backstop) and prune the store."""
     now = time.time()
-    for fid in [f for f, i in _uploaded_files.items() if now - i.get("created", 0) > max_age_seconds]:
+    expired_ids = [
+        file_id
+        for file_id, info in _uploaded_files.items()
+        if now - info.get("created", 0) >= max_age_seconds
+    ]
+    for fid in expired_ids:
         _cleanup_file_id(fid)
     tmp_root = tempfile.gettempdir()
     try:
@@ -72,7 +293,7 @@ def sweep_temp_files(max_age_seconds: int = _TEMP_TTL_SECONDS) -> None:
                 continue
             full = os.path.join(tmp_root, name)
             try:
-                if os.path.isdir(full) and now - os.path.getmtime(full) > max_age_seconds:
+                if os.path.isdir(full) and now - os.path.getmtime(full) >= max_age_seconds:
                     shutil.rmtree(full, ignore_errors=True)
             except OSError:
                 continue
@@ -157,26 +378,24 @@ async def upload_coding_file(request: Request, file: UploadFile):
         else:
             df = pd.read_excel(io.BytesIO(content))
     except Exception:
-        raise HTTPException(400, "Could not read the file. Make sure it is a valid CSV or Excel file.")
+        raise HTTPException(
+            400,
+            "Could not read the file. Make sure it is a valid CSV or Excel file.",
+        )
 
-    # Save to temp file. Sanitize the client-supplied filename to its basename so it
-    # cannot traverse out of the temp dir (e.g. "../../x" or an absolute path).
-    file_id = uuid.uuid4().hex
-    tmp_dir = tempfile.mkdtemp(prefix="llm_upload_")
-    safe_name = os.path.basename((file.filename or "upload").replace("\\", "/")) or "upload"
-    tmp_path = os.path.join(tmp_dir, safe_name)
-    with open(tmp_path, "wb") as f:
-        f.write(content)
-
-    _uploaded_files[file_id] = {
-        "path": tmp_path,
-        "filename": safe_name,
-        "created": time.time(),
-    }
+    # Save the upload and its minimal metadata under an opaque deterministic
+    # directory. The mapping remains recoverable by another process that shares
+    # this temp filesystem, while the original contents still expire after 24h.
+    try:
+        file_id, _ = _store_uploaded_file(content, file.filename, ext)
+    except OSError:
+        raise HTTPException(
+            500,
+            "Could not store the uploaded dataset. Please try again.",
+        )
 
     all_rows = df.where(df.notna(), None).to_dict(orient="records")
     # Convert numpy types and sanitize remaining NaN/inf
-    import math
     for row in all_rows:
         for k, v in row.items():
             if hasattr(v, 'item'):
@@ -191,6 +410,26 @@ async def upload_coding_file(request: Request, file: UploadFile):
         "row_count": len(df),
         "preview": all_rows,
     }
+
+
+@router.get("/coding/upload-status/{file_id}")
+@limiter.limit("120/minute")
+async def upload_status(request: Request, file_id: str):
+    """Report whether an opaque upload ID still resolves on this backend."""
+    try:
+        info = resolve_uploaded_file(file_id)
+    except UploadResolutionError as exc:
+        return _upload_error_response(exc, include_ok=True)
+
+    return JSONResponse(
+        content={
+            "ok": True,
+            "file_id": file_id,
+            "file_name": info["filename"],
+            "expires_at": info["created"] + _TEMP_TTL_SECONDS,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ── Script generation ─────────────────────────────────────────────────────────
@@ -296,9 +535,10 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
     """Download a self-contained ZIP with script, preprocessed data, and setup files."""
     _validate_config(req)
 
-    file_info = _uploaded_files.get(req.file_id)
-    if not file_info:
-        raise HTTPException(404, "File not found. Please re-upload the dataset.")
+    try:
+        file_info = resolve_uploaded_file(req.file_id)
+    except UploadResolutionError as exc:
+        return _upload_error_response(exc)
 
     file_path = file_info["path"]
     try:
@@ -390,14 +630,15 @@ The generated script does not contain your API key. When it starts, it reads the
     )
 
 
-async def _coding_updates(config: dict):
+async def _coding_updates(config: dict, file_info: dict | None = None):
     """Yield coding progress events for HTTP streaming and legacy WebSockets."""
     file_id = config.get("file_id")
-    if not file_id or file_id not in _uploaded_files:
-        yield {"type": "error", "message": "File not found. Please re-upload."}
-        return
-
-    file_info = _uploaded_files[file_id]
+    if file_info is None:
+        try:
+            file_info = resolve_uploaded_file(file_id)
+        except UploadResolutionError as exc:
+            yield {"type": "error", "code": exc.code, "message": exc.detail}
+            return
     file_path = file_info["path"]
 
     ext = file_path.rsplit(".", 1)[-1].lower()
@@ -465,10 +706,10 @@ async def _coding_updates(config: dict):
         yield update
 
 
-async def _coding_ndjson(config: dict):
+async def _coding_ndjson(config: dict, file_info: dict | None = None):
     try:
         yield json.dumps({"type": "started"}) + "\n"
-        async for update in with_keepalive(_coding_updates(config)):
+        async for update in with_keepalive(_coding_updates(config, file_info)):
             yield json.dumps(update, ensure_ascii=False, default=str) + "\n"
     except Exception as exc:
         yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
@@ -478,8 +719,15 @@ async def _coding_ndjson(config: dict):
 @limiter.limit("10/minute")
 async def run_coding_stream(request: Request, config: dict):
     """Run coding over streaming HTTP for proxies that do not support WebSockets."""
+    # Resolve before constructing StreamingResponse. Otherwise HTTP headers are
+    # already committed as 200 before the generator discovers a stale file ID.
+    try:
+        file_info = resolve_uploaded_file(config.get("file_id"))
+    except UploadResolutionError as exc:
+        return _upload_error_response(exc)
+
     return StreamingResponse(
-        _coding_ndjson(config),
+        _coding_ndjson(config, file_info),
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache, no-transform",

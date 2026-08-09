@@ -1660,7 +1660,7 @@ td.cm-off:hover{background:var(--bg)}
 .tour-card-nav{display:flex;gap:8px}
 
 /* Guided tour — section spotlight + sub-highlight + floating right panel */
-.tour-root{position:fixed;inset:0;z-index:2000;pointer-events:none}
+.tour-root{position:fixed;inset:0;z-index:2000;pointer-events:auto;touch-action:none}
 .tour-dim-full{position:fixed;inset:0;background:rgba(17,20,28,.5)}
 .tour-section-spot{
   position:fixed;border-radius:10px;

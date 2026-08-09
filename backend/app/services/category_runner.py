@@ -161,11 +161,16 @@ async def run_category_generation(
 
     # If a file was uploaded, sample rows from it
     if file_id and message_column:
-        from app.routes.coding import _uploaded_files
+        from app.routes.coding import UploadResolutionError, resolve_uploaded_file
         import pandas as pd
-        import random
 
-        file_info = _uploaded_files.get(file_id)
+        try:
+            file_info = resolve_uploaded_file(file_id)
+        except UploadResolutionError:
+            # The dataset is an optional aid for category generation. Preserve
+            # the existing behavior of generating without a sample when that
+            # optional upload has expired or is otherwise unavailable.
+            file_info = None
         if file_info:
             ext = file_info["path"].rsplit(".", 1)[-1].lower()
             df = pd.read_csv(file_info["path"]) if ext == "csv" else pd.read_excel(file_info["path"])
