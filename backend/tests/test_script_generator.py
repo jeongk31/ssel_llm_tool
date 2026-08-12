@@ -1,13 +1,8 @@
 import os
 import sys
-import tempfile
 import types
 import unittest
-from pathlib import Path
 from unittest.mock import patch
-
-import pandas as pd
-from openpyxl import load_workbook
 
 from app.services.script_generator import generate_coding_script
 
@@ -103,69 +98,42 @@ class GeneratedScriptSafetyTests(unittest.TestCase):
         self.assertNotIn(message_column, namespace["__doc__"])
         self.assertNotIn("must-not-appear", script)
 
-    def test_xlsx_writer_keeps_formula_like_headers_and_values_literal(self):
+    def test_package_uses_three_csv_inputs_and_runtime_api_key(self):
         script = generate_coding_script(
-            file_name="input.csv",
+            file_name="episodes.csv",
             message_column="message",
             experiment_instructions="Study instructions",
             coding_instructions="",
             codebook=[{"label": "category", "type": "text"}],
             provider="openai",
             model="test-model",
-            api_key="must-not-appear",
+            package_source_file="source_rows.csv",
+            package_episode_file="episodes.csv",
+            package_row_map_file="row_map.csv",
+            compact_columns=["message"],
+            result_stem="study",
         )
         namespace = self._execute_generated_script(script)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output_path = Path(temp_dir) / "literal.xlsx"
-            frame = pd.DataFrame(
-                [["=2+2", "ordinary"]],
-                columns=['=HYPERLINK("https://example.test")', "plain"],
+        self.assertTrue(namespace["PACKAGE_MODE"])
+        self.assertEqual(namespace["PACKAGE_SOURCE_FILE"], "source_rows.csv")
+        self.assertEqual(namespace["PACKAGE_EPISODE_FILE"], "episodes.csv")
+        self.assertEqual(namespace["PACKAGE_ROW_MAP_FILE"], "row_map.csv")
+        self.assertIn("load_package_csvs", namespace)
+        self.assertNotIn("must-not-appear", script)
+
+    def test_package_requires_all_three_csv_filenames(self):
+        with self.assertRaisesRegex(ValueError, "source, episode, and row-map"):
+            generate_coding_script(
+                file_name="episodes.csv",
+                message_column="message",
+                experiment_instructions="Study instructions",
+                coding_instructions="",
+                codebook=[{"label": "category", "type": "text"}],
+                provider="openai",
+                model="test-model",
+                package_source_file="source_rows.csv",
             )
-
-            namespace["write_literal_xlsx"](
-                frame,
-                str(output_path),
-                "Coded data",
-            )
-
-            worksheet = load_workbook(output_path, data_only=False)["Coded data"]
-            self.assertEqual(worksheet["A1"].value, '=HYPERLINK("https://example.test")')
-            self.assertEqual(worksheet["A1"].data_type, "s")
-            self.assertEqual(worksheet["A2"].value, "=2+2")
-            self.assertEqual(worksheet["A2"].data_type, "s")
-
-    def test_xlsx_writer_rejects_lossy_or_xml_invalid_text_before_writing(self):
-        script = generate_coding_script(
-            file_name="input.csv",
-            message_column="message",
-            experiment_instructions="Study instructions",
-            coding_instructions="",
-            codebook=[{"label": "category", "type": "text"}],
-            provider="openai",
-            model="test-model",
-            api_key="must-not-appear",
-        )
-        namespace = self._execute_generated_script(script)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            long_path = Path(temp_dir) / "too-long.xlsx"
-            with self.assertRaisesRegex(ValueError, "32,767"):
-                namespace["write_literal_xlsx"](
-                    pd.DataFrame([["x" * 32768]], columns=["message"]),
-                    str(long_path),
-                    "Coded data",
-                )
-            self.assertFalse(long_path.exists())
-
-            invalid_path = Path(temp_dir) / "invalid-xml.xlsx"
-            with self.assertRaisesRegex(ValueError, "U\\+0000"):
-                namespace["write_literal_xlsx"](
-                    pd.DataFrame([["before\x00after"]], columns=["message"]),
-                    str(invalid_path),
-                    "Coded data",
-                )
-            self.assertFalse(invalid_path.exists())
 
 
 if __name__ == "__main__":

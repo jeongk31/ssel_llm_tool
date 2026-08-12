@@ -42,11 +42,11 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between per-episode and per-sender variables?",
-    a: <><strong>Per episode</strong> produces one value for the whole episode. <strong>Per sender</strong> produces one value per participant and expands into a column per participant (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). Declare participant names in the codebook so they match your sender column.</>,
+    a: <><strong>Per episode</strong> produces one value for the whole episode. <strong>Per sender</strong> produces one value for each sender and expands into a column per detected name (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). ChAT reads these names automatically from the mapped Sender column; review and verify the list before continuing. Blank Sender cells must be corrected.</>,
   },
   {
     q: "What does “empty message handling” do?",
-    a: <>It controls fully empty communication episodes. <strong>Ignore</strong> skips the model call, while retaining the corresponding source rows with blank code cells in the primary workbook. <strong>Code as value</strong> sends the empty episode to the model so the codebook can define how it should be classified.</>,
+    a: <>It controls fully empty communication episodes. <strong>Ignore</strong> skips the model call, while retaining the corresponding source rows with blank code cells in the primary CSV. <strong>Code as value</strong> sends the empty episode to the model so the codebook can define how it should be classified.</>,
   },
   {
     q: "How many models and runs should I use, and how are they combined?",
@@ -54,11 +54,11 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between “Generate package” and “Run Coding”?",
-    a: <><strong>Generate package</strong> downloads a ZIP containing the script, an input workbook with the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. The script uses the first selected provider and model for one call per episode. The package never contains your API key; the script reads <code>CHAT_API_KEY</code> or prompts securely at runtime. <strong>Run Coding</strong> validates your keys and codes every episode live in the app using all configured models and runs, streaming results and flagging out-of-range or failed episodes so you can re-run just those.</>,
+    a: <><strong>Generate package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. You only need to select its provider and model; no API key is required to generate the package because the script reads <code>CHAT_API_KEY</code> or prompts securely at runtime. The script uses the first selected provider and model for one call per episode. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
   },
   {
     q: "What do the result downloads contain?",
-    a: <>The main <strong>Coded dataset</strong> Excel workbook preserves every original row and column and appends the final aggregate coding columns. If several message rows form one episode, that episode&apos;s codes are repeated on each corresponding original row. The optional <strong>Episode-level results</strong> workbook is a compact version with one row per preprocessed episode. When several model calls were used, their individual and aggregate records are available separately as detailed outputs until a selective re-run replaces part of the run.</>,
+    a: <>The primary <strong>Coded dataset</strong> CSV preserves every original row and column and appends the final aggregate coding columns. If several message rows form one episode, that episode&apos;s codes are repeated on each corresponding original row. The optional <strong>Episode-level results</strong> CSV is a compact version with one row per preprocessed episode. When several model calls were used, their individual and aggregate records are available separately as detailed CSV outputs. After a selective re-run, the replacement calls take the place of the earlier records for those episodes while all unaffected records remain available.</>,
   },
   {
     q: "Why is my run showing errors for some episodes?",
@@ -66,7 +66,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Which LLM providers are supported?",
-    a: <>OpenAI, Google (Gemini), and DeepSeek. Each model slot takes its own API key.</>,
+    a: <>OpenAI, Google (Gemini), and DeepSeek. Browser execution requires an API key for each configured model. Package generation does not require a key because the local script obtains it when run.</>,
   },
   {
     q: "If I refresh the page, do I lose my work?",
@@ -281,7 +281,7 @@ export default function HowToPage({ onNavigate }: Props) {
                   items={[
                     { label: "Input", value: "CSV or Excel file" },
                     { label: "You configure", value: "Instructions, codebook, models" },
-                    { label: "Output", value: "Coded Excel workbooks + Python package" },
+                    { label: "Output", value: "Coded CSV datasets + Python package" },
                   ]}
                 />
               </div>
@@ -293,7 +293,7 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <StepSection n={1} title="Upload & Map Dataset">
               <p>
-                A <strong>communication episode</strong> is a combination of messages exchanged through the same channel — or a collection of messages sent by one sender — and it's what the model codes. Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one episode (or choose “each row is its own episode”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Rows that share an identifier combination are merged into one tagged episode, shown in the preprocessed preview.
+                A <strong>communication episode</strong> is a combination of messages exchanged through the same channel — or a collection of messages sent by one sender — and it&apos;s what the model codes. Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one episode (or choose “each row is its own episode”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Tied Order values retain their uploaded row order. Every selected Context field must match exactly within an episode; ChAT blocks the mapping until inconsistencies are corrected or the field is unselected. The grouped episodes then appear in the preprocessed preview.
               </p>
             </StepSection>
 
@@ -307,7 +307,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <pre className="howto-example">{CODING_EXAMPLE_MULTI}</pre>
               <p className="howto-cite">Coding schemes adapted from {PAPER_CITATION_SHORT}.</p>
               <div className="howto-warning mt-12">
-                <strong>Per-sender variables</strong> expand into one output column per participant (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). Declare the participant names in the codebook so they match your sender column.
+                <strong>Per-sender variables</strong> expand into one output column per detected sender (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). ChAT obtains these names from the mapped Sender column and asks you to verify the list; blank Sender values must be corrected in the source dataset.
               </div>
             </StepSection>
 
@@ -327,7 +327,7 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>
-                Add one or more provider/model pairs, each with your own API key. Supported providers are OpenAI, Google (Gemini), and DeepSeek.
+                Add one or more provider/model pairs. Enter an API key for every model used in browser execution. No key is required to generate the local package; its script obtains the key at runtime. Supported providers are OpenAI, Google (Gemini), and DeepSeek.
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Runs per model:</span>
@@ -343,7 +343,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Running it</div>
               <div className="tool-desc">
                 <p>
-                  <strong>Generate package</strong> creates a ZIP with the Python script, an input workbook containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. The API key is excluded; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The main result download is an Excel workbook with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional workbook provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
+                  <strong>Generate package</strong> creates a ZIP with the Python script, three CSV files containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. It can be generated without entering an API key; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The primary result download is a CSV with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional CSV provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
                 </p>
               </div>
             </div>

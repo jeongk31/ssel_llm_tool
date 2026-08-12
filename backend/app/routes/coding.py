@@ -13,20 +13,20 @@ from typing import Any, Literal
 
 import pandas as pd
 from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, StreamingResponse, Response, JSONResponse
+from fastapi.responses import StreamingResponse, Response, JSONResponse
 from pydantic import BaseModel
 
 from app.config import settings
 from app.ratelimit import limiter
 from app.streaming import with_keepalive
 from app.services.script_generator import generate_coding_script
-from app.services.coding_runner import run_coding
+from app.services.coding_runner import DETAIL_EPISODE_INDEX_COLUMN, run_coding
 from app.services.result_exporter import (
     build_result_frames,
-    dataframe_to_xlsx,
-    dataframes_to_xlsx,
+    dataframe_to_csv,
     expanded_codebook_labels,
     prepare_coding_dataset,
+    validate_sender_configuration,
 )
 
 router = APIRouter()
@@ -272,6 +272,87 @@ def _remove_temp_dir(path: str) -> None:
         shutil.rmtree(d, ignore_errors=True)
 
 
+def _resolve_coding_result_path(path: str) -> str:
+    """Resolve only ChAT's canonical server-side detailed-results artifact."""
+
+    real = os.path.realpath(path)
+    result_dir = _temp_dir_for(real)
+    expected_file = (
+        os.path.realpath(os.path.join(result_dir, "coded_results.csv"))
+        if result_dir
+        else None
+    )
+    if (
+        not result_dir
+        or not os.path.basename(result_dir).startswith("llm_coding_")
+        or real != expected_file
+    ):
+        raise HTTPException(403, "Invalid path")
+    if not os.path.isfile(real):
+        raise HTTPException(404, "File not found")
+    return real
+
+
+def _validate_selective_rerun_artifact(path: str) -> str:
+    """Ensure an earlier detailed artifact can support episode replacement."""
+
+    real = _resolve_coding_result_path(path)
+    try:
+        columns = pd.read_csv(real, nrows=0).columns
+    except Exception as exc:
+        raise ValueError("The previous detailed-results artifact could not be read.") from exc
+    if DETAIL_EPISODE_INDEX_COLUMN not in columns:
+        raise ValueError(
+            "The previous detailed-results artifact cannot be updated by episode. "
+            "Re-run all episodes once to create a replaceable detailed archive."
+        )
+    return real
+
+
+def _merge_selective_rerun_artifact(
+    previous_path: str,
+    replacement_path: str,
+    episode_indices: list[int],
+) -> str:
+    """Replace affected episode records while retaining every unaffected call."""
+
+    previous_real = _validate_selective_rerun_artifact(previous_path)
+    replacement_real = _resolve_coding_result_path(replacement_path)
+    previous = pd.read_csv(previous_real)
+    replacement = pd.read_csv(replacement_real)
+    if DETAIL_EPISODE_INDEX_COLUMN not in replacement.columns:
+        raise ValueError("The selective-rerun artifact is missing episode indices.")
+
+    affected = {int(index) for index in episode_indices}
+    previous_indices = pd.to_numeric(
+        previous[DETAIL_EPISODE_INDEX_COLUMN], errors="raise"
+    ).astype(int)
+    replacement_indices = pd.to_numeric(
+        replacement[DETAIL_EPISODE_INDEX_COLUMN], errors="raise"
+    ).astype(int)
+    unexpected = set(replacement_indices.tolist()) - affected
+    if unexpected:
+        raise ValueError("The selective-rerun artifact contains unexpected episodes.")
+
+    retained = previous.loc[~previous_indices.isin(affected)].copy()
+    merged = pd.concat([retained, replacement], ignore_index=True, sort=False)
+    if not merged.empty:
+        merged[DETAIL_EPISODE_INDEX_COLUMN] = pd.to_numeric(
+            merged[DETAIL_EPISODE_INDEX_COLUMN], errors="raise"
+        ).astype(int)
+        merged = merged.sort_values(
+            DETAIL_EPISODE_INDEX_COLUMN,
+            kind="stable",
+        ).reset_index(drop=True)
+
+    temporary_path = replacement_real + ".merging"
+    merged.to_csv(temporary_path, index=False)
+    os.replace(temporary_path, replacement_real)
+    if previous_real != replacement_real:
+        _remove_temp_dir(previous_real)
+    return replacement_real
+
+
 def _cleanup_file_id(file_id: str) -> None:
     info = _uploaded_files.pop(file_id, None)
     if info and info.get("path"):
@@ -316,6 +397,7 @@ def _group_units(
     identity_column: str | None,
     order_column: str | None,
     order_direction: str,
+    context_columns: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Collapse rows that share the same identifier combination into one unit.
@@ -333,6 +415,7 @@ def _group_units(
         identity_column=identity_column,
         order_column=order_column,
         order_direction=order_direction,
+        context_columns=context_columns,
     ).episodes
 
 
@@ -454,7 +537,9 @@ class GenerateScriptRequest(BaseModel):
     codebook: list[CodebookEntry]
     provider: str
     model: str = ""
-    api_key: str
+    # Generated artifacts never embed credentials; their script obtains the key
+    # from CHAT_API_KEY or prompts at runtime.
+    api_key: str = ""
     participants: list[str] = []
     context: list[ContextItem] = []
     identifier_columns: list[str] = []
@@ -508,7 +593,7 @@ async def generate_script(request: Request, req: GenerateScriptRequest):
 
 
 def _package_requirements(provider: str) -> str:
-    packages = ["pandas", "openpyxl"]
+    packages = ["pandas"]
     if provider == "anthropic":
         packages.append("anthropic")
     elif provider == "gemini":
@@ -541,18 +626,31 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
     if req.message_column not in df.columns:
         raise HTTPException(400, f"Column '{req.message_column}' not found in the dataset.")
 
-    prepared = prepare_coding_dataset(
-        df,
-        message_column=req.message_column,
-        identifier_columns=req.identifier_columns,
-        identity_column=req.identity_column,
-        order_column=req.order_column,
-        order_direction=req.order_direction,
-    )
+    codebook_dicts = [entry.model_dump() for entry in req.codebook]
+    try:
+        validate_sender_configuration(
+            df,
+            identity_column=req.identity_column,
+            participants=req.participants,
+            codebook=codebook_dicts,
+        )
+        prepared = prepare_coding_dataset(
+            df,
+            message_column=req.message_column,
+            identifier_columns=req.identifier_columns,
+            identity_column=req.identity_column,
+            order_column=req.order_column,
+            order_direction=req.order_direction,
+            context_columns=[item.column for item in req.context],
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
     original_stem = req.file_name.rsplit(".", 1)[0] if "." in req.file_name else req.file_name
     safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(original_stem)).strip("._") or "dataset"
-    dataset_filename = f"{safe_stem}_chat_input.xlsx"
+    source_filename = "source_rows.csv"
+    episode_filename = "episodes.csv"
+    row_map_filename = "row_map.csv"
     script_filename = f"code_{safe_stem}.py"
 
     row_map = pd.DataFrame(
@@ -571,53 +669,48 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
     ]:
         if column and column in prepared.episodes.columns and column not in compact_columns:
             compact_columns.append(column)
-    try:
-        package_input = dataframes_to_xlsx(
-            [
-                ("source_rows", df),
-                ("episodes", prepared.episodes),
-                ("row_map", row_map),
-            ]
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
+    source_csv = dataframe_to_csv(df)
+    episode_csv = dataframe_to_csv(prepared.episodes)
+    row_map_csv = dataframe_to_csv(row_map)
 
-    # The package workbook already contains the exact grouped episode table and a
-    # positional map back to every source row.  The script therefore codes the
-    # episodes sheet directly and expands those values without regrouping.
+    # The package contains the exact grouped episode table and a positional map
+    # back to every source row. The script codes episodes.csv directly and
+    # expands those values without regrouping.
     script_text = generate_coding_script(
-        file_name=dataset_filename,
+        file_name=episode_filename,
         message_column=req.message_column,
         experiment_instructions=req.experiment_instructions,
         coding_instructions=req.coding_instructions,
-        codebook=[entry.model_dump() for entry in req.codebook],
+        codebook=codebook_dicts,
         provider=req.provider,
         model=req.model,
         api_key=req.api_key,
         participants=req.participants,
         context=[c.model_dump() for c in req.context],
         identifier_columns=[],
-        identity_column=None,
+        identity_column=req.identity_column,
         order_column=None,
         order_direction="asc",
         empty_message_handling=req.empty_message_handling,
-        package_source_sheet="source_rows",
-        package_episode_sheet="episodes",
-        package_row_map_sheet="row_map",
+        package_source_file=source_filename,
+        package_episode_file=episode_filename,
+        package_row_map_file=row_map_filename,
         compact_columns=compact_columns,
         result_stem=safe_stem,
     )
 
     readme = f"""# ChAT coding package
 
-This package contains the coding configuration generated in ChAT and one input
-workbook that preserves the loaded source rows, the exact preprocessed episodes,
+This package contains the coding configuration generated in ChAT and three CSV
+files that preserve the loaded source rows, the exact preprocessed episodes,
 and their positional row-to-episode mapping.
 
 ## Files
 
 - `{script_filename}` — generated Python coding script
-- `{dataset_filename}` — source rows, preprocessed episodes, and row map
+- `{source_filename}` — parsed source rows
+- `{episode_filename}` — exact preprocessed episodes coded by the script
+- `{row_map_filename}` — one-based source-row to episode mapping
 - `requirements.txt` — Python dependencies
 
 ## Run
@@ -631,16 +724,17 @@ and their positional row-to-episode mapping.
 
    `python3 {script_filename}`
 
-The script defaults to `{dataset_filename}` and writes the primary result
-`{safe_stem}_coded.xlsx`. This workbook has the same source rows and original
+The script defaults to `{episode_filename}` and reads all three CSV files from
+the same folder. It writes the primary result `{safe_stem}_coded.csv`. This CSV
+has the same source rows and original
 columns as the input, with the coding columns appended. Rows belonging to the
 same episode receive the same episode-level coding values.
 
-To also create the compact one-row-per-episode workbook, run:
+To also create the compact one-row-per-episode CSV, run:
 
    `python3 {script_filename} --also-save-episodes`
 
-This additionally writes `{safe_stem}_coded_episodes.xlsx`.
+This additionally writes `{safe_stem}_coded_episodes.csv`.
 
 The generated script uses the first provider and model selected in ChAT and
 makes one call per episode. To change model parameters or create a repeated- or
@@ -654,7 +748,9 @@ The generated script does not contain your API key. When it starts, it reads the
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(script_filename, script_text)
-        zf.writestr(dataset_filename, package_input)
+        zf.writestr(source_filename, source_csv)
+        zf.writestr(episode_filename, episode_csv)
+        zf.writestr(row_map_filename, row_map_csv)
         zf.writestr("README.md", readme)
         zf.writestr("requirements.txt", _package_requirements(req.provider))
 
@@ -687,15 +783,6 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
         yield {"type": "error", "message": f"Column '{message_column}' not found in file."}
         return
 
-    df = _group_units(
-        df,
-        message_column=message_column,
-        identifier_columns=config.get("identifier_columns") or [],
-        identity_column=config.get("identity_column"),
-        order_column=config.get("order_column"),
-        order_direction=config.get("order_direction", "asc"),
-    )
-
     codebook = config.get("codebook", [])
     participants = config.get("participants", []) or []
     context = config.get("context", []) or []
@@ -703,6 +790,7 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
     runs_per_model = config.get("runs_per_model", 1)
     aggregation = config.get("aggregation", "mode")
     row_indices = config.get("row_indices")
+    previous_result_path = config.get("previous_result_path")
 
     if not model_slots:
         provider = config.get("provider", "")
@@ -716,6 +804,26 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
         return
 
     try:
+        validate_sender_configuration(
+            df,
+            identity_column=config.get("identity_column"),
+            participants=participants,
+            codebook=codebook,
+        )
+        df = _group_units(
+            df,
+            message_column=message_column,
+            identifier_columns=config.get("identifier_columns") or [],
+            identity_column=config.get("identity_column"),
+            order_column=config.get("order_column"),
+            order_direction=config.get("order_direction", "asc"),
+            context_columns=[item.get("column") for item in context if item.get("column")],
+        )
+    except ValueError as exc:
+        yield {"type": "error", "message": str(exc)}
+        return
+
+    try:
         expanded_codebook_labels(codebook, participants)
     except ValueError as exc:
         # Reject ambiguous JSON/output keys before making any paid model calls.
@@ -724,6 +832,20 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
 
     if row_indices is not None:
         valid_indices = [i for i in row_indices if 0 <= i < len(df)]
+        if len(valid_indices) != len(set(valid_indices)):
+            yield {"type": "error", "message": "Selective rerun episode indices must be unique."}
+            return
+        if not previous_result_path:
+            yield {
+                "type": "error",
+                "message": "The previous detailed-results artifact is required for a selective rerun.",
+            }
+            return
+        try:
+            previous_result_path = _validate_selective_rerun_artifact(previous_result_path)
+        except (HTTPException, ValueError) as exc:
+            yield {"type": "error", "message": getattr(exc, "detail", str(exc))}
+            return
         df = df.iloc[valid_indices].reset_index(drop=True)
     else:
         valid_indices = None
@@ -740,11 +862,27 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
         runs_per_model=runs_per_model,
         empty_message_handling=config.get("empty_message_handling", ""),
         aggregation=aggregation,
+        episode_indices=valid_indices,
     ):
         if valid_indices is not None and "index" in update:
             idx = update["index"]
             if 0 <= idx < len(valid_indices):
                 update["index"] = valid_indices[idx]
+        if valid_indices is not None and update.get("type") == "complete":
+            try:
+                update["file_path"] = _merge_selective_rerun_artifact(
+                    previous_result_path,
+                    update["file_path"],
+                    valid_indices,
+                )
+            except (HTTPException, ValueError, OSError, pd.errors.ParserError) as exc:
+                _remove_temp_dir(update.get("file_path", ""))
+                yield {
+                    "type": "error",
+                    "message": "The selective rerun completed, but its detailed records "
+                    f"could not replace the previous episode records: {getattr(exc, 'detail', str(exc))}",
+                }
+                return
         yield update
 
 
@@ -870,7 +1008,7 @@ class ExportResultsRequest(BaseModel):
 @router.post("/coding/export-results")
 @limiter.limit("30/minute")
 async def export_results(request: Request, req: ExportResultsRequest):
-    """Build either the source-row or compact episode-level XLSX result.
+    """Build either the source-row or compact episode-level CSV result.
 
     The browser sends only the latest aggregate value for each coded episode.
     The original dataset is reread from the server-side upload so original rows,
@@ -903,6 +1041,13 @@ async def export_results(request: Request, req: ExportResultsRequest):
         )
 
     try:
+        codebook_dicts = [entry.model_dump() for entry in req.codebook]
+        validate_sender_configuration(
+            source_df,
+            identity_column=req.identity_column,
+            participants=req.participants,
+            codebook=codebook_dicts,
+        )
         prepared = prepare_coding_dataset(
             source_df,
             message_column=req.message_column,
@@ -910,12 +1055,13 @@ async def export_results(request: Request, req: ExportResultsRequest):
             identity_column=req.identity_column,
             order_column=req.order_column,
             order_direction=req.order_direction,
+            context_columns=[item.column for item in req.context],
         )
         source_result, episode_result, _ = build_result_frames(
             source_df=source_df,
             prepared=prepared,
             coded_rows=[row.model_dump() for row in req.coded_rows],
-            codebook=[entry.model_dump() for entry in req.codebook],
+            codebook=codebook_dicts,
             participants=req.participants,
             message_column=req.message_column,
             identifier_columns=req.identifier_columns,
@@ -932,19 +1078,16 @@ async def export_results(request: Request, req: ExportResultsRequest):
         re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(original_stem)).strip("._")
         or "dataset"
     )
-    try:
-        if req.kind == "episodes":
-            workbook = dataframe_to_xlsx(episode_result, sheet_name="Coded episodes")
-            filename = f"{safe_stem}_coded_episodes.xlsx"
-        else:
-            workbook = dataframe_to_xlsx(source_result, sheet_name="Coded data")
-            filename = f"{safe_stem}_coded.xlsx"
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
+    if req.kind == "episodes":
+        content = dataframe_to_csv(episode_result)
+        filename = f"{safe_stem}_coded_episodes.csv"
+    else:
+        content = dataframe_to_csv(source_result)
+        filename = f"{safe_stem}_coded.csv"
 
     return Response(
-        content=workbook,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content=content,
+        media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-store",
@@ -979,22 +1122,7 @@ async def download_results(path: str):
     Only the canonical result file inside a ChAT coding directory may be read;
     unrelated files in the system temporary directory are rejected.
     """
-    real = os.path.realpath(path)
-    result_dir = _temp_dir_for(real)
-    expected_file = (
-        os.path.realpath(os.path.join(result_dir, "coded_results.csv"))
-        if result_dir
-        else None
-    )
-    if (
-        not result_dir
-        or not os.path.basename(result_dir).startswith("llm_coding_")
-        or real != expected_file
-    ):
-        raise HTTPException(403, "Invalid path")
-    if not os.path.isfile(real):
-        raise HTTPException(404, "File not found")
-    path = real
+    path = _resolve_coding_result_path(path)
 
     import re
     import zipfile
@@ -1002,23 +1130,32 @@ async def download_results(path: str):
     from starlette.responses import Response
 
     df = pd.read_csv(path)
+    public_df = df.drop(columns=[DETAIL_EPISODE_INDEX_COLUMN], errors="ignore")
 
     if "coder" not in df.columns:
-        return FileResponse(path, filename="coded_results.csv", media_type="text/csv")
+        return Response(
+            content=public_df.to_csv(index=False),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="coded_results.csv"'},
+        )
 
     coders = [e for e in df["coder"].unique() if not str(e).startswith("__")]
     aggregated = [e for e in df["coder"].unique() if str(e).startswith("__")]
 
     # Single model, single run → plain CSV
     if len(coders) <= 1 and len(aggregated) == 0:
-        return FileResponse(path, filename="coded_results.csv", media_type="text/csv")
+        return Response(
+            content=public_df.to_csv(index=False),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="coded_results.csv"'},
+        )
 
     # Multiple → build structured zip
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         # Overall aggregate (aggregated rows, or all if no aggregation)
         if aggregated:
-            agg_df = df[df["coder"].isin(aggregated)].drop(columns=["coder"], errors="ignore")
+            agg_df = public_df[public_df["coder"].isin(aggregated)].drop(columns=["coder"], errors="ignore")
             zf.writestr("aggregate.csv", agg_df.to_csv(index=False))
 
         # Group coders by model (split on __run suffix)
@@ -1035,14 +1172,14 @@ async def download_results(path: str):
 
             if len(runs) == 1:
                 # Single run for this model — just one CSV
-                run_df = df[df["coder"] == runs[0]].drop(columns=["coder"], errors="ignore")
+                run_df = public_df[public_df["coder"] == runs[0]].drop(columns=["coder"], errors="ignore")
                 zf.writestr(f"{safe_name}.csv", run_df.to_csv(index=False))
             else:
                 # The runner's overall aggregate already applies each variable's
                 # configured mode/mean rule. Keep repeated per-model calls as raw
                 # records rather than manufacturing a mode-only model aggregate.
                 for i, run_enc in enumerate(sorted(runs)):
-                    run_df = df[df["coder"] == run_enc].drop(columns=["coder"], errors="ignore")
+                    run_df = public_df[public_df["coder"] == run_enc].drop(columns=["coder"], errors="ignore")
                     zf.writestr(f"{safe_name}/run{i + 1}.csv", run_df.to_csv(index=False))
 
     buf.seek(0)
@@ -1067,7 +1204,7 @@ def _validate_config(req: GenerateScriptRequest):
         if entry.aggregation not in ("mode", "mean"):
             raise HTTPException(400, f"Codebook entry {i + 1}: aggregation must be mode or mean")
         if entry.level == "sender" and not req.participants:
-            raise HTTPException(400, "Per-sender variables require a participant list")
+            raise HTTPException(400, "Per-sender variables require a verified sender list")
 
     try:
         expanded_codebook_labels(
@@ -1083,5 +1220,3 @@ def _validate_config(req: GenerateScriptRequest):
         raise HTTPException(400, "Experiment instructions are required")
     if not req.provider.strip():
         raise HTTPException(400, "Provider is required")
-    if not req.api_key.strip():
-        raise HTTPException(400, "API key is required")

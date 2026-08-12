@@ -34,17 +34,17 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "identity",
     targetId: "tour-role-identity", title: "Step 3 · Sender",
-    body: (<p><strong>Sender</strong> (optional) is the column identifying the message sender in a given row. Tag this column when you have variables that are to be coded at the sender level.</p>),
+    body: (<p><strong>Sender</strong> (optional) identifies who wrote each message. When a codebook variable is set to <em>per sender</em>, ChAT automatically detects the distinct names in this column and asks you to verify them; blank sender values must be corrected before coding.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "order",
     targetId: "tour-role-order", title: "Step 4 · Order",
-    body: (<p><strong>Order</strong> (optional) sequences messages within an episode. Tag a timestamp or turn-number column so the messages are read in the right order (ascending or descending).</p>),
+    body: (<p><strong>Order</strong> (optional) sequences messages within an episode. Tag a timestamp or turn-number column and choose ascending or descending order. If several rows have the same Order value, ChAT preserves their order in the uploaded dataset.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "context",
     targetId: "tour-role-context", title: "Step 5 · Context",
-    body: (<p><strong>Context</strong> (optional) tags any extra columns the model should know about (e.g. a characteristic of the communication channel or a treatment variable / condition). You should describe what each one means in the coding manual so the model interprets the context correctly.</p>),
+    body: (<p><strong>Context</strong> (optional) tags extra fields the model should know about, such as treatment condition or communication channel. Describe each selected field here. Because each episode receives one value for a Context field, ChAT requires that field to match exactly across every source row grouped into the episode.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
@@ -54,13 +54,13 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
     targetId: "tour-map-proceed", title: "Save & Proceed",
-    body: (<p>Once the required steps (Message + Episode identifier) are done, click <strong>Save &amp; Proceed</strong>. Rows sharing your identifier(s) are merged into one tagged episode, shown in the preprocessed preview.</p>),
+    body: (<p>Once the required steps (Message + Episode identifier) are done, click <strong>Save &amp; Proceed</strong>. ChAT first checks that every selected Context field is consistent within each episode. Conflicts must be corrected in the source file or unselected before the grouped episode preview is created.</p>),
   },
   // ── Section 2: Codebook ──
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
     targetId: "tour-empty-handling", title: "Empty messages",
-    body: (<p>Choose what happens to a fully empty episode: <strong>Ignore</strong> skips the model call but keeps its original rows in the primary workbook with blank code cells; <strong>Code as value</strong> asks the model to apply the codebook to the empty episode.</p>),
+    body: (<p>Choose what happens to a fully empty episode: <strong>Ignore</strong> skips the model call but keeps its original rows in the primary CSV with blank code cells; <strong>Code as value</strong> asks the model to apply the codebook to the empty episode.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
@@ -76,7 +76,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
     targetId: "tour-cb-type", title: "Variable type",
-    body: (<p>Pick the <strong>type</strong> (hover the <span aria-hidden>?</span> for details): Binary is fixed 0/1, Categorical is your named set, Numeric a number, Text free-form. Per-sender variables expand to one column per participant (e.g. <code>cooperation_P</code>).</p>),
+    body: (<p>Pick the <strong>type</strong> (hover the <span aria-hidden>?</span> for details): Binary is fixed 0/1, Categorical is your named set, Numeric a number, Text free-form. Per-sender variables expand to one column per detected sender; review and verify the automatically detected list before continuing.</p>),
   },
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
@@ -108,7 +108,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
     targetId: "tour-model-slots", title: "Models & API keys", mediaBox: { x: 5, y: 19, w: 89, h: 35 },
-    body: (<p>Add one or more provider + model + API key configurations. <strong>Run Coding</strong> uses every configured model, and each runs independently.</p>),
+    body: (<p>Add one or more provider and model configurations. An API key is required for each model used by <strong>Run Coding</strong>. It is optional when generating a local package because no key is stored in the download; the script requests it at runtime.</p>),
   },
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
@@ -119,12 +119,12 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
     title: "Run or generate a package",
-    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, an input workbook with the source rows, exact preprocessed episodes, and row map, plus a README and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
+    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
   },
   {
     sectionId: "coding-run-bar", section: "Results",
     title: "Review and download results",
-    body: (<p>After browser coding, ChAT validates the coded episodes and lets you re-run any that need attention. The main <strong>coded dataset</strong> Excel download keeps every original row and column, repeating an episode&apos;s final codes across its corresponding message rows. An optional <strong>episode-level</strong> Excel file provides one row per preprocessed episode; detailed model and run outputs are kept separate when available.</p>),
+    body: (<p>After browser coding, ChAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
   },
 ];
 
@@ -275,13 +275,13 @@ function downloadFilename(response: Response, fallback: string): string {
 
 async function parseDownloadArtifact(
   response: Response,
-  expected: "xlsx" | "zip",
+  expected: "csv" | "zip",
   fallbackFilename: string,
 ): Promise<{ blob: Blob; filename: string }> {
   const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
   const disposition = response.headers.get("Content-Disposition") || "";
-  const expectedType = expected === "xlsx"
-    ? contentType.includes("spreadsheetml") || /\.xlsx(?:[";]|$)/i.test(disposition)
+  const expectedType = expected === "csv"
+    ? contentType.includes("text/csv") || /\.csv(?:[";]|$)/i.test(disposition)
     : contentType.includes("application/zip") || contentType.includes("x-zip-compressed") || /\.zip(?:[";]|$)/i.test(disposition);
   const genericBinary = contentType.includes("application/octet-stream");
 
@@ -308,7 +308,7 @@ async function parseDownloadArtifact(
     detail = `The server returned an HTML error page instead of the requested download (HTTP ${response.status}${title ? `: ${title}` : ""}).`;
   }
   if (!detail && response.ok) {
-    detail = `The server returned an unexpected file type instead of a${expected === "xlsx" ? "n Excel workbook" : " ZIP archive"}.`;
+    detail = `The server returned an unexpected file type instead of a ${expected === "csv" ? "CSV dataset" : "ZIP archive"}.`;
   }
   throw new Error(detail || response.statusText || `Download failed (HTTP ${response.status}).`);
 }
@@ -318,9 +318,9 @@ type ColRole = "message" | "identifier" | "identity" | "order" | "context";
 const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string; hint: string }> = {
   message:    { label: "Message",         short: "MSG", color: "#2563eb", bg: "#dbeafe", hint: "Click the column that contains the message text." },
   identifier: { label: "Episode identifier", short: "ID", color: "#16a34a", bg: "#dcfce7", hint: "Click the column(s) that define one episode — e.g. session + round. Rows sharing the same combination are merged into one episode." },
-  identity:   { label: "Sender",          short: "WHO", color: "#d97706", bg: "#fef3c7", hint: "Optional — click the column that says who sent each message." },
-  order:      { label: "Order",           short: "ORD", color: "#7c3aed", bg: "#ede9fe", hint: "Optional — click the column that orders messages within an episode." },
-  context:    { label: "Context",         short: "CTX", color: "#db2777", bg: "#fce7f3", hint: "Optional — click any extra columns the model should know about." },
+  identity:   { label: "Sender",          short: "WHO", color: "#d97706", bg: "#fef3c7", hint: "Optional — click the column that says who sent each message. ChAT will detect its distinct sender names automatically." },
+  order:      { label: "Order",           short: "ORD", color: "#7c3aed", bg: "#ede9fe", hint: "Optional — click the column that orders messages within an episode. Ties keep the uploaded row order." },
+  context:    { label: "Context",         short: "CTX", color: "#db2777", bg: "#fce7f3", hint: "Optional — click extra columns the model should know about. Each selected value must match exactly within an episode." },
 };
 const ROLE_ORDER: ColRole[] = ["message", "identifier", "identity", "order", "context"];
 
@@ -345,6 +345,90 @@ function preprocessGroupKey(row: Record<string, unknown>, idCols: string[]): str
     if (typeof value === "string") return ["string", value];
     return [typeof value, value];
   }));
+}
+
+function preprocessValueKey(value: unknown): string {
+  if (isMissingPreprocessValue(value)) return JSON.stringify(["missing"]);
+  if (typeof value === "number") return JSON.stringify(["number", Object.is(value, -0) ? 0 : value]);
+  if (typeof value === "boolean") return JSON.stringify(["boolean", value]);
+  if (typeof value === "string") return JSON.stringify(["string", value]);
+  return JSON.stringify([typeof value, value]);
+}
+
+interface ContextConflict {
+  column: string;
+  conflictingEpisodeCount: number;
+  exampleEpisode: string;
+  exampleValues: string[];
+}
+
+function displayMappingValue(value: unknown): string {
+  return isMissingPreprocessValue(value) || (typeof value === "string" && value.trim() === "")
+    ? "(blank)"
+    : String(value);
+}
+
+function findContextConflicts(
+  rows: Record<string, unknown>[],
+  identifierColumns: string[],
+  contextColumns: string[],
+  rowsAsUnits: boolean,
+): ContextConflict[] {
+  if (rowsAsUnits || identifierColumns.length === 0 || contextColumns.length === 0) return [];
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const key = preprocessGroupKey(row, identifierColumns);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+
+  const conflicts: ContextConflict[] = [];
+  for (const column of contextColumns) {
+    let conflictingEpisodeCount = 0;
+    let exampleEpisode = "";
+    let exampleValues: string[] = [];
+    for (const group of groups.values()) {
+      const distinct = new Map<string, unknown>();
+      for (const row of group) {
+        const value = row[column];
+        const key = preprocessValueKey(value);
+        if (!distinct.has(key)) distinct.set(key, value);
+      }
+      if (distinct.size <= 1) continue;
+      conflictingEpisodeCount += 1;
+      if (!exampleEpisode) {
+        exampleEpisode = identifierColumns
+          .map((identifier) => `${identifier}=${displayMappingValue(group[0][identifier])}`)
+          .join(", ");
+        exampleValues = [...distinct.values()].map(displayMappingValue);
+      }
+    }
+    if (conflictingEpisodeCount > 0) {
+      conflicts.push({ column, conflictingEpisodeCount, exampleEpisode, exampleValues });
+    }
+  }
+  return conflicts;
+}
+
+function detectSenders(rows: Record<string, unknown>[], identityColumn: string): { names: string[]; blankRows: number[] } {
+  if (!identityColumn) return { names: [], blankRows: [] };
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const blankRows: number[] = [];
+  rows.forEach((row, index) => {
+    const value = row[identityColumn];
+    if (isMissingPreprocessValue(value) || String(value).trim() === "") {
+      blankRows.push(index + 1);
+      return;
+    }
+    const name = String(value).trim();
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  });
+  return { names, blankRows };
 }
 
 // Python compares strings by Unicode code point.  localeCompare can vary with
@@ -705,57 +789,6 @@ const tourSampleCodebook = (): CodebookEntry[] => [{
   ],
 }];
 
-// ── TagInput ──────────────────────────────────────────────────────────────────
-
-function TagInput({ value, onChange, type }: { value: string; onChange: (v: string) => void; type: string }) {
-  const [input, setInput] = useState("");
-  const tags = value ? value.split(",").map((t) => t.trim()).filter(Boolean) : [];
-
-  const addTag = (raw: string) => {
-    const tag = raw.trim();
-    if (!tag) return;
-    if (tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
-    onChange([...tags, tag].join(","));
-    setInput("");
-  };
-
-  const removeTag = (idx: number) => {
-    onChange(tags.filter((_, i) => i !== idx).join(","));
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTag(input);
-    } else if (e.key === "Backspace" && !input && tags.length > 0) {
-      removeTag(tags.length - 1);
-    }
-  };
-
-  const placeholder = tags.length === 0
-    ? type === "binary" ? "e.g. 0, 1" : type === "numeric" ? "e.g. 0, 10" : "Type a value, press Enter"
-    : "Add...";
-
-  return (
-    <div className="tag-input">
-      {tags.map((tag, i) => (
-        <span key={i} className="tag-chip">
-          {tag}
-          <button className="tag-chip-rm" onClick={() => removeTag(i)} type="button">&times;</button>
-        </span>
-      ))}
-      <input
-        className="tag-input-field"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={() => addTag(input)}
-        placeholder={placeholder}
-      />
-    </div>
-  );
-}
-
 // ── ModelSlot type ────────────────────────────────────────────────────────────
 
 interface ModelSlot {
@@ -886,6 +919,7 @@ export default function Home() {
   const [orderDirection, setOrderDirection] = useState<"asc" | "desc">("asc");
   const [contextColumns, setContextColumns] = useState<string[]>([]);
   const [contextDescriptions, setContextDescriptions] = useState<Record<string, string>>({});
+  const [contextConflictAlert, setContextConflictAlert] = useState<ContextConflict[] | null>(null);
   const [rowsAsUnits, setRowsAsUnits] = useState(false); // identifier = each row is its own unit
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [colMapError, setColMapError] = useState("");
@@ -949,12 +983,32 @@ export default function Home() {
     setPdfModalOpen(false);
   };
   const [codebook, setCodebook] = useState<CodebookEntry[]>([newEntry()]);
-  const [participantsStr, setParticipantsStr] = useState("");
-  const participants = useMemo(
-    () => participantsStr.split(",").map((s) => s.trim()).filter(Boolean),
-    [participantsStr],
+  const [senderVerificationSignature, setSenderVerificationSignature] = useState("");
+  const detectedSenderInfo = useMemo(
+    () => detectSenders(uploadResult?.preview ?? [], identityColumn),
+    [uploadResult, identityColumn],
   );
-  const hasSenderVar = codebook.some((e) => e.level === "sender" && e.label.trim());
+  const participants = detectedSenderInfo.names;
+  const currentSenderSignature = useMemo(
+    () => JSON.stringify({
+      identityColumn,
+      participants,
+      blankRows: detectedSenderInfo.blankRows,
+      rowCount: uploadResult?.row_count ?? 0,
+    }),
+    [identityColumn, participants, detectedSenderInfo.blankRows, uploadResult?.row_count],
+  );
+  const hasSenderVar = codebook.some((entry) => entry.level === "sender");
+  const senderListVerified = senderVerificationSignature === currentSenderSignature;
+  const currentContextConflicts = useMemo(
+    () => findContextConflicts(
+      uploadResult?.preview ?? [],
+      identifierColumns,
+      contextColumns,
+      rowsAsUnits,
+    ),
+    [uploadResult, identifierColumns, contextColumns, rowsAsUnits],
+  );
   const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
   const duplicateCodeLabels = useMemo(() => duplicateExpandedKeys(expandedVars), [expandedVars]);
 
@@ -969,7 +1023,6 @@ export default function Home() {
   // Legacy aliases
   const provider = modelSlots[0]?.provider ?? "openai";
   const model = modelSlots[0]?.model ?? "gpt-4o";
-  const apiKey = modelSlots[0]?.apiKey ?? "";
 
   // Generate state
   const [generating, setGenerating] = useState(false);
@@ -989,7 +1042,6 @@ export default function Home() {
   const runActionGenerationRef = useRef(0);
   const runActionRef = useRef<{ token: number; controller: AbortController } | null>(null);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
-  const [hasRerun, setHasRerun] = useState(false);
   const [resultDownloadKind, setResultDownloadKind] = useState<ResultDownloadKind | null>(null);
   const [resultDownloadError, setResultDownloadError] = useState("");
   const [resultExportConfig, setResultExportConfig] = useState<ResultExportConfig | null>(null);
@@ -1137,7 +1189,9 @@ export default function Home() {
               : (entry.type === "numeric" ? "mean" : legacyAggregation),
           })));
         }
-        if (typeof s.participantsStr === "string") setParticipantsStr(s.participantsStr);
+        if (typeof s.senderVerificationSignature === "string") {
+          setSenderVerificationSignature(s.senderVerificationSignature);
+        }
         // Never restore a saved API key (and discard any key left by an older build).
         if (Array.isArray(s.modelSlots) && s.modelSlots.length) setModelSlots(s.modelSlots.map((slot: ModelSlot) => ({ ...slot, apiKey: "" })));
         if (typeof s.runsPerModel === "number") setRunsPerModel(s.runsPerModel);
@@ -1153,14 +1207,14 @@ export default function Home() {
       localStorage.setItem(PERSIST_KEY, JSON.stringify({
         uploadMeta, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
         contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
-        codebook, participantsStr, runsPerModel,
+        codebook, senderVerificationSignature, runsPerModel,
         // Persist model slots WITHOUT the API key — keys are never saved anywhere.
         modelSlots: modelSlots.map((s) => ({ ...s, apiKey: "" })),
       }));
     } catch {}
   }, [persistenceReady, uploadMeta, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
       contextColumns, contextDescriptions, rowsAsUnits, emptyMessageHandling, experimentInstructions,
-      codebook, participantsStr, modelSlots, runsPerModel, tourOpen]);
+      codebook, senderVerificationSignature, modelSlots, runsPerModel, tourOpen]);
 
   // ── Popup save / discard ────────────────────────────────────────────────────
   const mapStateJSON = () => JSON.stringify({
@@ -1180,15 +1234,32 @@ export default function Home() {
   const mapRequirementMsg = () =>
     !messageColumn ? "Tag a Message column before you proceed."
     : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier — tag column(s) or pick “each row is its own episode”."
-    : !sendersOk ? "Resolve the sender-name match above before you proceed."
     : "";
 
   const saveAndProceed = () => {
     if (!mappingComplete) { setColMapError(mapRequirementMsg() || "Select all required columns first."); return; }
+    const conflicts = currentContextConflicts;
+    if (conflicts.length > 0) {
+      setContextConflictAlert(conflicts);
+      setColMapError("Resolve the inconsistent Context fields before proceeding.");
+      return;
+    }
     mapSnapshotRef.current = mapStateJSON();
     setColMapError("");
     setColumnModalOpen(false);
     showToast("Column mapping saved");
+  };
+  const unselectConflictingContext = () => {
+    const columns = new Set((contextConflictAlert ?? []).map((conflict) => conflict.column));
+    setContextColumns((previous) => previous.filter((column) => !columns.has(column)));
+    setContextConflictAlert(null);
+    setColMapError("");
+    showToast("Inconsistent Context fields unselected");
+  };
+  const replaceDatasetForContext = () => {
+    setContextConflictAlert(null);
+    setColumnModalOpen(false);
+    window.setTimeout(() => fileRef.current?.click(), 0);
   };
   const closeColumnModal = () => {
     if (mapSnapshotRef.current !== null && mapStateJSON() !== mapSnapshotRef.current) {
@@ -1207,6 +1278,10 @@ export default function Home() {
   const saveCodebookEditor = () => {
     if (duplicateCodeLabels.length > 0) {
       showToast("Every output label must be unique");
+      return;
+    }
+    if (hasSenderVar && !sendersOk) {
+      showToast(senderConfigurationMessage);
       return;
     }
     codebookSnapshotRef.current = JSON.stringify(codebook);
@@ -1271,7 +1346,7 @@ export default function Home() {
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError("");
-    setValidationReport(null); setHasRerun(false);
+    setValidationReport(null);
     setResultDownloadKind(null); setResultDownloadError("");
     setResultExportConfig(null);
     setConsoleLogs([]); setRightView("script");
@@ -1372,6 +1447,10 @@ export default function Home() {
 
       if (options.invalidateArtifacts !== false) invalidateRunArtifacts();
       if (!schemaMatches) resetMapping();
+      if (options.source === "manual") {
+        setSenderVerificationSignature("");
+        setContextConflictAlert(null);
+      }
       setUploadResult(data);
       setUploadMeta({ ...metadata, columns: [...data.columns] });
       setUploadAvailability("ready");
@@ -1640,7 +1719,7 @@ export default function Home() {
     }
     tourSnap.current = {
       uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
-      rowsAsUnits, contextColumns, contextDescriptions, codebook, participantsStr,
+      rowsAsUnits, contextColumns, contextDescriptions, codebook, senderVerificationSignature,
       layoutMode, activeTool, uploadAvailability, uploadMeta, uploadError, uploadNotice,
       liveUploadId: liveUploadIdRef.current,
       serverFiles: { ...serverFilesRef.current },
@@ -1658,7 +1737,12 @@ export default function Home() {
     setRowsAsUnits(false);
     setContextColumns([]); setContextDescriptions({});
     setCodebook(tourSampleCodebook());
-    setParticipantsStr("P, V1, V2");
+    setSenderVerificationSignature(JSON.stringify({
+      identityColumn: "Speaker",
+      participants: ["P", "V1", "V2"],
+      blankRows: [],
+      rowCount: TOUR_SAMPLE_UPLOAD.row_count,
+    }));
     setColumnModalOpen(false); setExpandedTable(null);
     setActiveTool("coding");
     setTourOpen(true);
@@ -1676,7 +1760,7 @@ export default function Home() {
       setRowsAsUnits(s.rowsAsUnits as boolean);
       setContextColumns(s.contextColumns as string[]); setContextDescriptions(s.contextDescriptions as Record<string, string>);
       setCodebook(s.codebook as CodebookEntry[]);
-      setParticipantsStr(s.participantsStr as string);
+      setSenderVerificationSignature(s.senderVerificationSignature as string);
       setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
       setActiveTool(s.activeTool as "coding" | "catgen" | "analysis" | "instructions");
       setUploadAvailability(s.uploadAvailability as UploadAvailability);
@@ -1811,28 +1895,24 @@ export default function Home() {
 
   // ── Script generation ─────────────────────────────────────────────────────
 
-  // Distinct sender names found in the chosen identity column.
-  const dataSenders = useMemo(() => {
-    if (!uploadResult || !identityColumn) return [] as string[];
-    const set = new Set<string>();
-    for (const r of uploadResult.preview) {
-      const v = String(r[identityColumn] ?? "").trim();
-      if (v) set.add(v);
-    }
-    return [...set];
-  }, [uploadResult, identityColumn]);
-  const unknownSenders = dataSenders.filter((s) => !participants.includes(s));
-  // When any variable is sender-level, the identity column must be mapped and every
-  // sender in the data must be declared in the codebook's participant list.
-  const sendersOk = !hasSenderVar || (!!identityColumn && participants.length > 0 && unknownSenders.length === 0);
+  const senderConfigurationMessage = !identityColumn
+    ? "Map a Sender column before using per-sender variables."
+    : detectedSenderInfo.blankRows.length > 0
+      ? `Fill the blank Sender values in source row${detectedSenderInfo.blankRows.length === 1 ? "" : "s"} ${detectedSenderInfo.blankRows.slice(0, 5).join(", ")}${detectedSenderInfo.blankRows.length > 5 ? "…" : ""}, then re-upload the dataset.`
+      : participants.length === 0
+        ? "The mapped Sender column does not contain any sender names."
+        : !senderListVerified
+          ? "Verify the automatically detected sender list before using per-sender variables."
+          : "";
+  const sendersOk = !hasSenderVar || senderConfigurationMessage === "";
 
-  // Mapping is complete once a message column is set and an identifier choice is made.
+  // Sender verification belongs to the codebook because it is required only
+  // when at least one variable is coded per sender.
   const mappingComplete =
     !!messageColumn &&
-    (rowsAsUnits || identifierColumns.length > 0) &&
-    sendersOk;
+    (rowsAsUnits || identifierColumns.length > 0);
 
-  const canGenerate = Boolean(
+  const codingSetupReady = Boolean(
     uploadAvailability === "ready" &&
     uploadResult &&
     liveUploadIdRef.current === uploadResult.file_id &&
@@ -1841,14 +1921,23 @@ export default function Home() {
     experimentInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type) &&
     duplicateCodeLabels.length === 0 &&
-    (!hasSenderVar || participants.length > 0) &&
+    sendersOk &&
+    currentContextConflicts.length === 0 &&
     modelSlots.length > 0 &&
-    modelSlots.every((s) => s.provider && s.model && s.apiKey.trim()) &&
     !rowFilterError
+  );
+  const canGeneratePackage = Boolean(
+    codingSetupReady &&
+    modelSlots[0]?.provider &&
+    modelSlots[0]?.model
+  );
+  const canRunCoding = Boolean(
+    codingSetupReady &&
+    modelSlots.every((slot) => slot.provider && slot.model && slot.apiKey.trim())
   );
 
   const handleDownloadPackage = async () => {
-    if (!canGenerate || !uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
+    if (!canGeneratePackage || !uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
     codingActionBusyRef.current = true;
     setGenerating(true);
     setGenerateError("");
@@ -2009,7 +2098,7 @@ export default function Home() {
   // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
-    if (!canGenerate || !uploadResult || resultDownloadKind) return;
+    if (!canRunCoding || !uploadResult || resultDownloadKind) return;
     const action = beginRunAction();
     if (!action) return;
     const signal = action.controller.signal;
@@ -2021,7 +2110,6 @@ export default function Home() {
     setRunComplete(null);
     setRunError("");
     setValidationReport(null);
-    setHasRerun(false);
     setResultDownloadError("");
     setResultExportConfig(buildResultExportConfig());
     setAnalysisResults(null);
@@ -2255,8 +2343,8 @@ export default function Home() {
         });
         return parseDownloadArtifact(
           response,
-          "xlsx",
-          kind === "primary" ? `${fallbackStem}_coded.xlsx` : `${fallbackStem}_coded_episodes.xlsx`,
+          "csv",
+          kind === "primary" ? `${fallbackStem}_coded.csv` : `${fallbackStem}_coded_episodes.csv`,
         );
       }, { recovery: uploadRecovery });
       downloadBlob(artifact.blob, artifact.filename);
@@ -2270,7 +2358,7 @@ export default function Home() {
 
   const handleDownloadDetailedResults = async () => {
     const modelCallCount = resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel;
-    if (!runComplete || hasRerun || running || generating || modelCallCount <= 1 || resultDownloadKind) return;
+    if (!runComplete || running || generating || modelCallCount <= 1 || resultDownloadKind) return;
     setResultDownloadKind("detailed");
     setResultDownloadError("");
     try {
@@ -2672,6 +2760,11 @@ ${PDF_WATERMARK_HTML}
 
   const handleRerun = async (indices: number[] | null) => {
     if (!uploadResult || uploadAvailability !== "ready" || resultDownloadKind) return;
+    const previousDetailedPath = indices ? runComplete?.file_path : null;
+    if (indices && !previousDetailedPath) {
+      setRunError("The previous detailed result records are unavailable. Re-run all episodes once before using a selective rerun.");
+      return;
+    }
     const currentExportConfig = buildResultExportConfig();
     if (
       indices
@@ -2690,18 +2783,16 @@ ${PDF_WATERMARK_HTML}
     setRunning(true);
     setRunProgress(null);
     setRunErrors([]);
-    setRunComplete(null);
+    if (!indices) setRunComplete(null);
     setValidationReport(null);
     setRunError("");
     setResultDownloadError("");
     setConsoleLogs([]);
 
     if (indices) {
-      setHasRerun(true);
       log("info", `Re-running ${indices.length} affected episodes...`);
     } else {
       setCodedRows([]);
-      setHasRerun(false);
       setResultExportConfig(currentExportConfig);
       log("info", "Re-running all episodes from scratch...");
     }
@@ -2735,6 +2826,7 @@ ${PDF_WATERMARK_HTML}
               model_slots: modelSlots.map(buildSlotPayload),
               runs_per_model: runsPerModel,
               row_indices: indices,
+              previous_result_path: previousDetailedPath,
             },
             signal,
             (msg) => {
@@ -2828,11 +2920,12 @@ ${PDF_WATERMARK_HTML}
     setMessageColumn(""); setExperimentInstructions("");
     setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
     setContextColumns([]); setContextDescriptions({}); setRowsAsUnits(false); setEmptyMessageHandling("ignore");
-    setCodebook([newEntry()]); setParticipantsStr(""); setRowFilter(""); setRowFilterError("");
+    setContextConflictAlert(null);
+    setCodebook([newEntry()]); setSenderVerificationSignature(""); setRowFilter(""); setRowFilterError("");
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1);
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
-    setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError(""); setValidationReport(null); setHasRerun(false);
+    setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError(""); setValidationReport(null);
     setResultExportConfig(null);
     setResultDownloadKind(null); setResultDownloadError("");
     setAnalysisRaters([]); setAnalysisResults(null); setAnalysisError("");
@@ -3076,6 +3169,9 @@ ${PDF_WATERMARK_HTML}
                                 {messageColumn ? "Edit column mapping" : "Map columns"}
                               </button>
                               {!mappingComplete && <span className="recap-warn">⚠ Mapping incomplete — finish it to continue.</span>}
+                              {mappingComplete && currentContextConflicts.length > 0 && (
+                                <span className="recap-warn">⚠ Context values conflict within some episodes — edit the mapping to resolve them.</span>
+                              )}
                             </div>
                           </div>
 
@@ -3145,7 +3241,7 @@ ${PDF_WATERMARK_HTML}
                           <option value="code">Code as value</option>
                         </select>
                         <p className="hint">
-                          {emptyMessageHandling === "ignore" && "Fully empty episodes are not sent to a model. Their original rows remain in the primary workbook with blank code cells."}
+                          {emptyMessageHandling === "ignore" && "Fully empty episodes are not sent to a model. Their original rows remain in the primary CSV with blank code cells."}
                           {emptyMessageHandling === "code" && "Fully empty episodes are sent to the model and coded from the codebook definitions."}
                         </p>
                       </div>
@@ -3169,17 +3265,27 @@ ${PDF_WATERMARK_HTML}
                           )}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
-                        <p className="hint mt-8">Each variable has its own <strong>aggregation method</strong>, category definition, and coded-value guidance. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one per participant.</p>
+                        <p className="hint mt-8">Each variable has its own <strong>aggregation method</strong>, category definition, and coded-value guidance. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one value per verified sender.</p>
                         {duplicateCodeLabels.length > 0 && (
                           <p className="enc-error mt-8" role="alert">
-                            Output labels must be unique. Rename the conflicting variable or participant labels: {duplicateCodeLabels.join(", ")}.
+                            Output labels must be unique. Rename the conflicting variable or sender labels: {duplicateCodeLabels.join(", ")}.
                           </p>
                         )}
                         {hasSenderVar && (
-                          <div className="f participants-block">
-                            <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
-                            <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
-                            <p className="hint">Sender-level variables are coded once per participant. These names must match the values in your sender-identity column.</p>
+                          <div className={`sender-verification ${sendersOk ? "verified" : "needs-attention"}`}>
+                            <div className="sender-verification-head">
+                              <label>Detected senders <span className="fv">{participants.length}</span></label>
+                              {senderListVerified && detectedSenderInfo.blankRows.length === 0 && participants.length > 0 && (
+                                <span className="sender-verified-badge">✓ Verified</span>
+                              )}
+                            </div>
+                            {participants.length > 0 && (
+                              <div className="sender-tags">{participants.map((sender) => <span className="sender-tag" key={sender}>{sender}</span>)}</div>
+                            )}
+                            <p className={sendersOk ? "hint" : "enc-error"}>{sendersOk ? "These names were detected automatically from the mapped Sender column." : senderConfigurationMessage}</p>
+                            {identityColumn && participants.length > 0 && detectedSenderInfo.blankRows.length === 0 && !senderListVerified && (
+                              <button className="btn btn-outline btn-xs" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I verified these senders</button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3257,7 +3363,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
                         <span className="panel-label">Models &amp; Runs</span>
-                        <HelpTip text="Add one or more provider + model + API key configurations and choose runs per model. Aggregation is selected separately for each codebook variable. Tuning controls temperature, top-p, and max tokens per model." />
+                        <HelpTip text="Select providers and models, then choose runs per model. Browser coding requires an API key for every configured model. Package generation does not require a key because the downloaded script requests it at runtime. Aggregation is selected separately for each codebook variable." />
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
@@ -3268,7 +3374,7 @@ ${PDF_WATERMARK_HTML}
 
                       <div className="model-execution-note" id="tour-model-execution">
                         <strong>Browser and package execution differ.</strong>
-                        <span><strong>Run Coding</strong> uses all models and runs configured below. The downloaded package currently uses <strong>the first selected provider and model for one call per episode</strong>; edit its Python script to change parameters or create a repeated- or multi-model workflow.</span>
+                        <span><strong>Run Coding</strong> uses all models and runs configured below and requires their API keys. The downloaded package requires only the first provider and model selection—<strong>no API key is needed to generate it</strong>—and makes one call per episode after the local script obtains a key at runtime.</span>
                       </div>
 
                       <div className="model-slots" id="tour-model-slots">
@@ -3310,7 +3416,7 @@ ${PDF_WATERMARK_HTML}
                                     </select>
                                   </div>
                                   <div className="f">
-                                    <label>API Key</label>
+                                    <label>API Key <span className="text-muted">(browser run only)</span></label>
                                     <div className="enc-key-wrap">
                                       <input
                                         type={slot.showKey ? "text" : "password"}
@@ -3406,13 +3512,13 @@ ${PDF_WATERMARK_HTML}
                 {/* Run bar */}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage}>
+                  <button className="btn btn-outline btn-sm" disabled={!canGeneratePackage || generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
                     {generating ? <><span className="spinner" /> Generating</> : "Generate package"}
                   </button>
                   {running ? (
                     <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
                   ) : (
-                    <button className="btn btn-run" disabled={!canGenerate || generating || resultDownloadKind !== null} onClick={handleRun}>
+                    <button className="btn btn-run" disabled={!canRunCoding || generating || resultDownloadKind !== null} onClick={handleRun}>
                       Run Coding
                       {modelSlots.length * runsPerModel > 1 && (
                         <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
@@ -3580,13 +3686,13 @@ ${PDF_WATERMARK_HTML}
                             aria-busy={resultDownloadKind === "primary"}
                             onClick={() => handleExportResults("primary")}
                           >
-                            {resultDownloadKind === "primary" ? <><span className="spinner" /> Preparing workbook</> : "Download coded dataset (.xlsx)"}
+                            {resultDownloadKind === "primary" ? <><span className="spinner" /> Preparing CSV</> : "Download coded dataset (.csv)"}
                           </button>
                         </div>
                         <div className="results-download-secondary">
                           <div>
                             <div className="results-download-title">Episode-level results <span className="results-optional">Optional</span></div>
-                            <p className="results-download-helper">A compact workbook with one row per preprocessed communication episode.</p>
+                            <p className="results-download-helper">A compact CSV with one row per preprocessed communication episode.</p>
                           </div>
                           <button
                             className="btn btn-outline btn-sm"
@@ -3594,27 +3700,23 @@ ${PDF_WATERMARK_HTML}
                             aria-busy={resultDownloadKind === "episodes"}
                             onClick={() => handleExportResults("episodes")}
                           >
-                            {resultDownloadKind === "episodes" ? <><span className="spinner" /> Preparing</> : "Download episode-level results (.xlsx)"}
+                            {resultDownloadKind === "episodes" ? <><span className="spinner" /> Preparing</> : "Download episode-level results (.csv)"}
                           </button>
                         </div>
                         {codedRows.length > 0 && (resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel) > 1 && (
                           <div className="results-download-details">
                             <div>
                               <div className="results-download-title">Detailed model and run outputs</div>
-                              <p className="results-download-helper">Individual model/run records and their aggregate, provided separately for reproducibility.</p>
+                              <p className="results-download-helper">Individual model/run records and their aggregate. Selective reruns replace the records for affected episodes while preserving all others.</p>
                             </div>
-                            {hasRerun ? (
-                              <p className="results-detail-note">Unavailable after a selective re-run because the archive would mix original and replacement calls. The Excel downloads above contain the latest corrected episode results.</p>
-                            ) : (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                disabled={resultDownloadKind !== null || generating}
-                                aria-busy={resultDownloadKind === "detailed"}
-                                onClick={handleDownloadDetailedResults}
-                              >
-                                {resultDownloadKind === "detailed" ? <><span className="spinner" /> Preparing</> : "Download detailed outputs (.zip)"}
-                              </button>
-                            )}
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              disabled={resultDownloadKind !== null || generating || running}
+                              aria-busy={resultDownloadKind === "detailed"}
+                              onClick={handleDownloadDetailedResults}
+                            >
+                              {resultDownloadKind === "detailed" ? <><span className="spinner" /> Preparing</> : "Download detailed outputs (.zip)"}
+                            </button>
                           </div>
                         )}
                         {resultDownloadError && <p className="enc-error results-download-error" role="alert">{resultDownloadError}</p>}
@@ -4073,7 +4175,8 @@ ${PDF_WATERMARK_HTML}
           role === "message" ? (messageColumn ? [messageColumn] : [])
           : role === "identifier" ? identifierColumns
           : role === "identity" ? (identityColumn ? [identityColumn] : [])
-          : (orderColumn ? [orderColumn] : []);
+          : role === "order" ? (orderColumn ? [orderColumn] : [])
+          : contextColumns;
         return (
           <div className="colmap-overlay">
             <div className="colmap-modal" id="tour-map-modal">
@@ -4149,6 +4252,7 @@ ${PDF_WATERMARK_HTML}
                     <button className={orderDirection === "asc" ? "on" : ""} onClick={() => setOrderDirection("asc")}>Ascending</button>
                     <button className={orderDirection === "desc" ? "on" : ""} onClick={() => setOrderDirection("desc")}>Descending</button>
                   </div>
+                  <span className="colmap-order-tie">Tied values always retain their uploaded row order.</span>
                 </div>
               )}
 
@@ -4213,13 +4317,15 @@ ${PDF_WATERMARK_HTML}
               {hasSenderVar && (
                 <div className={`colmap-verify-result ${sendersOk ? "ok" : "warn"}`} style={{ margin: 0 }}>
                   {!identityColumn ? (
-                    <p><b>⚠ Sender column needed.</b> You defined a per-sender variable — tag a <b>Sender identity</b> column so each sender can be matched.</p>
+                    <p><b>⚠ Sender column needed.</b> Tag the column that identifies who sent each message.</p>
+                  ) : detectedSenderInfo.blankRows.length > 0 ? (
+                    <p><b>⚠ Blank sender values.</b> Correct source row{detectedSenderInfo.blankRows.length === 1 ? "" : "s"} <b>{detectedSenderInfo.blankRows.slice(0, 5).join(", ")}{detectedSenderInfo.blankRows.length > 5 ? "…" : ""}</b> and re-upload the dataset.</p>
                   ) : participants.length === 0 ? (
-                    <p><b>⚠ No participants declared.</b> Add participant names in the Codebook editor&apos;s Participants block.</p>
+                    <p><b>⚠ No senders detected.</b> Choose a Sender column containing at least one nonblank value.</p>
                   ) : sendersOk ? (
-                    <p><b>✓ Senders match.</b> Every sender in <b>{identityColumn}</b> ({dataSenders.join(", ")}) is a declared participant.</p>
+                    <p><b>✓ Sender list verified.</b> ChAT will code each sender detected in <b>{identityColumn}</b>: {participants.join(", ")}.</p>
                   ) : (
-                    <p><b>⚠ Unknown senders.</b> These appear in <b>{identityColumn}</b> but aren&apos;t declared participants: <b>{unknownSenders.join(", ")}</b>. Add them to the codebook participants (or fix the data).</p>
+                    <p><b>⚠ Verification required.</b> Review and verify the detected sender list in the Codebook.</p>
                   )}
                 </div>
               )}
@@ -4233,7 +4339,6 @@ ${PDF_WATERMARK_HTML}
                     ? "Mapping complete."
                     : !messageColumn ? "Tag a Message column to continue."
                     : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own episode”)."
-                    : !sendersOk ? "Resolve the sender-name match above to continue."
                     : ""}
                 </span>
                 <button className="btn btn-primary" onClick={saveAndProceed}>Save &amp; Proceed</button>
@@ -4242,6 +4347,34 @@ ${PDF_WATERMARK_HTML}
           </div>
         );
       })()}
+
+      {contextConflictAlert && (
+        <div className="modal-overlay open context-conflict-overlay" role="dialog" aria-modal="true" aria-labelledby="context-conflict-title">
+          <div className="modal context-conflict-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 id="context-conflict-title">Context values differ within some episodes</h2>
+                <p>Each selected Context field must have exactly one value in every episode.</p>
+              </div>
+            </div>
+            <div className="modal-body context-conflict-body">
+              {contextConflictAlert.map((conflict) => (
+                <div className="context-conflict-item" key={conflict.column}>
+                  <strong>{conflict.column}</strong>
+                  <span>{conflict.conflictingEpisodeCount} episode{conflict.conflictingEpisodeCount === 1 ? "" : "s"} contain multiple values.</span>
+                  <span>Example: {conflict.exampleEpisode} contains <b>{conflict.exampleValues.join(" and ")}</b>.</span>
+                </div>
+              ))}
+              <p>Correct the dataset and re-upload it, or remove the inconsistent field from Context. ChAT will check again before allowing you to proceed.</p>
+            </div>
+            <div className="modal-actions context-conflict-actions">
+              <button className="btn btn-ghost" onClick={() => setContextConflictAlert(null)}>Return to mapping</button>
+              <button className="btn btn-outline" onClick={unselectConflictingContext}>Unselect inconsistent fields</button>
+              <button className="btn btn-primary" onClick={replaceDatasetForContext}>Correct and re-upload dataset</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen table modal */}
       {expandedTable && (
@@ -4339,15 +4472,25 @@ ${PDF_WATERMARK_HTML}
                   ))}
                   <button className="btn btn-outline btn-sm" onClick={addCodebookRow}>+ Add variable</button>
                   {hasSenderVar && (
-                    <div className="f participants-block mt-12">
-                      <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
-                      <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
-                      <p className="hint">Per-sender variables are coded once for each participant. These names must match the values in your sender-identity column.</p>
+                    <div className={`sender-verification mt-12 ${sendersOk ? "verified" : "needs-attention"}`}>
+                      <div className="sender-verification-head">
+                        <label>Detected senders <span className="fv">{participants.length}</span></label>
+                        {senderListVerified && detectedSenderInfo.blankRows.length === 0 && participants.length > 0 && (
+                          <span className="sender-verified-badge">✓ Verified</span>
+                        )}
+                      </div>
+                      {participants.length > 0 && (
+                        <div className="sender-tags">{participants.map((sender) => <span className="sender-tag" key={sender}>{sender}</span>)}</div>
+                      )}
+                      <p className={sendersOk ? "hint" : "enc-error"}>{sendersOk ? "Per-sender variables will be coded once for each verified sender." : senderConfigurationMessage}</p>
+                      {identityColumn && participants.length > 0 && detectedSenderInfo.blankRows.length === 0 && !senderListVerified && (
+                        <button className="btn btn-outline btn-sm" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I verified these senders</button>
+                      )}
                     </div>
                   )}
                   {duplicateCodeLabels.length > 0 && (
                     <p className="enc-error mt-12" role="alert">
-                      Output labels must be unique. Rename the conflicting variable or participant labels: {duplicateCodeLabels.join(", ")}.
+                      Output labels must be unique. Rename the conflicting variable or sender labels: {duplicateCodeLabels.join(", ")}.
                     </p>
                   )}
                   <div className="cb-editor-foot">

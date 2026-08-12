@@ -11,8 +11,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
-from openpyxl import load_workbook
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from slowapi import _rate_limit_exceeded_handler
@@ -292,7 +290,6 @@ class UploadLifecycleTests(unittest.TestCase):
             "codebook": [{"label": "cooperation", "type": "binary"}],
             "provider": "openai",
             "model": "example-model",
-            "api_key": "not-written-to-package",
         }
 
         response = self.client.post("/api/coding/generate-package", json=payload)
@@ -300,35 +297,26 @@ class UploadLifecycleTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         with zipfile.ZipFile(io.BytesIO(response.content)) as package:
             names = set(package.namelist())
-            self.assertIn("sample_chat_input.xlsx", names)
+            self.assertIn("source_rows.csv", names)
+            self.assertIn("episodes.csv", names)
+            self.assertIn("row_map.csv", names)
             self.assertIn("code_sample.py", names)
             self.assertIn("README.md", names)
             self.assertIn("requirements.txt", names)
             script = package.read("code_sample.py").decode("utf-8")
-            self.assertIn("sample_chat_input.xlsx", script)
-            self.assertIn("PACKAGE_SOURCE_SHEET = 'source_rows'", script)
-            self.assertIn("PACKAGE_EPISODE_SHEET = 'episodes'", script)
-            self.assertIn("PACKAGE_ROW_MAP_SHEET = 'row_map'", script)
+            self.assertIn("PACKAGE_SOURCE_FILE = 'source_rows.csv'", script)
+            self.assertIn("PACKAGE_EPISODE_FILE = 'episodes.csv'", script)
+            self.assertIn("PACKAGE_ROW_MAP_FILE = 'row_map.csv'", script)
             self.assertIn("--also-save-episodes", script)
             compile(script, "code_sample.py", "exec")
-            self.assertNotIn("not-written-to-package", script)
+            self.assertIn("CHAT_API_KEY", script)
 
-            workbook = load_workbook(
-                io.BytesIO(package.read("sample_chat_input.xlsx")),
-                data_only=True,
-            )
-            self.assertEqual(
-                workbook.sheetnames,
-                ["source_rows", "episodes", "row_map"],
-            )
-            self.assertEqual(workbook["source_rows"].max_row - 1, 1)
-            self.assertEqual(workbook["episodes"].max_row - 1, 1)
-            self.assertEqual(
-                list(workbook["row_map"].values),
-                [("source_row", "episode"), (1, 1)],
-            )
+            self.assertEqual(len(pd.read_csv(io.BytesIO(package.read("source_rows.csv")))), 1)
+            self.assertEqual(len(pd.read_csv(io.BytesIO(package.read("episodes.csv")))), 1)
+            row_map = pd.read_csv(io.BytesIO(package.read("row_map.csv")))
+            self.assertEqual(row_map.to_dict("records"), [{"source_row": 1, "episode": 1}])
             requirements = package.read("requirements.txt").decode("utf-8")
-            self.assertIn("openpyxl", requirements.splitlines())
+            self.assertNotIn("openpyxl", requirements.splitlines())
 
     def test_package_generation_returns_stable_gone_upload_signal(self):
         payload = {
@@ -381,13 +369,14 @@ class UploadLifecycleTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         with zipfile.ZipFile(io.BytesIO(response.content)) as package:
             script = package.read("code_study.py").decode("utf-8")
-            input_path = Path(self.temp_dir.name) / "study_chat_input.xlsx"
-            input_path.write_bytes(package.read("study_chat_input.xlsx"))
+            for name in ("source_rows.csv", "episodes.csv", "row_map.csv"):
+                (Path(self.temp_dir.name) / name).write_bytes(package.read(name))
+            input_path = Path(self.temp_dir.name) / "episodes.csv"
 
         namespace = {"__name__": "generated_chat_package"}
         with patch.dict(os.environ, {"CHAT_API_KEY": "test-key"}):
             exec(compile(script, "code_study.py", "exec"), namespace)
-        source_df, episode_df, row_map = namespace["load_package_workbook"](
+        source_df, episode_df, row_map = namespace["load_package_csvs"](
             str(input_path)
         )
         namespace["call_llm"] = lambda prompt: {"cooperation": 1}
@@ -414,9 +403,9 @@ class UploadLifecycleTests(unittest.TestCase):
             False,
         )
         self.assertTrue(Path(primary_path).is_file())
-        self.assertEqual(load_workbook(primary_path).sheetnames, ["Coded data"])
+        self.assertEqual(len(pd.read_csv(primary_path)), 3)
         self.assertIsNone(compact_path)
-        self.assertFalse((Path(self.temp_dir.name) / "study_coded_episodes.xlsx").exists())
+        self.assertFalse((Path(self.temp_dir.name) / "study_coded_episodes.csv").exists())
 
         _, compact_path = namespace["save_package_results"](
             primary,
@@ -425,7 +414,7 @@ class UploadLifecycleTests(unittest.TestCase):
             True,
         )
         self.assertTrue(Path(compact_path).is_file())
-        self.assertEqual(load_workbook(compact_path).sheetnames, ["Coded episodes"])
+        self.assertEqual(len(pd.read_csv(compact_path)), 2)
 
     def test_status_reports_expired_metadata_as_410_and_removes_it(self):
         file_id, _ = self._store_csv()

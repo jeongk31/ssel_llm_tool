@@ -17,8 +17,11 @@ from app.routes import coding
 from app.services.result_exporter import (
     build_result_frames,
     dataframe_to_xlsx,
+    detect_sender_names,
     expanded_codebook_labels,
+    find_context_conflicts,
     prepare_coding_dataset,
+    validate_sender_configuration,
 )
 
 
@@ -51,6 +54,130 @@ class ResultFrameTests(unittest.TestCase):
         self.assertEqual(prepared.episodes.loc[0, "sender"], "P1\nP2")
         self.assertEqual(prepared.episodes.loc[0, "turn"], "1\n2")
         self.assertEqual(prepared.episodes.loc[1, "message"], "[P1] only")
+
+    def test_tied_order_values_preserve_uploaded_row_order(self):
+        source = pd.DataFrame(
+            [
+                {"episode": "A", "turn": 1, "message": "first uploaded"},
+                {"episode": "A", "turn": 1, "message": "second uploaded"},
+                {"episode": "A", "turn": 2, "message": "later turn"},
+            ]
+        )
+
+        ascending = prepare_coding_dataset(
+            source,
+            message_column="message",
+            identifier_columns=["episode"],
+            identity_column=None,
+            order_column="turn",
+            order_direction="asc",
+        )
+        descending = prepare_coding_dataset(
+            source,
+            message_column="message",
+            identifier_columns=["episode"],
+            identity_column=None,
+            order_column="turn",
+            order_direction="desc",
+        )
+
+        self.assertEqual(
+            ascending.episodes.loc[0, "message"],
+            "first uploaded\nsecond uploaded\nlater turn",
+        )
+        self.assertEqual(
+            descending.episodes.loc[0, "message"],
+            "later turn\nfirst uploaded\nsecond uploaded",
+        )
+
+    def test_context_must_match_exactly_within_each_episode(self):
+        source = pd.DataFrame(
+            [
+                {"episode": "A", "message": "one", "condition": "control"},
+                {"episode": "A", "message": "two", "condition": "treatment"},
+                {"episode": "B", "message": "three", "condition": "control"},
+                {"episode": "B", "message": "four", "condition": "control"},
+            ]
+        )
+
+        conflicts = find_context_conflicts(
+            source,
+            identifier_columns=["episode"],
+            context_columns=["condition"],
+        )
+
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["column"], "condition")
+        self.assertEqual(conflicts[0]["conflicting_episode_count"], 1)
+        self.assertEqual(conflicts[0]["example_episode"], {"episode": "A"})
+        with self.assertRaisesRegex(ValueError, "exactly one value"):
+            prepare_coding_dataset(
+                source,
+                message_column="message",
+                identifier_columns=["episode"],
+                identity_column=None,
+                order_column=None,
+                order_direction="asc",
+                context_columns=["condition"],
+            )
+
+    def test_blank_and_nonblank_context_values_conflict(self):
+        source = pd.DataFrame(
+            [
+                {"episode": "A", "message": "one", "condition": None},
+                {"episode": "A", "message": "two", "condition": "control"},
+            ]
+        )
+
+        conflicts = find_context_conflicts(
+            source,
+            identifier_columns=["episode"],
+            context_columns=["condition"],
+        )
+
+        self.assertEqual(conflicts[0]["example_values"], ["(blank)", "control"])
+
+    def test_sender_names_are_detected_and_must_match_verified_list(self):
+        source = pd.DataFrame(
+            [
+                {"sender": "P2", "message": "one"},
+                {"sender": "P1", "message": "two"},
+                {"sender": "P2", "message": "three"},
+            ]
+        )
+        codebook = [{"label": "tone", "level": "sender"}]
+
+        names, blank_rows = detect_sender_names(source, "sender")
+
+        self.assertEqual(names, ["P2", "P1"])
+        self.assertEqual(blank_rows, [])
+        self.assertEqual(
+            validate_sender_configuration(
+                source,
+                identity_column="sender",
+                participants=["P2", "P1"],
+                codebook=codebook,
+            ),
+            ["P2", "P1"],
+        )
+        with self.assertRaisesRegex(ValueError, "Expected, in first-appearance order"):
+            validate_sender_configuration(
+                source,
+                identity_column="sender",
+                participants=["P1", "P2"],
+                codebook=codebook,
+            )
+
+    def test_blank_sender_blocks_sender_level_coding(self):
+        source = pd.DataFrame([{"sender": "P1"}, {"sender": None}])
+
+        with self.assertRaisesRegex(ValueError, r"blank values in source row\(s\) 2"):
+            validate_sender_configuration(
+                source,
+                identity_column="sender",
+                participants=["P1"],
+                codebook=[{"label": "tone", "level": "sender"}],
+            )
 
     def test_noncontiguous_source_rows_use_positional_episode_mapping(self):
         source = pd.DataFrame(
@@ -323,36 +450,35 @@ class ResultExportEndpointTests(unittest.TestCase):
             "kind": kind,
         }
 
-    def test_primary_endpoint_returns_original_rows_in_xlsx(self):
+    def test_primary_endpoint_returns_original_rows_in_csv(self):
         response = self.client.post("/api/coding/export-results", json=self._payload("primary"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("study_coded.xlsx", response.headers["content-disposition"])
-        workbook = load_workbook(io.BytesIO(response.content), data_only=True)
-        worksheet = workbook["Coded data"]
-        values = list(worksheet.values)
+        self.assertIn("study_coded.csv", response.headers["content-disposition"])
+        self.assertTrue(response.headers["content-type"].startswith("text/csv"))
+        values = [tuple(row) for row in pd.read_csv(io.BytesIO(response.content)).itertuples(index=False, name=None)]
         self.assertEqual(
-            values[0],
+            tuple(pd.read_csv(io.BytesIO(response.content), nrows=0).columns),
             ("session", "turn", "sender", "message", "condition", "cooperation"),
         )
-        self.assertEqual(len(values) - 1, 3)
-        self.assertEqual([row[-1] for row in values[1:]], [1, 1, 0])
+        self.assertEqual(len(values), 3)
+        self.assertEqual([row[-1] for row in values], [1, 1, 0])
 
     def test_episode_endpoint_contains_only_compact_mapped_columns(self):
         response = self.client.post("/api/coding/export-results", json=self._payload("episodes"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("study_coded_episodes.xlsx", response.headers["content-disposition"])
-        workbook = load_workbook(io.BytesIO(response.content), data_only=True)
-        values = list(workbook["Coded episodes"].values)
+        self.assertIn("study_coded_episodes.csv", response.headers["content-disposition"])
+        frame = pd.read_csv(io.BytesIO(response.content))
+        values = [tuple(row) for row in frame.itertuples(index=False, name=None)]
         self.assertEqual(
-            values[0],
+            tuple(frame.columns),
             ("session", "message", "sender", "turn", "condition", "cooperation"),
         )
-        self.assertEqual(values[1][1], "[P1] first\n[P2] second")
-        self.assertEqual(values[1][2], "P1\nP2")
-        self.assertEqual(values[1][3], "1\n2")
-        self.assertEqual(len(values) - 1, 2)
+        self.assertEqual(values[0][1], "[P1] first\n[P2] second")
+        self.assertEqual(values[0][2], "P1\nP2")
+        self.assertEqual(values[0][3], "1\n2")
+        self.assertEqual(len(values), 2)
 
     def test_export_endpoint_rejects_duplicate_expanded_labels(self):
         payload = self._payload("primary")
@@ -360,31 +486,21 @@ class ResultExportEndpointTests(unittest.TestCase):
             {"label": "tone_P1", "type": "text", "level": "episode"},
             {"label": "tone", "type": "text", "level": "sender"},
         ]
-        payload["participants"] = ["P1"]
+        payload["participants"] = ["P2", "P1"]
 
         response = self.client.post("/api/coding/export-results", json=payload)
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("tone_P1", response.json()["detail"])
 
-    def test_export_endpoint_returns_json_400_for_unrepresentable_xlsx_text(self):
-        unsupported_values = [
-            ("x" * 32_768, "32,768 characters"),
-            ("before\u000bafter", "U+000B"),
-        ]
+    def test_csv_export_is_not_limited_by_excel_cell_length(self):
+        payload = self._payload("primary")
+        payload["coded_rows"][0]["coded"]["cooperation"] = "x" * 32_768
 
-        for value, expected_detail in unsupported_values:
-            with self.subTest(expected_detail=expected_detail):
-                payload = self._payload("primary")
-                payload["coded_rows"][0]["coded"]["cooperation"] = value
+        response = self.client.post("/api/coding/export-results", json=payload)
 
-                response = self.client.post(
-                    "/api/coding/export-results",
-                    json=payload,
-                )
-
-                self.assertEqual(response.status_code, 400)
-                self.assertIn(expected_detail, response.json()["detail"])
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"x" * 32_768, response.content)
 
     def test_detailed_download_is_restricted_to_coding_result_artifacts(self):
         unrelated = os.path.join(self.temp_dir.name, "unrelated.csv")
@@ -424,6 +540,72 @@ class ResultExportEndpointTests(unittest.TestCase):
                 sorted(archive.namelist()),
                 ["openai_model/run1.csv", "openai_model/run2.csv"],
             )
+
+    def test_selective_rerun_replaces_affected_detailed_records(self):
+        index_column = "__chat_episode_index"
+        previous_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        previous_path = os.path.join(previous_dir, "coded_results.csv")
+        replacement_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        replacement_path = os.path.join(replacement_dir, "coded_results.csv")
+
+        pd.DataFrame(
+            [
+                {index_column: 0, "message": "first", "coder": "openai/model__run1", "score": "old-0-1"},
+                {index_column: 0, "message": "first", "coder": "openai/model__run2", "score": "old-0-2"},
+                {index_column: 0, "message": "first", "coder": "__aggregated (per-variable)", "score": "old-0-a"},
+                {index_column: 1, "message": "second", "coder": "openai/model__run1", "score": "old-1-1"},
+                {index_column: 1, "message": "second", "coder": "openai/model__run2", "score": "old-1-2"},
+                {index_column: 1, "message": "second", "coder": "__aggregated (per-variable)", "score": "old-1-a"},
+            ]
+        ).to_csv(previous_path, index=False)
+        pd.DataFrame(
+            [
+                {index_column: 1, "message": "second", "coder": "openai/model__run1", "score": "new-1-1"},
+                {index_column: 1, "message": "second", "coder": "openai/model__run2", "score": "new-1-2"},
+                {index_column: 1, "message": "second", "coder": "__aggregated (per-variable)", "score": "new-1-a"},
+            ]
+        ).to_csv(replacement_path, index=False)
+
+        merged_path = coding._merge_selective_rerun_artifact(
+            previous_path,
+            replacement_path,
+            [1],
+        )
+
+        merged = pd.read_csv(merged_path)
+        self.assertFalse(os.path.exists(previous_dir))
+        self.assertEqual(len(merged), 6)
+        self.assertEqual(
+            merged.loc[merged[index_column] == 0, "score"].tolist(),
+            ["old-0-1", "old-0-2", "old-0-a"],
+        )
+        self.assertEqual(
+            merged.loc[merged[index_column] == 1, "score"].tolist(),
+            ["new-1-1", "new-1-2", "new-1-a"],
+        )
+        self.assertFalse(merged["score"].str.startswith("old-1-").any())
+
+        response = self.client.get("/api/coding/download", params={"path": merged_path})
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            aggregate = pd.read_csv(io.BytesIO(archive.read("aggregate.csv")))
+            run_one = pd.read_csv(io.BytesIO(archive.read("openai_model/run1.csv")))
+        self.assertNotIn(index_column, aggregate.columns)
+        self.assertNotIn(index_column, run_one.columns)
+        self.assertEqual(aggregate["score"].tolist(), ["old-0-a", "new-1-a"])
+        self.assertEqual(run_one["score"].tolist(), ["old-0-1", "new-1-1"])
+
+    def test_selective_rerun_requires_episode_indexed_previous_artifact(self):
+        previous_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        previous_path = os.path.join(previous_dir, "coded_results.csv")
+        pd.DataFrame([{"message": "old", "coder": "model", "score": 1}]).to_csv(
+            previous_path,
+            index=False,
+        )
+
+        with self.assertRaisesRegex(ValueError, "Re-run all episodes once"):
+            coding._validate_selective_rerun_artifact(previous_path)
 
 
 if __name__ == "__main__":

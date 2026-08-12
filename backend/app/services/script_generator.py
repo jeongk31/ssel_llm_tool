@@ -21,9 +21,9 @@ def generate_coding_script(
     participants: list[str] | None = None,
     context: list[dict[str, Any]] | None = None,
     empty_message_handling: str = "ignore",
-    package_source_sheet: str | None = None,
-    package_episode_sheet: str | None = None,
-    package_row_map_sheet: str | None = None,
+    package_source_file: str | None = None,
+    package_episode_file: str | None = None,
+    package_row_map_file: str | None = None,
     compact_columns: list[str] | None = None,
     result_stem: str | None = None,
 ) -> str:
@@ -34,14 +34,14 @@ def generate_coding_script(
     context = context or []
     compact_columns = compact_columns or []
     package_options = (
-        package_source_sheet,
-        package_episode_sheet,
-        package_row_map_sheet,
+        package_source_file,
+        package_episode_file,
+        package_row_map_file,
     )
     if any(option is not None for option in package_options) and not all(
         option is not None for option in package_options
     ):
-        raise ValueError("Package mode requires source, episode, and row-map sheet names.")
+        raise ValueError("Package mode requires source, episode, and row-map filenames.")
     package_mode = all(option is not None for option in package_options)
     if package_mode and not result_stem:
         raise ValueError("Package mode requires a result stem.")
@@ -111,7 +111,6 @@ import argparse
 import getpass
 
 import pandas as pd
-from openpyxl import load_workbook
 {provider_imports}
 
 
@@ -130,11 +129,12 @@ ORDER_COLUMN = {order_column!r}
 ORDER_DIRECTION = {order_direction!r}
 EMPTY_MESSAGE_HANDLING = {empty_message_handling!r}  # "ignore" | "code" | anything else = null + _error
 PACKAGE_MODE = {package_mode!r}
-PACKAGE_SOURCE_SHEET = {package_source_sheet!r}
-PACKAGE_EPISODE_SHEET = {package_episode_sheet!r}
-PACKAGE_ROW_MAP_SHEET = {package_row_map_sheet!r}
+PACKAGE_SOURCE_FILE = {package_source_file!r}
+PACKAGE_EPISODE_FILE = {package_episode_file!r}
+PACKAGE_ROW_MAP_FILE = {package_row_map_file!r}
 COMPACT_COLUMNS = {compact_columns!r}
 RESULT_STEM = {result_stem!r}
+PARTICIPANTS = {participants!r}
 
 CODEBOOK = {codebook_literal}
 
@@ -178,6 +178,30 @@ def group_units(df: pd.DataFrame) -> pd.DataFrame:
     if not id_cols:
         return df
 
+    context_columns = [
+        spec.get("column") for spec in CONTEXT
+        if spec.get("column") and spec.get("column") in df.columns
+    ]
+    conflicts = []
+    for context_column in context_columns:
+        count = 0
+        for _, group in df.groupby(id_cols, sort=False, dropna=False):
+            keys = set()
+            for value in group[context_column].tolist():
+                if pd.isna(value):
+                    keys.add(("missing", None))
+                else:
+                    keys.add((type(value).__name__, str(value)))
+            if len(keys) > 1:
+                count += 1
+        if count:
+            conflicts.append(f"{{context_column}} ({{count}} episode(s))")
+    if conflicts:
+        raise ValueError(
+            "Selected Context fields must contain exactly one value within every "
+            "episode: " + ", ".join(conflicts)
+        )
+
     work = df.copy()
     if ORDER_COLUMN and ORDER_COLUMN in work.columns:
         work = work.sort_values(
@@ -204,35 +228,34 @@ def group_units(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(units, columns=list(df.columns)).reset_index(drop=True)
 
 
-def load_package_workbook(file_path: str):
-    """Load and validate ChAT's canonical package workbook."""
-    if file_path.rsplit(".", 1)[-1].lower() != "xlsx":
-        raise ValueError("The packaged input must be an .xlsx workbook.")
-
-    required_sheets = [
-        PACKAGE_SOURCE_SHEET,
-        PACKAGE_EPISODE_SHEET,
-        PACKAGE_ROW_MAP_SHEET,
+def load_package_csvs(episode_path: str):
+    """Load and validate ChAT's canonical three-CSV package input."""
+    package_dir = os.path.dirname(os.path.abspath(episode_path))
+    expected_episode_path = os.path.join(package_dir, PACKAGE_EPISODE_FILE)
+    source_path = os.path.join(package_dir, PACKAGE_SOURCE_FILE)
+    row_map_path = os.path.join(package_dir, PACKAGE_ROW_MAP_FILE)
+    missing_files = [
+        os.path.basename(path)
+        for path in (source_path, expected_episode_path, row_map_path)
+        if not os.path.isfile(path)
     ]
-    workbook = pd.read_excel(file_path, sheet_name=required_sheets)
-    missing_sheets = [name for name in required_sheets if name not in workbook]
-    if missing_sheets:
-        raise ValueError(f"Package workbook is missing required sheets: {{missing_sheets}}")
+    if missing_files:
+        raise ValueError(f"The coding package is missing required CSV files: {{missing_files}}")
 
-    source_df = workbook[PACKAGE_SOURCE_SHEET]
-    episode_df = workbook[PACKAGE_EPISODE_SHEET]
-    row_map = workbook[PACKAGE_ROW_MAP_SHEET]
+    source_df = pd.read_csv(source_path)
+    episode_df = pd.read_csv(expected_episode_path)
+    row_map = pd.read_csv(row_map_path)
 
     if MESSAGE_COLUMN not in episode_df.columns:
         raise ValueError(
-            f"Column '{{MESSAGE_COLUMN}}' was not found in the episode sheet. "
+            f"Column '{{MESSAGE_COLUMN}}' was not found in {{PACKAGE_EPISODE_FILE}}. "
             f"Available columns: {{list(episode_df.columns)}}"
         )
 
     required_map_columns = ["source_row", "episode"]
     missing_map_columns = [c for c in required_map_columns if c not in row_map.columns]
     if missing_map_columns:
-        raise ValueError(f"Row-map sheet is missing required columns: {{missing_map_columns}}")
+        raise ValueError(f"{{PACKAGE_ROW_MAP_FILE}} is missing required columns: {{missing_map_columns}}")
 
     row_map = row_map.loc[:, required_map_columns].copy()
     for column in required_map_columns:
@@ -253,9 +276,45 @@ def load_package_workbook(file_path: str):
     if not row_map.empty and (
         (row_map["episode"] < 1) | (row_map["episode"] > len(episode_df))
     ).any():
-        raise ValueError("Row-map episode values fall outside the episode sheet.")
+        raise ValueError("Row-map episode values fall outside episodes.csv.")
 
     return source_df, episode_df, row_map
+
+
+def validate_sender_data(source_df: pd.DataFrame):
+    """Verify that embedded sender output keys still match the packaged data."""
+    if not any(entry.get("level") == "sender" for entry in CODEBOOK):
+        return
+    if not IDENTITY_COLUMN or IDENTITY_COLUMN not in source_df.columns:
+        # Package mode intentionally omits IDENTITY_COLUMN because episodes are
+        # already constructed, so use the compact sender column when available.
+        candidate = next((column for column in COMPACT_COLUMNS if column in source_df.columns and column.lower() in ("sender", "speaker", "identity")), None)
+        if not candidate:
+            return
+        sender_column = candidate
+    else:
+        sender_column = IDENTITY_COLUMN
+    detected = []
+    seen = set()
+    blank_rows = []
+    for position, value in enumerate(source_df[sender_column].tolist(), start=1):
+        if pd.isna(value) or str(value).strip() == "":
+            blank_rows.append(position)
+            continue
+        name = str(value).strip()
+        if name not in seen:
+            seen.add(name)
+            detected.append(name)
+    if blank_rows:
+        raise ValueError(
+            f"Sender column '{{sender_column}}' contains blank values in source rows: "
+            + ", ".join(str(value) for value in blank_rows[:5])
+        )
+    if detected != PARTICIPANTS:
+        raise ValueError(
+            "Detected sender names no longer match the verified package configuration. "
+            f"Expected {{PARTICIPANTS}}; found {{detected}}."
+        )
 
 
 def resolve_code_columns(source_columns, compact_columns):
@@ -347,65 +406,16 @@ def save_package_results(
     input_path: str,
     also_save_episodes: bool,
 ):
-    """Write the package's primary XLSX and optional compact XLSX."""
+    """Write the package's primary CSV and optional compact CSV."""
     output_dir = os.path.dirname(os.path.abspath(input_path))
-    primary_path = os.path.join(output_dir, f"{{RESULT_STEM}}_coded.xlsx")
-    write_literal_xlsx(primary_df, primary_path, "Coded data")
+    primary_path = os.path.join(output_dir, f"{{RESULT_STEM}}_coded.csv")
+    primary_df.to_csv(primary_path, index=False)
 
     compact_path = None
     if also_save_episodes:
-        compact_path = os.path.join(output_dir, f"{{RESULT_STEM}}_coded_episodes.xlsx")
-        write_literal_xlsx(compact_df, compact_path, "Coded episodes")
+        compact_path = os.path.join(output_dir, f"{{RESULT_STEM}}_coded_episodes.csv")
+        compact_df.to_csv(compact_path, index=False)
     return primary_path, compact_path
-
-
-def write_literal_xlsx(df: pd.DataFrame, output_path: str, sheet_name: str):
-    """Write a flat workbook without formulas or lossy Excel cell coercion."""
-    def validate_text(value, location):
-        if not isinstance(value, str):
-            return
-        if len(value) > 32767:
-            raise ValueError(
-                f"{{location}} contains {{len(value)}} characters; "
-                "Excel cells support at most 32,767 characters."
-            )
-        for character in value:
-            codepoint = ord(character)
-            valid_xml_character = (
-                codepoint in (0x09, 0x0A, 0x0D)
-                or 0x20 <= codepoint <= 0xD7FF
-                or 0xE000 <= codepoint <= 0xFFFD
-                or 0x10000 <= codepoint <= 0x10FFFF
-            )
-            if not valid_xml_character:
-                raise ValueError(
-                    f"{{location}} contains the XML-incompatible character "
-                    f"U+{{codepoint:04X}}. Remove it before exporting to Excel."
-                )
-
-    for column_number, value in enumerate(df.columns, start=1):
-        validate_text(value, f"Column header {{column_number}}")
-    for row_number, values in enumerate(df.itertuples(index=False, name=None), start=2):
-        for column_number, value in enumerate(values, start=1):
-            validate_text(value, f"Cell at row {{row_number}}, column {{column_number}}")
-
-    df.to_excel(output_path, sheet_name=sheet_name, index=False)
-    workbook = load_workbook(output_path)
-    worksheet = workbook[sheet_name]
-    worksheet.freeze_panes = "A2"
-    worksheet.auto_filter.ref = worksheet.dimensions
-    for column_number, value in enumerate(df.columns, start=1):
-        if isinstance(value, str):
-            cell = worksheet.cell(row=1, column=column_number)
-            cell.value = value
-            cell.data_type = "s"
-    for row_number, values in enumerate(df.itertuples(index=False, name=None), start=2):
-        for column_number, value in enumerate(values, start=1):
-            if isinstance(value, str):
-                cell = worksheet.cell(row=row_number, column=column_number)
-                cell.value = value
-                cell.data_type = "s"
-    workbook.save(output_path)
 
 
 def build_prompt(message_text: str, row=None) -> str:
@@ -534,13 +544,14 @@ def main():
     parser.add_argument(
         "--also-save-episodes",
         action="store_true",
-        help="Also save a compact one-row-per-episode XLSX file (package mode only)",
+        help="Also save a compact one-row-per-episode CSV file (package mode only)",
     )
     args = parser.parse_args()
 
     if PACKAGE_MODE:
-        print(f"Loading package workbook: {{args.file}}")
-        source_df, episode_df, row_map = load_package_workbook(args.file)
+        print(f"Loading package CSV files from: {{os.path.dirname(os.path.abspath(args.file))}}")
+        source_df, episode_df, row_map = load_package_csvs(args.file)
+        validate_sender_data(source_df)
         print(
             f"Loaded {{len(source_df)}} source rows and {{len(episode_df)}} episodes; "
             f"coding column: '{{MESSAGE_COLUMN}}'"
@@ -575,6 +586,8 @@ def main():
     print(f"Loading dataset: {{args.file}}")
     df = load_dataset(args.file)
     print(f"Loaded {{len(df)}} rows, coding column: '{{MESSAGE_COLUMN}}'")
+
+    validate_sender_data(df)
 
     if IDENTIFIER_COLUMNS:
         df = group_units(df)

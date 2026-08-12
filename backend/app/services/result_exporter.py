@@ -1,4 +1,4 @@
-"""Prepare communication episodes and build researcher-facing result workbooks."""
+"""Prepare communication episodes and build researcher-facing result datasets."""
 
 from __future__ import annotations
 
@@ -26,6 +26,177 @@ class PreparedCodingDataset:
     source_episode_indices: list[int]
 
 
+def _is_missing_scalar(value: Any) -> bool:
+    """Return whether a dataset cell is missing without accepting array results."""
+
+    try:
+        missing = pd.isna(value)
+        return not hasattr(missing, "__len__") and bool(missing)
+    except (TypeError, ValueError):
+        return False
+
+
+def _typed_value_key(value: Any) -> tuple[str, Any]:
+    """Use exact, type-aware equality while treating all missing cells alike."""
+
+    if _is_missing_scalar(value):
+        return ("missing", None)
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+        try:
+            value = value.item()
+        except (TypeError, ValueError):
+            pass
+    if isinstance(value, pd.Timestamp):
+        return ("timestamp", value.isoformat())
+    if isinstance(value, (str, int, float, bool, date, datetime)):
+        return (type(value).__name__, value)
+    return (type(value).__name__, str(value))
+
+
+def _display_dataset_value(value: Any) -> str:
+    if _is_missing_scalar(value) or (isinstance(value, str) and value.strip() == ""):
+        return "(blank)"
+    return str(value)
+
+
+def find_context_conflicts(
+    df: pd.DataFrame,
+    *,
+    identifier_columns: list[str] | None,
+    context_columns: list[str] | None,
+) -> list[dict[str, Any]]:
+    """Find context fields that are not exactly constant within an episode.
+
+    Missing values form one explicit value class, so a blank/nonblank mixture is
+    a conflict. With no identifier columns, every row is its own episode and no
+    within-episode conflict is possible.
+    """
+
+    id_columns = list(identifier_columns or [])
+    selected_context = list(dict.fromkeys(context_columns or []))
+    if not id_columns or not selected_context:
+        return []
+
+    missing_columns = [
+        column for column in [*id_columns, *selected_context] if column not in df.columns
+    ]
+    if missing_columns:
+        raise ValueError(
+            "Mapped columns were not found in the uploaded dataset: "
+            + ", ".join(missing_columns)
+            + "."
+        )
+
+    grouped = list(df.groupby(id_columns, sort=False, dropna=False))
+    conflicts: list[dict[str, Any]] = []
+    for context_column in selected_context:
+        conflict_count = 0
+        example_episode: dict[str, str] | None = None
+        example_values: list[str] | None = None
+        for group_key, group in grouped:
+            distinct: dict[tuple[str, Any], Any] = {}
+            for value in group[context_column].tolist():
+                distinct.setdefault(_typed_value_key(value), value)
+            if len(distinct) <= 1:
+                continue
+            conflict_count += 1
+            if example_episode is None:
+                keys = group_key if isinstance(group_key, tuple) else (group_key,)
+                example_episode = {
+                    column: _display_dataset_value(value)
+                    for column, value in zip(id_columns, keys)
+                }
+                example_values = [_display_dataset_value(value) for value in distinct.values()]
+
+        if conflict_count:
+            conflicts.append(
+                {
+                    "column": context_column,
+                    "conflicting_episode_count": conflict_count,
+                    "example_episode": example_episode or {},
+                    "example_values": example_values or [],
+                }
+            )
+    return conflicts
+
+
+def context_conflict_message(conflicts: list[dict[str, Any]]) -> str:
+    """Create a concise server-side error for bypassed UI validation."""
+
+    details: list[str] = []
+    for conflict in conflicts:
+        episode = ", ".join(
+            f"{column}={value}"
+            for column, value in conflict.get("example_episode", {}).items()
+        ) or "example episode"
+        values = ", ".join(conflict.get("example_values", []))
+        details.append(
+            f"{conflict['column']}: {conflict['conflicting_episode_count']} "
+            f"episode(s) conflict; {episode} contains {values}"
+        )
+    return (
+        "Selected Context fields must contain exactly one value within every episode. "
+        + "; ".join(details)
+        + ". Correct and re-upload the dataset or remove the inconsistent Context field."
+    )
+
+
+def detect_sender_names(
+    df: pd.DataFrame,
+    identity_column: str | None,
+) -> tuple[list[str], list[int]]:
+    """Return distinct nonblank sender names and one-based blank row numbers."""
+
+    if not identity_column or identity_column not in df.columns:
+        return [], []
+    names: list[str] = []
+    seen: set[str] = set()
+    blank_rows: list[int] = []
+    for position, value in enumerate(df[identity_column].tolist(), start=1):
+        if _is_missing_scalar(value) or str(value).strip() == "":
+            blank_rows.append(position)
+            continue
+        name = str(value).strip()
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names, blank_rows
+
+
+def validate_sender_configuration(
+    df: pd.DataFrame,
+    *,
+    identity_column: str | None,
+    participants: list[str] | None,
+    codebook: list[dict[str, Any]],
+) -> list[str]:
+    """Enforce that sender-level output keys match the mapped dataset exactly."""
+
+    if not any(entry.get("level") == "sender" for entry in codebook):
+        return list(participants or [])
+    if not identity_column or identity_column not in df.columns:
+        raise ValueError("Per-sender categories require a mapped Sender column.")
+    detected, blank_rows = detect_sender_names(df, identity_column)
+    if blank_rows:
+        preview = ", ".join(str(row) for row in blank_rows[:5])
+        suffix = "…" if len(blank_rows) > 5 else ""
+        raise ValueError(
+            f"Sender column '{identity_column}' contains blank values in source row(s) "
+            f"{preview}{suffix}. Fill every sender value before using per-sender categories."
+        )
+    if not detected:
+        raise ValueError(
+            f"Sender column '{identity_column}' does not contain any nonblank sender names."
+        )
+    supplied = [str(value).strip() for value in (participants or []) if str(value).strip()]
+    if supplied != detected:
+        raise ValueError(
+            "The sender list does not match the values detected from the mapped Sender "
+            f"column. Expected, in first-appearance order: {', '.join(detected)}."
+        )
+    return detected
+
+
 def prepare_coding_dataset(
     df: pd.DataFrame,
     *,
@@ -34,6 +205,7 @@ def prepare_coding_dataset(
     identity_column: str | None,
     order_column: str | None,
     order_direction: str,
+    context_columns: list[str] | None = None,
 ) -> PreparedCodingDataset:
     """Create the episode-level coding table without losing source-row lineage.
 
@@ -44,6 +216,13 @@ def prepare_coding_dataset(
 
     original = df.reset_index(drop=True).copy()
     id_columns = [c for c in (identifier_columns or []) if c in original.columns]
+    conflicts = find_context_conflicts(
+        original,
+        identifier_columns=id_columns,
+        context_columns=context_columns,
+    )
+    if conflicts:
+        raise ValueError(context_conflict_message(conflicts))
     if not id_columns:
         return PreparedCodingDataset(
             episodes=original,
@@ -409,3 +588,9 @@ def dataframe_to_xlsx(df: pd.DataFrame, *, sheet_name: str) -> bytes:
     """Write one flat worksheet."""
 
     return dataframes_to_xlsx([(sheet_name, df)])
+
+
+def dataframe_to_csv(df: pd.DataFrame) -> bytes:
+    """Write a flat UTF-8 CSV while preserving the DataFrame's row and column order."""
+
+    return df.to_csv(index=False, lineterminator="\n").encode("utf-8")

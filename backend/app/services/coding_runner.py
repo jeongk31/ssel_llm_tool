@@ -10,6 +10,12 @@ import pandas as pd
 from app.services.providers.base import LLMProvider
 
 
+# Stored only in the server-side detailed-results artifact. It lets a selective
+# rerun replace every call-level record for the affected episode without relying
+# on potentially non-unique source columns.
+DETAIL_EPISODE_INDEX_COLUMN = "__chat_episode_index"
+
+
 # Provider → base_url (None = default for the SDK)
 PROVIDER_BASE_URLS = {
     "openai": None,
@@ -213,6 +219,7 @@ async def run_coding(
     model_id: str = "",
     api_key: str = "",
     max_retries: int = 3,
+    episode_indices: list[int] | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
     Code each row and yield progress messages.
@@ -268,6 +275,10 @@ async def run_coding(
             aggregations[label] = method
     null_result = {label: None for label in labels}
     total = len(df)
+    if episode_indices is None:
+        episode_indices = list(range(total))
+    if len(episode_indices) != total:
+        raise ValueError("episode_indices must contain one index for every coding row")
     total_calls = len(providers) * runs_per_model
     use_voting = total_calls > 1
     coded_count = 0
@@ -282,6 +293,10 @@ async def run_coding(
         for k, v in original.items():
             if hasattr(v, 'item'):
                 original[k] = v.item()
+        detail_original = {
+            **original,
+            DETAIL_EPISODE_INDEX_COLUMN: int(episode_indices[row_idx]),
+        }
 
         percent = round(((row_idx + 1) / total) * 100, 1)
 
@@ -293,7 +308,7 @@ async def run_coding(
                 pass
             else:
                 coded = {**null_result, "_error": "empty_message"}
-                all_results.append({**original, **coded})
+                all_results.append({**detail_original, **coded})
                 yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
                 yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
                 continue
@@ -344,9 +359,9 @@ async def run_coding(
 
                 if parsed:
                     call_results.append(parsed)
-                    all_results.append({**original, "coder": coder_label, **parsed})
+                    all_results.append({**detail_original, "coder": coder_label, **parsed})
                 else:
-                    all_results.append({**original, "coder": coder_label, **null_result, "_error": "api_failed"})
+                    all_results.append({**detail_original, "coder": coder_label, **null_result, "_error": "api_failed"})
 
         # Aggregate for the streamed row (what the UI shows)
         if call_results:
@@ -360,7 +375,7 @@ async def run_coding(
 
             # Add aggregated row to output
             if use_voting:
-                all_results.append({**original, "coder": "__aggregated (per-variable)", **{k: v for k, v in coded.items() if not k.startswith("_")}})
+                all_results.append({**detail_original, "coder": "__aggregated (per-variable)", **{k: v for k, v in coded.items() if not k.startswith("_")}})
         else:
             coded = {**null_result, "_error": "all_calls_failed"}
 
@@ -370,7 +385,7 @@ async def run_coding(
     # Save results
     # Reorder columns: original cols, coder, codebook labels, then any extra
     orig_cols = list(df.columns)
-    ordered_cols = orig_cols + ["coder"] + labels
+    ordered_cols = orig_cols + [DETAIL_EPISODE_INDEX_COLUMN, "coder"] + labels
     # Keep headers even when every episode was intentionally skipped. This
     # produces a valid empty CSV instead of a zero-byte artifact.
     result_df = pd.DataFrame(all_results, columns=ordered_cols if not all_results else None)
