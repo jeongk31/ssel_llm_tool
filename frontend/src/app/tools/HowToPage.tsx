@@ -46,7 +46,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What does “empty message handling” do?",
-    a: <>It controls rows whose message is blank: <strong>ignore</strong> skips them entirely, <strong>code</strong> sends them to the model anyway, and the default records them as empty with an error flag. Pick whichever matches how you want blanks treated.</>,
+    a: <>It controls fully empty communication episodes. <strong>Ignore</strong> skips the model call, while retaining the corresponding source rows with blank code cells in the primary workbook. <strong>Code as value</strong> sends the empty episode to the model so the codebook can define how it should be classified.</>,
   },
   {
     q: "How many models and runs should I use, and how are they combined?",
@@ -54,11 +54,15 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between “Generate package” and “Run Coding”?",
-    a: <><strong>Generate package</strong> downloads a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements (the script runs the first configured model). The package never contains your API key; the script reads <code>CHAT_API_KEY</code> or prompts securely at runtime. <strong>Run Coding</strong> validates your keys and codes everything live in the app, streaming results and flagging out-of-range or failed rows so you can re-run just those.</>,
+    a: <><strong>Generate package</strong> downloads a ZIP containing the script, an input workbook with the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. The script uses the first selected provider and model for one call per episode. The package never contains your API key; the script reads <code>CHAT_API_KEY</code> or prompts securely at runtime. <strong>Run Coding</strong> validates your keys and codes every episode live in the app using all configured models and runs, streaming results and flagging out-of-range or failed episodes so you can re-run just those.</>,
   },
   {
-    q: "Why is my run showing errors for some rows?",
-    a: <>Check the empty-message-handling setting and confirm your API key is valid for the selected model. After a run, the validation report lists the specific rows and lets you re-run only those.</>,
+    q: "What do the result downloads contain?",
+    a: <>The main <strong>Coded dataset</strong> Excel workbook preserves every original row and column and appends the final aggregate coding columns. If several message rows form one episode, that episode&apos;s codes are repeated on each corresponding original row. The optional <strong>Episode-level results</strong> workbook is a compact version with one row per preprocessed episode. When several model calls were used, their individual and aggregate records are available separately as detailed outputs until a selective re-run replaces part of the run.</>,
+  },
+  {
+    q: "Why is my run showing errors for some episodes?",
+    a: <>Check the empty-message-handling setting and confirm your API key is valid for the selected model. After a run, the validation report lists the affected coded episodes and lets you re-run only those.</>,
   },
   {
     q: "Which LLM providers are supported?",
@@ -271,13 +275,13 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="tool-desc">
                 <p>
                   Upload a dataset, describe your experiment, define a codebook, and have one or
-                  more LLMs code every row according to your instructions.
+                  more LLMs code every communication episode according to your instructions.
                 </p>
                 <AtAGlance
                   items={[
                     { label: "Input", value: "CSV or Excel file" },
                     { label: "You configure", value: "Instructions, codebook, models" },
-                    { label: "Output", value: "Coded CSV + Python script" },
+                    { label: "Output", value: "Coded Excel workbooks + Python package" },
                   ]}
                 />
               </div>
@@ -319,7 +323,7 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <StepSection n={4} title="Models & Runs">
               <div className="howto-warning mb-12">
-                <strong>Execution modes differ.</strong> <strong>Run Coding</strong> uses every configured model. The downloaded package currently runs only the first configured model; experienced users can modify the generated Python script for a custom multi-model workflow.
+                <strong>Execution modes differ.</strong> <strong>Run Coding</strong> uses every configured model and run. The downloaded package currently uses the first selected provider and model for one call per episode; experienced users can modify the generated Python script to change parameters or create a repeated- or multi-model workflow.
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>
@@ -327,7 +331,7 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Runs per model:</span>
-                Run each model multiple times per row to enable voting. More runs reduce variance at the cost of more API calls.
+                Run each model multiple times per episode to enable aggregation. More runs cost more API calls.
               </div>
               <div className="catgen-field"><span className="catgen-label">Aggregation:</span> Set separately for each variable in the codebook.</div>
               <p className="mt-12">
@@ -339,7 +343,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Running it</div>
               <div className="tool-desc">
                 <p>
-                  <strong>Generate package</strong> creates a ZIP with the Python script, its exact preprocessed CSV input, a README, and a requirements file. The API key is excluded; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results live as each row is processed. When it finishes, a validation report flags out-of-range or failed rows so you can re-run just those.
+                  <strong>Generate package</strong> creates a ZIP with the Python script, an input workbook containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. The API key is excluded; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The main result download is an Excel workbook with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional workbook provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
                 </p>
               </div>
             </div>

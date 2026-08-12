@@ -60,7 +60,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
     targetId: "tour-empty-handling", title: "Empty messages",
-    body: (<p>Choose what happens to rows with no text: <strong>skip the row</strong> or <strong>code it as a value</strong>.</p>),
+    body: (<p>Choose what happens to a fully empty episode: <strong>Ignore</strong> skips the model call but keeps its original rows in the primary workbook with blank code cells; <strong>Code as value</strong> asks the model to apply the codebook to the empty episode.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
@@ -103,7 +103,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
     targetId: "tour-model-execution", title: "Browser vs downloaded package",
-    body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently uses only the first configured model</strong>; experienced users can extend its Python script for custom multi-model execution.</p>),
+    body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently uses the first selected provider and model for one call per episode</strong>; experienced users can edit its Python script to change parameters or build a repeated- or multi-model workflow.</p>),
   },
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
@@ -118,8 +118,13 @@ const CODING_TOUR_STEPS: TourStep[] = [
   // ── Run ──
   {
     sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
-    title: "Run it",
-    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, its exact preprocessed CSV input, a README, and requirements. <strong>The package runs only the first configured model</strong>; multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
+    title: "Run or generate a package",
+    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, an input workbook with the source rows, exact preprocessed episodes, and row map, plus a README and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
+  },
+  {
+    sectionId: "coding-run-bar", section: "Results",
+    title: "Review and download results",
+    body: (<p>After browser coding, ChAT validates the coded episodes and lets you re-run any that need attention. The main <strong>coded dataset</strong> Excel download keeps every original row and column, repeating an episode&apos;s final codes across its corresponding message rows. An optional <strong>episode-level</strong> Excel file provides one row per preprocessed episode; detailed model and run outputs are kept separate when available.</p>),
   },
 ];
 
@@ -151,15 +156,26 @@ const codedValuesOf = (e: CodebookEntry) =>
 function expandCodebook(codebook: CodebookEntry[], participants: string[]): ExpandedVar[] {
   const out: ExpandedVar[] = [];
   for (const e of codebook) {
-    if (!e.label.trim()) continue;
+    const label = e.label.trim();
+    if (!label) continue;
     const cv = codedValuesOf(e);
     if (e.level === "sender" && participants.length > 0) {
-      for (const p of participants) out.push({ key: `${e.label}_${p}`, type: e.type, coded_values: cv });
+      for (const p of participants) out.push({ key: `${label}_${p}`, type: e.type, coded_values: cv });
     } else {
-      out.push({ key: e.label, type: e.type, coded_values: cv });
+      out.push({ key: label, type: e.type, coded_values: cv });
     }
   }
   return out;
+}
+
+function duplicateExpandedKeys(variables: ExpandedVar[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const variable of variables) {
+    if (seen.has(variable.key)) duplicates.add(variable.key);
+    seen.add(variable.key);
+  }
+  return [...duplicates];
 }
 
 interface UploadResult {
@@ -246,6 +262,57 @@ async function parseUploadResponse(response: Response): Promise<UploadResult> {
   return candidate as UploadResult;
 }
 
+function downloadFilename(response: Response, fallback: string): string {
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  let name = "";
+  if (encoded) {
+    try { name = decodeURIComponent(encoded.trim().replace(/^"|"$/g, "")); } catch {}
+  }
+  if (!name) name = disposition.match(/filename="?([^";]+)"?/i)?.[1]?.trim() || fallback;
+  return name.split(/[\\/]/).pop() || fallback;
+}
+
+async function parseDownloadArtifact(
+  response: Response,
+  expected: "xlsx" | "zip",
+  fallbackFilename: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const expectedType = expected === "xlsx"
+    ? contentType.includes("spreadsheetml") || /\.xlsx(?:[";]|$)/i.test(disposition)
+    : contentType.includes("application/zip") || contentType.includes("x-zip-compressed") || /\.zip(?:[";]|$)/i.test(disposition);
+  const genericBinary = contentType.includes("application/octet-stream");
+
+  if (response.ok && (expectedType || genericBinary)) {
+    return { blob: await response.blob(), filename: downloadFilename(response, fallbackFilename) };
+  }
+
+  const raw = await response.text();
+  let detail = "";
+  let responseCode: string | null = null;
+  if (contentType.includes("application/json")) {
+    try {
+      const parsed = JSON.parse(raw) as { detail?: unknown; code?: unknown };
+      detail = typeof parsed.detail === "string" ? parsed.detail : "";
+      responseCode = typeof parsed.code === "string" ? parsed.code : null;
+    } catch {}
+  }
+  const errorCode = response.headers.get("X-ChAT-Error-Code") || responseCode;
+  if (isRestorableUploadCode(errorCode)) {
+    throw new UploadUnavailableError(detail || "The uploaded dataset must be restored.", errorCode);
+  }
+  if (!detail && raw.trim().startsWith("<")) {
+    const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+    detail = `The server returned an HTML error page instead of the requested download (HTTP ${response.status}${title ? `: ${title}` : ""}).`;
+  }
+  if (!detail && response.ok) {
+    detail = `The server returned an unexpected file type instead of a${expected === "xlsx" ? "n Excel workbook" : " ZIP archive"}.`;
+  }
+  throw new Error(detail || response.statusText || `Download failed (HTTP ${response.status}).`);
+}
+
 // Column-mapping picker
 type ColRole = "message" | "identifier" | "identity" | "order" | "context";
 const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string; hint: string }> = {
@@ -262,6 +329,37 @@ const ROLE_ORDER: ColRole[] = ["message", "identifier", "identity", "order", "co
 // Frontend mirror of the backend's _group_units: collapse rows sharing an
 // identifier combination into one unit, tagging messages by sender and ordering
 // them. Returns the original rows unchanged when no identifiers are chosen.
+function isMissingPreprocessValue(value: unknown): boolean {
+  return value == null || (typeof value === "number" && Number.isNaN(value));
+}
+
+// JSON arrays preserve both component boundaries and scalar types, unlike a
+// display delimiter.  In particular, a missing identifier remains distinct
+// from an intentional empty string, matching pandas groupby(dropna=False).
+function preprocessGroupKey(row: Record<string, unknown>, idCols: string[]): string {
+  return JSON.stringify(idCols.map((column) => {
+    const value = row[column];
+    if (isMissingPreprocessValue(value)) return ["missing"];
+    if (typeof value === "number") return ["number", Object.is(value, -0) ? 0 : value];
+    if (typeof value === "boolean") return ["boolean", value];
+    if (typeof value === "string") return ["string", value];
+    return [typeof value, value];
+  }));
+}
+
+// Python compares strings by Unicode code point.  localeCompare can vary with
+// the browser locale, so use an explicit code-point comparison for previews.
+function comparePreprocessStrings(left: string, right: string): number {
+  const a = Array.from(left);
+  const b = Array.from(right);
+  const length = Math.min(a.length, b.length);
+  for (let i = 0; i < length; i += 1) {
+    const difference = a[i].codePointAt(0)! - b[i].codePointAt(0)!;
+    if (difference !== 0) return difference;
+  }
+  return a.length - b.length;
+}
+
 function buildPreprocessedRows(
   rows: Record<string, unknown>[],
   columns: string[],
@@ -277,12 +375,32 @@ function buildPreprocessedRows(
   let work = rows.map((r, i) => ({ r, i }));
   if (orderColumn && columns.includes(orderColumn)) {
     const dir = orderDirection === "desc" ? -1 : 1;
+    const presentValues = work
+      .map(({ r }) => r[orderColumn])
+      .filter((value) => !isMissingPreprocessValue(value));
+    const valueTypes = new Set(presentValues.map((value) => typeof value));
+    const numericOrder = [...valueTypes].every((type) => type === "number" || type === "boolean");
+    const stringOrder = valueTypes.size === 0 || (valueTypes.size === 1 && valueTypes.has("string"));
+
     work = [...work].sort((a, b) => {
       const av = a.r[orderColumn], bv = b.r[orderColumn];
-      const an = Number(av), bn = Number(bv);
-      const cmp = (!Number.isNaN(an) && !Number.isNaN(bn) && av !== "" && bv !== "")
-        ? an - bn
-        : String(av ?? "").localeCompare(String(bv ?? ""));
+      const aMissing = isMissingPreprocessValue(av);
+      const bMissing = isMissingPreprocessValue(bv);
+      // pandas sort_values leaves missing values last in both directions.
+      if (aMissing || bMissing) {
+        if (aMissing !== bMissing) return aMissing ? 1 : -1;
+        return a.i - b.i;
+      }
+
+      let cmp = 0;
+      if (numericOrder) {
+        cmp = Number(av) - Number(bv);
+      } else if (stringOrder) {
+        cmp = comparePreprocessStrings(String(av), String(bv));
+      }
+      // A genuinely mixed Excel column generally cannot be ordered by pandas.
+      // Preserve its source order here instead of inventing a browser-specific
+      // ordering; the backend remains authoritative and will report the error.
       return cmp !== 0 ? cmp * dir : a.i - b.i; // stable tiebreak on original order
     });
   }
@@ -291,7 +409,7 @@ function buildPreprocessedRows(
   const groups = new Map<string, Record<string, unknown>[]>();
   const order: string[] = [];
   for (const { r } of work) {
-    const key = idCols.map((c) => String(r[c] ?? "")).join(" ⋮ ");
+    const key = preprocessGroupKey(r, idCols);
     if (!groups.has(key)) { groups.set(key, []); order.push(key); }
     groups.get(key)!.push(r);
   }
@@ -301,9 +419,15 @@ function buildPreprocessedRows(
     const parts = g.map((r) => {
       const msg = r[messageColumn] == null ? "" : String(r[messageColumn]);
       const who = r[identityColumn];
-      return useIdentity && who != null && String(who) !== "" ? `[${who}] ${msg}` : msg;
+      return msg.trim() && useIdentity && who != null && String(who).trim() !== "" ? `[${who}] ${msg}` : msg;
     });
-    return { ...g[0], [messageColumn]: parts.join("\n") };
+    const episode = { ...g[0], [messageColumn]: parts.join("\n") };
+    for (const mappedColumn of [identityColumn, orderColumn]) {
+      if (mappedColumn && columns.includes(mappedColumn) && mappedColumn !== messageColumn && !idCols.includes(mappedColumn)) {
+        episode[mappedColumn] = g.map((r) => r[mappedColumn] == null ? "" : String(r[mappedColumn])).join("\n");
+      }
+    }
+    return episode;
   });
 }
 
@@ -316,6 +440,25 @@ interface CodedRow {
   index: number;
   original: Record<string, unknown>;
   coded: Record<string, unknown>;
+}
+
+type ResultDownloadKind = "primary" | "episodes" | "detailed";
+
+interface ResultExportConfig {
+  messageColumn: string;
+  identifierColumns: string[];
+  identityColumn: string;
+  orderColumn: string;
+  orderDirection: "asc" | "desc";
+  context: { column: string; description: string }[];
+  codebook: CodebookEntry[];
+  participants: string[];
+  models: { provider: string; model: string; temperature?: number; topP?: number; maxTokens?: number }[];
+  runsPerModel: number;
+  rowsAsUnits: boolean;
+  episodeCount: number;
+  modelCallCount: number;
+  fingerprint: string;
 }
 
 interface RunProgress {
@@ -813,6 +956,7 @@ export default function Home() {
   );
   const hasSenderVar = codebook.some((e) => e.level === "sender" && e.label.trim());
   const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
+  const duplicateCodeLabels = useMemo(() => duplicateExpandedKeys(expandedVars), [expandedVars]);
 
   // Row filter
   const [rowFilter, setRowFilter] = useState("");
@@ -846,6 +990,9 @@ export default function Home() {
   const runActionRef = useRef<{ token: number; controller: AbortController } | null>(null);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [hasRerun, setHasRerun] = useState(false);
+  const [resultDownloadKind, setResultDownloadKind] = useState<ResultDownloadKind | null>(null);
+  const [resultDownloadError, setResultDownloadError] = useState("");
+  const [resultExportConfig, setResultExportConfig] = useState<ResultExportConfig | null>(null);
   const codedRowsRef = useRef<CodedRow[]>([]);
 
   // Analysis state
@@ -1058,6 +1205,10 @@ export default function Home() {
   };
 
   const saveCodebookEditor = () => {
+    if (duplicateCodeLabels.length > 0) {
+      showToast("Every output label must be unique");
+      return;
+    }
     codebookSnapshotRef.current = JSON.stringify(codebook);
     setExpandedTable(null);
     showToast("Codebook saved");
@@ -1077,13 +1228,13 @@ export default function Home() {
 
   useEffect(() => {
     if (runComplete) setRunFinishedAt(new Date().toISOString());
-    if (runComplete && codedRowsRef.current.length > 0) {
+    if (runComplete) {
       const report = validateCodedRows(codedRowsRef.current, expandedVars);
       setValidationReport(report);
       if (report.problematicIndices.length === 0) {
-        log("info", "Validation passed: all rows within expected ranges.");
+        log("info", "Validation passed: all coded episodes are within the expected ranges.");
       } else {
-        log("warn", `Validation: ${report.problematicIndices.length} rows with issues (${report.errorRows} errors, ${report.outOfRangeRows} out-of-range).`);
+        log("warn", `Validation: ${report.problematicIndices.length} coded episodes with issues (${report.errorRows} errors, ${report.outOfRangeRows} out-of-range).`);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1120,7 +1271,10 @@ export default function Home() {
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError("");
-    setValidationReport(null); setHasRerun(false); setConsoleLogs([]); setRightView("script");
+    setValidationReport(null); setHasRerun(false);
+    setResultDownloadKind(null); setResultDownloadError("");
+    setResultExportConfig(null);
+    setConsoleLogs([]); setRightView("script");
   };
 
   const resetMapping = () => {
@@ -1686,6 +1840,7 @@ export default function Home() {
     mappingComplete &&
     experimentInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type) &&
+    duplicateCodeLabels.length === 0 &&
     (!hasSenderVar || participants.length > 0) &&
     modelSlots.length > 0 &&
     modelSlots.every((s) => s.provider && s.model && s.apiKey.trim()) &&
@@ -1693,7 +1848,7 @@ export default function Home() {
   );
 
   const handleDownloadPackage = async () => {
-    if (!canGenerate || !uploadResult || codingActionBusyRef.current) return;
+    if (!canGenerate || !uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
     codingActionBusyRef.current = true;
     setGenerating(true);
     setGenerateError("");
@@ -1802,10 +1957,59 @@ export default function Home() {
     setRunning(false);
   };
 
+  const buildResultExportConfig = (): ResultExportConfig => {
+    const savedCodebook = codebook.map((entry) => ({
+      ...entry,
+      values: entry.values.map((value) => ({ ...value })),
+    }));
+    const savedParticipants = [...participants];
+    const savedContext = contextColumns.map((column) => ({
+      column,
+      description: contextDescriptions[column] || "",
+    }));
+    const nonsecretModelConfig = modelSlots.map((slot) => ({
+      provider: slot.provider,
+      model: slot.model,
+      temperature: slot.temperature,
+      topP: slot.topP,
+      maxTokens: slot.maxTokens,
+    }));
+    const fingerprint = JSON.stringify({
+      messageColumn,
+      identifierColumns,
+      identityColumn,
+      orderColumn,
+      orderDirection,
+      context: savedContext,
+      codebook: savedCodebook,
+      participants: savedParticipants,
+      emptyMessageHandling,
+      experimentInstructions,
+      models: nonsecretModelConfig,
+      runsPerModel,
+    });
+    return {
+      messageColumn,
+      identifierColumns: [...identifierColumns],
+      identityColumn,
+      orderColumn,
+      orderDirection,
+      context: savedContext,
+      codebook: savedCodebook,
+      participants: savedParticipants,
+      models: nonsecretModelConfig,
+      runsPerModel,
+      rowsAsUnits,
+      episodeCount: rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length,
+      modelCallCount: modelSlots.length * runsPerModel,
+      fingerprint,
+    };
+  };
+
   // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
-    if (!canGenerate || !uploadResult) return;
+    if (!canGenerate || !uploadResult || resultDownloadKind) return;
     const action = beginRunAction();
     if (!action) return;
     const signal = action.controller.signal;
@@ -1818,6 +2022,8 @@ export default function Home() {
     setRunError("");
     setValidationReport(null);
     setHasRerun(false);
+    setResultDownloadError("");
+    setResultExportConfig(buildResultExportConfig());
     setAnalysisResults(null);
     setAnalysisError("");
     setGenerateError("");
@@ -1937,15 +2143,15 @@ export default function Home() {
               assertCurrentRunAction(action);
               if (msg.type === "progress") {
                 setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
-                log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
+                log("info", `Episode ${msg.current}/${msg.total} (${msg.percent}%)`);
               } else if (msg.type === "row") {
                 const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
                 setCodedRows((prev) => [...prev, row]);
                 const issues = checkRow(row.index, row.coded, expandedVars);
                 for (const issue of issues) {
                   const detail = issue.issueType === "api_error"
-                    ? `Row ${row.index + 1}: ${issue.value}`
-                    : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+                    ? `Episode ${row.index + 1}: ${issue.value}`
+                    : `Episode ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
                   setRunErrors((prev) => [...prev, detail]);
                   log("warn", detail);
                 }
@@ -1965,7 +2171,7 @@ export default function Home() {
                   coded_rows: msg.coded_rows!,
                   file_path: msg.file_path!,
                 });
-                log("info", `Coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+                log("info", `Coding complete. ${msg.total_rows} episodes processed, ${msg.coded_rows} coded.`);
               }
             },
           );
@@ -2019,32 +2225,67 @@ export default function Home() {
     setRunning(false);
   };
 
-  const handleDownloadResults = () => {
-    if (!runComplete) return;
-    window.open(`/api/coding/download?path=${encodeURIComponent(runComplete.file_path)}`, "_blank");
-    showToast("Download started");
+  const handleExportResults = async (kind: "primary" | "episodes") => {
+    if (!runComplete || !uploadResult || running || generating || resultDownloadKind) return;
+    const exportConfig = resultExportConfig ?? buildResultExportConfig();
+    setResultDownloadKind(kind);
+    setResultDownloadError("");
+    const uploadRecovery = { used: false };
+    try {
+      const fallbackStem = (uploadResult.file_name || "dataset").replace(/\.[^.]+$/, "") || "dataset";
+      const artifact = await withReadyUpload(async (activeUpload) => {
+        const response = await fetch("/api/coding/export-results", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file_id: activeUpload.file_id,
+            message_column: exportConfig.messageColumn,
+            identifier_columns: exportConfig.identifierColumns,
+            identity_column: exportConfig.identityColumn || null,
+            order_column: exportConfig.orderColumn || null,
+            order_direction: exportConfig.orderDirection,
+            context: exportConfig.context,
+            codebook: exportConfig.codebook,
+            participants: exportConfig.participants,
+            // Send only the latest aggregate value for each episode. Selective
+            // reruns replace entries in codedRows by index before this export.
+            coded_rows: codedRows.map(({ index, coded }) => ({ index, coded })),
+            kind,
+          }),
+        });
+        return parseDownloadArtifact(
+          response,
+          "xlsx",
+          kind === "primary" ? `${fallbackStem}_coded.xlsx` : `${fallbackStem}_coded_episodes.xlsx`,
+        );
+      }, { recovery: uploadRecovery });
+      downloadBlob(artifact.blob, artifact.filename);
+      showToast(kind === "primary" ? "Coded dataset downloaded" : "Episode-level results downloaded");
+    } catch (error) {
+      setResultDownloadError(error instanceof Error ? error.message : "Could not download the results.");
+    } finally {
+      setResultDownloadKind(null);
+    }
   };
 
-  const handleDownloadMerged = () => {
-    if (codedRows.length === 0) return;
-    const labels = codebook.filter((e) => e.label.trim()).map((e) => e.label);
-    const origCols = Object.keys(codedRows[0].original);
-    const headers = [...origCols, ...labels];
-    const csvRows = codedRows.map((r) => {
-      return headers.map((h) => {
-        const val = origCols.includes(h) ? r.original[h] : r.coded[h];
-        const str = String(val ?? "");
-        return str.includes(",") || str.includes('"') || str.includes("\n")
-          ? `"${str.replace(/"/g, '""')}"` : str;
-      }).join(",");
-    });
-    const csv = [headers.join(","), ...csvRows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "coded_results.csv"; a.click();
-    URL.revokeObjectURL(url);
-    showToast("Download started");
+  const handleDownloadDetailedResults = async () => {
+    const modelCallCount = resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel;
+    if (!runComplete || hasRerun || running || generating || modelCallCount <= 1 || resultDownloadKind) return;
+    setResultDownloadKind("detailed");
+    setResultDownloadError("");
+    try {
+      const response = await fetch(`/api/coding/download?path=${encodeURIComponent(runComplete.file_path)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const artifact = await parseDownloadArtifact(response, "zip", "coded_model_run_outputs.zip");
+      downloadBlob(artifact.blob, artifact.filename);
+      showToast("Detailed model and run outputs downloaded");
+    } catch (error) {
+      setResultDownloadError(error instanceof Error ? error.message : "Could not download the detailed outputs.");
+    } finally {
+      setResultDownloadKind(null);
+    }
   };
 
   const handleCodebookDownload = async (format: "json" | "csv" | "txt" | "pdf" | "xlsx" | "latex") => {
@@ -2262,6 +2503,7 @@ ${blocks}
   // ── Run summary (printable PDF) ─────────────────────────────────────────────
   const handleRunSummary = () => {
     if (!uploadResult || !runComplete) return;
+    const summaryConfig = resultExportConfig ?? buildResultExportConfig();
     const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
     let duration = "—";
     if (runStartedAt && runFinishedAt) {
@@ -2269,19 +2511,20 @@ ${blocks}
       const s = Math.max(0, Math.round(ms / 1000));
       duration = s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
     }
-    const totalCalls = modelSlots.length * runsPerModel;
-    const episodeCount = rowsAsUnits ? uploadResult.row_count : preprocessedRows.length;
+    const totalCalls = summaryConfig.modelCallCount;
+    const episodeCount = summaryConfig.episodeCount;
     const errs = runErrors.length;
     const rowsHtml = (arr: string[]) => arr.join("");
 
-    const modelRows = modelSlots.map((s, i) => {
+    const modelRows = summaryConfig.models.map((s, i) => {
       const p = PROVIDERS.find((pp) => pp.value === s.provider);
       const m = p?.models.find((mm) => mm.value === s.model);
       const noTemp = modelIgnoresTemperature(s.provider, s.model);
       return `<tr><td>${i + 1}</td><td>${htmlEsc(p?.label ?? s.provider)}</td><td>${htmlEsc(m?.label ?? s.model)}</td>
         <td>${noTemp ? "n/a" : (s.temperature ?? 0.2)}</td><td>${s.topP ?? 1.0}</td><td>${s.maxTokens ?? 1024}</td></tr>`;
     });
-    const cbRows = codebook.filter((e) => e.label.trim()).map((e) => {
+    const summaryCodebook = summaryConfig.codebook.filter((e) => e.label.trim());
+    const cbRows = summaryCodebook.map((e) => {
       const vals = TYPE_HAS_VALUES(e.type) ? e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") : "—";
       return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${e.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)"}</td><td>${htmlEsc(vals)}</td></tr>`;
     });
@@ -2310,9 +2553,10 @@ ${PDF_WATERMARK_HTML}
   ${kv("Started", fmt(runStartedAt))}
   ${kv("Finished", fmt(runFinishedAt))}
   ${kv("Duration", duration)}
-  ${kv("Episodes coded", `${runComplete.coded_rows} of ${runComplete.total_rows}`)}
+  ${kv("Episodes in task", String(episodeCount))}
+  ${kv("Unresolved output issues", String(validationReport?.problematicIndices.length ?? 0))}
   ${kv("Errors", errs > 0 ? `<span class="pill" style="background:#fee2e2;color:#b91c1c">${errs}</span>` : "0")}
-  ${kv("API calls", `${modelSlots.length} model${modelSlots.length !== 1 ? "s" : ""} × ${runsPerModel} run${runsPerModel !== 1 ? "s" : ""} = ${totalCalls} per episode`)}
+  ${kv("Configured calls", `${summaryConfig.models.length} model${summaryConfig.models.length !== 1 ? "s" : ""} × ${summaryConfig.runsPerModel} run${summaryConfig.runsPerModel !== 1 ? "s" : ""} = ${totalCalls} per non-skipped episode`)}
 </table>
 
 <h2>Dataset</h2>
@@ -2325,11 +2569,11 @@ ${PDF_WATERMARK_HTML}
 
 <h2>Column mapping</h2>
 <table>
-  ${kv("Message", htmlEsc(messageColumn || "—"))}
-  ${kv("Identifier(s)", rowsAsUnits ? "each row is its own episode" : htmlEsc(identifierColumns.join(" + ") || "—"))}
-  ${kv("Sender identity", htmlEsc(identityColumn || "none"))}
-  ${kv("Order", orderColumn ? `${htmlEsc(orderColumn)} (${orderDirection})` : "file order")}
-  ${kv("Context columns", htmlEsc(contextColumns.join(", ") || "none"))}
+  ${kv("Message", htmlEsc(summaryConfig.messageColumn || "—"))}
+  ${kv("Identifier(s)", summaryConfig.rowsAsUnits ? "each row is its own episode" : htmlEsc(summaryConfig.identifierColumns.join(" + ") || "—"))}
+  ${kv("Sender identity", htmlEsc(summaryConfig.identityColumn || "none"))}
+  ${kv("Order", summaryConfig.orderColumn ? `${htmlEsc(summaryConfig.orderColumn)} (${summaryConfig.orderDirection})` : "file order")}
+  ${kv("Context columns", htmlEsc(summaryConfig.context.map((item) => item.column).join(", ") || "none"))}
 </table>
 
 <h2>Models &amp; configuration</h2>
@@ -2338,7 +2582,7 @@ ${PDF_WATERMARK_HTML}
   <tbody>${rowsHtml(modelRows)}</tbody>
 </table>
 
-<h2>Codebook (${codebook.filter((e) => e.label.trim()).length} variable${codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""})</h2>
+<h2>Codebook (${summaryCodebook.length} variable${summaryCodebook.length !== 1 ? "s" : ""})</h2>
 <table>
   <thead><tr><th>Label</th><th>Type</th><th>Level</th><th>Aggregation</th><th>Values</th></tr></thead>
   <tbody>${rowsHtml(cbRows)}</tbody>
@@ -2427,7 +2671,18 @@ ${PDF_WATERMARK_HTML}
   })();
 
   const handleRerun = async (indices: number[] | null) => {
-    if (!uploadResult || uploadAvailability !== "ready") return;
+    if (!uploadResult || uploadAvailability !== "ready" || resultDownloadKind) return;
+    const currentExportConfig = buildResultExportConfig();
+    if (
+      indices
+      && resultExportConfig
+      && currentExportConfig.fingerprint !== resultExportConfig.fingerprint
+    ) {
+      const message = "The coding setup has changed since this result was produced. Re-run all episodes so every result uses the same mapping, codebook, instructions, and model configuration.";
+      setRunError(message);
+      showToast("Re-run all episodes after changing the coding setup");
+      return;
+    }
     const action = beginRunAction();
     if (!action) return;
     const signal = action.controller.signal;
@@ -2438,15 +2693,17 @@ ${PDF_WATERMARK_HTML}
     setRunComplete(null);
     setValidationReport(null);
     setRunError("");
+    setResultDownloadError("");
     setConsoleLogs([]);
 
     if (indices) {
       setHasRerun(true);
-      log("info", `Re-running ${indices.length} problematic rows...`);
+      log("info", `Re-running ${indices.length} affected episodes...`);
     } else {
       setCodedRows([]);
       setHasRerun(false);
-      log("info", "Re-running all rows from scratch...");
+      setResultExportConfig(currentExportConfig);
+      log("info", "Re-running all episodes from scratch...");
     }
 
     let stage: "preflight" | "stream" = "preflight";
@@ -2484,7 +2741,7 @@ ${PDF_WATERMARK_HTML}
               assertCurrentRunAction(action);
               if (msg.type === "progress") {
                 setRunProgress({ current: msg.current!, total: msg.total!, percent: msg.percent! });
-                log("info", `Row ${msg.current}/${msg.total} (${msg.percent}%)`);
+                log("info", `Episode ${msg.current}/${msg.total} (${msg.percent}%)`);
               } else if (msg.type === "row") {
                 const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
                 if (indices) {
@@ -2495,8 +2752,8 @@ ${PDF_WATERMARK_HTML}
                 const issues = checkRow(row.index, row.coded, expandedVars);
                 for (const issue of issues) {
                   const detail = issue.issueType === "api_error"
-                    ? `Row ${row.index + 1}: ${issue.value}`
-                    : `Row ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
+                    ? `Episode ${row.index + 1}: ${issue.value}`
+                    : `Episode ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
                   setRunErrors((prev) => [...prev, detail]);
                   log("warn", detail);
                 }
@@ -2516,7 +2773,7 @@ ${PDF_WATERMARK_HTML}
                   coded_rows: msg.coded_rows!,
                   file_path: msg.file_path!,
                 });
-                log("info", `Re-coding complete. ${msg.total_rows} rows processed, ${msg.coded_rows} coded.`);
+                log("info", `Re-coding complete. ${msg.total_rows} episodes processed, ${msg.coded_rows} coded.`);
               }
             },
           );
@@ -2542,6 +2799,10 @@ ${PDF_WATERMARK_HTML}
 
   const handleReset = () => {
     if (tourOpen) return;
+    if (resultDownloadKind) {
+      showToast("Wait for the current results download to finish before resetting.");
+      return;
+    }
     if (codingActionBusyRef.current) {
       showToast(running ? "Stop the coding run before resetting." : "Wait for the current coding action to finish before resetting.");
       return;
@@ -2572,6 +2833,8 @@ ${PDF_WATERMARK_HTML}
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError(""); setValidationReport(null); setHasRerun(false);
+    setResultExportConfig(null);
+    setResultDownloadKind(null); setResultDownloadError("");
     setAnalysisRaters([]); setAnalysisResults(null); setAnalysisError("");
     setCrossCheckResult(null); setEpisodeColumns([]); setAnalysisVariables([]);
     setConsoleLogs([]); setRightView("script"); setExpandedTable(null);
@@ -2878,12 +3141,12 @@ ${PDF_WATERMARK_HTML}
                       <div className="f" id="tour-empty-handling">
                         <label>Empty message handling</label>
                         <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "ignore" | "code")}>
-                          <option value="ignore">Ignore (skip row)</option>
+                          <option value="ignore">Ignore (skip model call)</option>
                           <option value="code">Code as value</option>
                         </select>
                         <p className="hint">
-                          {emptyMessageHandling === "ignore" && "Empty rows will be skipped and excluded from output."}
-                          {emptyMessageHandling === "code" && "Variables for empty rows will be coded from the codebook definitions."}
+                          {emptyMessageHandling === "ignore" && "Fully empty episodes are not sent to a model. Their original rows remain in the primary workbook with blank code cells."}
+                          {emptyMessageHandling === "code" && "Fully empty episodes are sent to the model and coded from the codebook definitions."}
                         </p>
                       </div>
                       <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
@@ -2907,6 +3170,11 @@ ${PDF_WATERMARK_HTML}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
                         <p className="hint mt-8">Each variable has its own <strong>aggregation method</strong>, category definition, and coded-value guidance. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one per participant.</p>
+                        {duplicateCodeLabels.length > 0 && (
+                          <p className="enc-error mt-8" role="alert">
+                            Output labels must be unique. Rename the conflicting variable or participant labels: {duplicateCodeLabels.join(", ")}.
+                          </p>
+                        )}
                         {hasSenderVar && (
                           <div className="f participants-block">
                             <label>Participants / senders <span className="fv">{participants.length} {participants.length === 1 ? "sender" : "senders"}</span></label>
@@ -3000,7 +3268,7 @@ ${PDF_WATERMARK_HTML}
 
                       <div className="model-execution-note" id="tour-model-execution">
                         <strong>Browser and package execution differ.</strong>
-                        <span><strong>Run Coding</strong> uses all models configured below. The downloaded package currently runs <strong>only the first configured model</strong>; its Python script can be customized for other local workflows.</span>
+                        <span><strong>Run Coding</strong> uses all models and runs configured below. The downloaded package currently uses <strong>the first selected provider and model for one call per episode</strong>; edit its Python script to change parameters or create a repeated- or multi-model workflow.</span>
                       </div>
 
                       <div className="model-slots" id="tour-model-slots">
@@ -3125,7 +3393,7 @@ ${PDF_WATERMARK_HTML}
                         </div>
                         <div className="enc-voting-summary">
                           <span className="enc-voting-calc">
-                            {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""} = <strong>{modelSlots.length * runsPerModel}</strong> calls/row
+                            {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""} = <strong>{modelSlots.length * runsPerModel}</strong> calls/episode
                           </span>
                           {modelSlots.length * runsPerModel > 1 && <span className="enc-voting-agg">Aggregated per codebook variable</span>}
                         </div>
@@ -3138,13 +3406,13 @@ ${PDF_WATERMARK_HTML}
                 {/* Run bar */}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running} onClick={handleDownloadPackage}>
+                  <button className="btn btn-outline btn-sm" disabled={!canGenerate || generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage}>
                     {generating ? <><span className="spinner" /> Generating</> : "Generate package"}
                   </button>
                   {running ? (
                     <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
                   ) : (
-                    <button className="btn btn-run" disabled={!canGenerate || generating} onClick={handleRun}>
+                    <button className="btn btn-run" disabled={!canGenerate || generating || resultDownloadKind !== null} onClick={handleRun}>
                       Run Coding
                       {modelSlots.length * runsPerModel > 1 && (
                         <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
@@ -3190,7 +3458,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="enc-progress-wrap">
                         <div className="enc-progress-header">
                           <span className="enc-progress-label">
-                            {runComplete ? "Coding complete" : running ? `Coding row ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...` : "Ready"}
+                            {runComplete ? "Coding complete" : running ? `Coding episode ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...` : "Ready"}
                           </span>
                           <span className="enc-progress-pct">{runProgress?.percent ?? 0}%</span>
                         </div>
@@ -3210,7 +3478,7 @@ ${PDF_WATERMARK_HTML}
 
                     {visibleRows.length > 0 && (
                       <div className="res-section mt-12">
-                        <div className="res-section-h">Live Results (last {Math.min(5, codedRows.length)} of {codedRows.length} rows)</div>
+                        <div className="res-section-h">Live Results (last {Math.min(5, codedRows.length)} of {codedRows.length} coded episodes)</div>
                         <div className="enc-live-table-wrap table-clickable" onClick={() => setExpandedTable("live")} title="Click to expand">
                           <table className="tbl tbl-compact">
                             <thead>
@@ -3253,19 +3521,14 @@ ${PDF_WATERMARK_HTML}
                     {runComplete && validationReport && (
                       <div className={`enc-validation-report ${validationReport.problematicIndices.length === 0 ? "valid" : "has-issues"}`}>
                         {validationReport.problematicIndices.length === 0 ? (
-                          <>
-                            <div className="enc-validation-header valid">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-                              All <strong>{validationReport.totalRows}</strong> rows valid
-                            </div>
-                            <button className="btn btn-primary" onClick={hasRerun ? handleDownloadMerged : handleDownloadResults}>
-                              Download coded_results.csv
-                            </button>
-                          </>
+                          <div className="enc-validation-header valid">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                            All <strong>{validationReport.totalRows}</strong> coded episodes passed output validation
+                          </div>
                         ) : (
                           <>
                             <div className="enc-validation-header issues">
-                              <strong>{validationReport.problematicIndices.length}</strong> of {validationReport.totalRows} rows have issues
+                              <strong>{validationReport.problematicIndices.length}</strong> of {validationReport.totalRows} coded episodes need attention
                             </div>
                             <div className="enc-validation-summary">
                               {validationReport.errorRows > 0 && <span className="pill bad">{validationReport.errorRows} API errors</span>}
@@ -3274,7 +3537,7 @@ ${PDF_WATERMARK_HTML}
                             <div className="enc-validation-details">
                               {validationReport.issues.slice(0, 10).map((issue, i) => (
                                 <div key={i} className="enc-validation-issue">
-                                  <span className="enc-vi-row">Row {issue.rowIndex + 1}</span>
+                                  <span className="enc-vi-row">Episode {issue.rowIndex + 1}</span>
                                   <span className="enc-vi-var">{issue.variable}</span>
                                   {issue.issueType === "api_error" ? (
                                     <span className="enc-vi-type">API error</span>
@@ -3289,15 +3552,74 @@ ${PDF_WATERMARK_HTML}
                               {validationReport.issues.length > 10 && <div className="enc-vi-more">...and {validationReport.issues.length - 10} more issues</div>}
                             </div>
                             <div className="enc-validation-actions">
-                              <button className="btn btn-secondary" onClick={hasRerun ? handleDownloadMerged : handleDownloadResults}>Download as-is</button>
-                              <button className="btn btn-primary" onClick={() => handleRerun(validationReport.problematicIndices)}>Re-run {validationReport.problematicIndices.length} rows</button>
-                              <button className="btn btn-ghost" onClick={() => handleRerun(null)}>Re-run all</button>
+                              <button className="btn btn-outline" disabled={resultDownloadKind !== null || generating} onClick={() => handleRerun(validationReport.problematicIndices)}>Re-run affected episodes</button>
+                              <button className="btn btn-ghost" disabled={resultDownloadKind !== null || generating} onClick={() => handleRerun(null)}>Re-run all episodes</button>
                             </div>
                           </>
                         )}
                       </div>
                     )}
                     {runComplete && !validationReport && <div className="enc-complete-bar"><div>Validating results...</div></div>}
+
+                    {runComplete && validationReport && (
+                      <div className="res-section mt-12 results-download-card" id="tour-result-downloads">
+                        <div className="res-section-h">Download results</div>
+                        {validationReport.problematicIndices.length > 0 && (
+                          <div className="results-download-warning">
+                            These downloads include {validationReport.problematicIndices.length} unresolved coded episode{validationReport.problematicIndices.length === 1 ? "" : "s"}. Re-run the affected episodes first if you want corrected values.
+                          </div>
+                        )}
+                        <div className="results-download-primary">
+                          <div>
+                            <div className="results-download-title">Coded dataset</div>
+                            <p className="results-download-helper">Includes every original row and column. When messages were grouped, each episode&apos;s final codes are repeated across all corresponding original rows.</p>
+                          </div>
+                          <button
+                            className="btn btn-primary"
+                            disabled={resultDownloadKind !== null || generating}
+                            aria-busy={resultDownloadKind === "primary"}
+                            onClick={() => handleExportResults("primary")}
+                          >
+                            {resultDownloadKind === "primary" ? <><span className="spinner" /> Preparing workbook</> : "Download coded dataset (.xlsx)"}
+                          </button>
+                        </div>
+                        <div className="results-download-secondary">
+                          <div>
+                            <div className="results-download-title">Episode-level results <span className="results-optional">Optional</span></div>
+                            <p className="results-download-helper">A compact workbook with one row per preprocessed communication episode.</p>
+                          </div>
+                          <button
+                            className="btn btn-outline btn-sm"
+                            disabled={resultDownloadKind !== null || generating}
+                            aria-busy={resultDownloadKind === "episodes"}
+                            onClick={() => handleExportResults("episodes")}
+                          >
+                            {resultDownloadKind === "episodes" ? <><span className="spinner" /> Preparing</> : "Download episode-level results (.xlsx)"}
+                          </button>
+                        </div>
+                        {codedRows.length > 0 && (resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel) > 1 && (
+                          <div className="results-download-details">
+                            <div>
+                              <div className="results-download-title">Detailed model and run outputs</div>
+                              <p className="results-download-helper">Individual model/run records and their aggregate, provided separately for reproducibility.</p>
+                            </div>
+                            {hasRerun ? (
+                              <p className="results-detail-note">Unavailable after a selective re-run because the archive would mix original and replacement calls. The Excel downloads above contain the latest corrected episode results.</p>
+                            ) : (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                disabled={resultDownloadKind !== null || generating}
+                                aria-busy={resultDownloadKind === "detailed"}
+                                onClick={handleDownloadDetailedResults}
+                              >
+                                {resultDownloadKind === "detailed" ? <><span className="spinner" /> Preparing</> : "Download detailed outputs (.zip)"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {resultDownloadError && <p className="enc-error results-download-error" role="alert">{resultDownloadError}</p>}
+                      </div>
+                    )}
 
                     {runComplete && (
                       <div className="res-section mt-12 run-summary-cta">
@@ -3353,7 +3675,7 @@ ${PDF_WATERMARK_HTML}
                     <div className="res-section mb-12">
                       <div className="res-section-h">
                         <span>Script Preview</span>
-                        <button className="btn btn-primary btn-xs" disabled={generating} onClick={handleDownloadPackage}>{generating ? "Preparing…" : "Download package (.zip)"}</button>
+                        <button className="btn btn-primary btn-xs" disabled={generating || resultDownloadKind !== null} onClick={handleDownloadPackage}>{generating ? "Preparing…" : "Download package (.zip)"}</button>
                       </div>
                       <div className="script-preview">
                         <pre className="code-block">{result.script}</pre>
@@ -3367,7 +3689,7 @@ ${PDF_WATERMARK_HTML}
                       <path d="M14 2v6h6M10 12l-2 2 2 2M14 12l2 2-2 2" />
                     </svg>
                     <p>No script generated</p>
-                    <span className="text-sm">Configure the left panel, then press Script Only</span>
+                    <span className="text-sm">Configure the left panel, then choose Generate package.</span>
                   </div>
                 ) : null}
                 </>)}
@@ -3929,7 +4251,7 @@ ${PDF_WATERMARK_HTML}
               <span className="fw-600">
                 {expandedTable === "preview" && `Dataset (${uploadResult?.preview.length ?? 0} rows)`}
                 {expandedTable === "codebook" && "Codebook"}
-                {expandedTable === "live" && `Coded Results (${codedRows.length} rows)`}
+                {expandedTable === "live" && `Coded Results (${codedRows.length} episodes)`}
               </span>
               <button className="btn btn-ghost btn-sm" onClick={closeExpanded}>✕</button>
             </div>
@@ -4022,6 +4344,11 @@ ${PDF_WATERMARK_HTML}
                       <TagInput value={participantsStr} onChange={setParticipantsStr} type="text" />
                       <p className="hint">Per-sender variables are coded once for each participant. These names must match the values in your sender-identity column.</p>
                     </div>
+                  )}
+                  {duplicateCodeLabels.length > 0 && (
+                    <p className="enc-error mt-12" role="alert">
+                      Output labels must be unique. Rename the conflicting variable or participant labels: {duplicateCodeLabels.join(", ")}.
+                    </p>
                   )}
                   <div className="cb-editor-foot">
                     <button className="btn btn-ghost" onClick={closeCodebookEditor}>Cancel</button>

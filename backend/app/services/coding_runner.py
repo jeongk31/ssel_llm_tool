@@ -45,11 +45,16 @@ def _expanded_keys(codebook: list[dict[str, Any]], participants: list[str] | Non
     participants = participants or []
     keys: list[str] = []
     for var in codebook:
+        label = str(var.get("label") or "").strip()
+        if not label:
+            continue
         if var.get("level") == "sender" and participants:
             for p in participants:
-                keys.append(f"{var['label']}_{p}")
+                keys.append(f"{label}_{p}")
         else:
-            keys.append(var["label"])
+            keys.append(label)
+    if len(keys) != len(set(keys)):
+        raise ValueError("Codebook output labels must be unique.")
     return keys
 
 
@@ -58,7 +63,8 @@ def _codebook_block(codebook: list[dict[str, Any]], participants: list[str]) -> 
     and a definition for every coded value."""
     out = ""
     for var in codebook:
-        header = f"### {var['label']} (type: {var.get('type', 'text')}"
+        label = str(var.get("label") or "").strip()
+        header = f"### {label} (type: {var.get('type', 'text')}"
         if var.get("level") == "sender" and participants:
             header += f"; coded separately per participant: {', '.join(participants)}"
         header += ")"
@@ -253,12 +259,13 @@ async def run_coding(
     labels = _expanded_keys(codebook, participants)
     aggregations: dict[str, str] = {}
     for var in codebook:
+        label = str(var.get("label") or "").strip()
         method = var.get("aggregation") or aggregation
         if var.get("level") == "sender" and participants:
             for participant in participants:
-                aggregations[f"{var['label']}_{participant}"] = method
+                aggregations[f"{label}_{participant}"] = method
         else:
-            aggregations[var["label"]] = method
+            aggregations[label] = method
     null_result = {label: None for label in labels}
     total = len(df)
     total_calls = len(providers) * runs_per_model
@@ -361,10 +368,12 @@ async def run_coding(
         yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
 
     # Save results
-    result_df = pd.DataFrame(all_results)
     # Reorder columns: original cols, coder, codebook labels, then any extra
     orig_cols = list(df.columns)
     ordered_cols = orig_cols + ["coder"] + labels
+    # Keep headers even when every episode was intentionally skipped. This
+    # produces a valid empty CSV instead of a zero-byte artifact.
+    result_df = pd.DataFrame(all_results, columns=ordered_cols if not all_results else None)
     extra_cols = [c for c in result_df.columns if c not in ordered_cols]
     result_df = result_df[[c for c in ordered_cols + extra_cols if c in result_df.columns]]
 

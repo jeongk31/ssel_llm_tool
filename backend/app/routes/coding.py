@@ -9,6 +9,7 @@ import time
 import re
 import zipfile
 from dataclasses import dataclass
+from typing import Any, Literal
 
 import pandas as pd
 from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
@@ -20,6 +21,13 @@ from app.ratelimit import limiter
 from app.streaming import with_keepalive
 from app.services.script_generator import generate_coding_script
 from app.services.coding_runner import run_coding
+from app.services.result_exporter import (
+    build_result_frames,
+    dataframe_to_xlsx,
+    dataframes_to_xlsx,
+    expanded_codebook_labels,
+    prepare_coding_dataset,
+)
 
 router = APIRouter()
 
@@ -315,36 +323,17 @@ def _group_units(
     Messages within a unit are concatenated (one per line). When a sender-identity
     column is present each message is tagged: "[identity] message". Rows are ordered
     by ``order_column`` (asc/desc) before joining; otherwise original file order is kept.
-    Other columns keep the first value seen in the unit.
+    Sender and order columns retain newline-aligned sequences; other columns
+    keep the first value seen in the unit.
     """
-    identifier_columns = [c for c in (identifier_columns or []) if c in df.columns]
-    if not identifier_columns:
-        return df
-
-    work = df.copy()
-    if order_column and order_column in work.columns:
-        work = work.sort_values(
-            by=order_column,
-            ascending=(order_direction != "desc"),
-            kind="stable",
-        )
-
-    use_identity = bool(identity_column) and identity_column in work.columns
-    units: list[dict] = []
-    for _, group in work.groupby(identifier_columns, sort=False, dropna=False):
-        parts: list[str] = []
-        for _, r in group.iterrows():
-            msg = "" if pd.isna(r[message_column]) else str(r[message_column])
-            who = r[identity_column] if use_identity else None
-            if use_identity and pd.notna(who) and str(who).strip() != "":
-                parts.append(f"[{who}] {msg}")
-            else:
-                parts.append(msg)
-        unit = group.iloc[0].to_dict()
-        unit[message_column] = "\n".join(parts)
-        units.append(unit)
-
-    return pd.DataFrame(units, columns=list(df.columns)).reset_index(drop=True)
+    return prepare_coding_dataset(
+        df,
+        message_column=message_column,
+        identifier_columns=identifier_columns,
+        identity_column=identity_column,
+        order_column=order_column,
+        order_direction=order_direction,
+    ).episodes
 
 
 # ── File upload + column discovery ─────────────────────────────────────────────
@@ -473,8 +462,8 @@ class GenerateScriptRequest(BaseModel):
     order_column: str | None = None
     order_direction: str = "asc"
     empty_message_handling: str = "ignore"
-    # Accepted so the field isn't silently dropped; the standalone script runs the
-    # first configured model (see generate_coding_script header note).
+    # Accepted so the field isn't silently dropped; the standalone script uses the
+    # first selected provider/model for one call per episode.
     model_slots: list[dict] = []
 
 
@@ -519,7 +508,7 @@ async def generate_script(request: Request, req: GenerateScriptRequest):
 
 
 def _package_requirements(provider: str) -> str:
-    packages = ["pandas"]
+    packages = ["pandas", "openpyxl"]
     if provider == "anthropic":
         packages.append("anthropic")
     elif provider == "gemini":
@@ -532,7 +521,7 @@ def _package_requirements(provider: str) -> str:
 @router.post("/coding/generate-package")
 @limiter.limit("30/minute")
 async def generate_package(request: Request, req: GeneratePackageRequest):
-    """Download a self-contained ZIP with script, preprocessed data, and setup files."""
+    """Download a runnable ZIP with source rows, episodes, lineage, and setup files."""
     _validate_config(req)
 
     try:
@@ -552,7 +541,7 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
     if req.message_column not in df.columns:
         raise HTTPException(400, f"Column '{req.message_column}' not found in the dataset.")
 
-    preprocessed = _group_units(
+    prepared = prepare_coding_dataset(
         df,
         message_column=req.message_column,
         identifier_columns=req.identifier_columns,
@@ -563,11 +552,39 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
 
     original_stem = req.file_name.rsplit(".", 1)[0] if "." in req.file_name else req.file_name
     safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(original_stem)).strip("._") or "dataset"
-    dataset_filename = f"{safe_stem}_preprocessed.csv"
+    dataset_filename = f"{safe_stem}_chat_input.xlsx"
     script_filename = f"code_{safe_stem}.py"
 
-    # The packaged CSV is already grouped into episodes, so the script must use it
-    # directly rather than grouping and sender-tagging the same messages a second time.
+    row_map = pd.DataFrame(
+        {
+            "source_row": list(range(1, len(df) + 1)),
+            "episode": [index + 1 for index in prepared.source_episode_indices],
+        }
+    )
+    compact_columns: list[str] = []
+    for column in [
+        *req.identifier_columns,
+        req.message_column,
+        req.identity_column,
+        req.order_column,
+        *(item.column for item in req.context),
+    ]:
+        if column and column in prepared.episodes.columns and column not in compact_columns:
+            compact_columns.append(column)
+    try:
+        package_input = dataframes_to_xlsx(
+            [
+                ("source_rows", df),
+                ("episodes", prepared.episodes),
+                ("row_map", row_map),
+            ]
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    # The package workbook already contains the exact grouped episode table and a
+    # positional map back to every source row.  The script therefore codes the
+    # episodes sheet directly and expands those values without regrouping.
     script_text = generate_coding_script(
         file_name=dataset_filename,
         message_column=req.message_column,
@@ -584,17 +601,23 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
         order_column=None,
         order_direction="asc",
         empty_message_handling=req.empty_message_handling,
+        package_source_sheet="source_rows",
+        package_episode_sheet="episodes",
+        package_row_map_sheet="row_map",
+        compact_columns=compact_columns,
+        result_stem=safe_stem,
     )
 
     readme = f"""# ChAT coding package
 
-This package contains the coding configuration generated in ChAT and the exact
-preprocessed dataset it is configured to read.
+This package contains the coding configuration generated in ChAT and one input
+workbook that preserves the loaded source rows, the exact preprocessed episodes,
+and their positional row-to-episode mapping.
 
 ## Files
 
 - `{script_filename}` — generated Python coding script
-- `{dataset_filename}` — preprocessed communication episodes
+- `{dataset_filename}` — source rows, preprocessed episodes, and row map
 - `requirements.txt` — Python dependencies
 
 ## Run
@@ -608,9 +631,21 @@ preprocessed dataset it is configured to read.
 
    `python3 {script_filename}`
 
-The script defaults to `{dataset_filename}` and writes
-`{safe_stem}_preprocessed_coded.csv` in this folder. You may optionally pass a
-different compatible CSV path as the first command-line argument.
+The script defaults to `{dataset_filename}` and writes the primary result
+`{safe_stem}_coded.xlsx`. This workbook has the same source rows and original
+columns as the input, with the coding columns appended. Rows belonging to the
+same episode receive the same episode-level coding values.
+
+To also create the compact one-row-per-episode workbook, run:
+
+   `python3 {script_filename} --also-save-episodes`
+
+This additionally writes `{safe_stem}_coded_episodes.xlsx`.
+
+The generated script uses the first provider and model selected in ChAT and
+makes one call per episode. To change model parameters or create a repeated- or
+multi-model workflow, edit the generated Python script. The browser's `Run
+Coding` workflow uses all configured models and runs.
 
 The generated script does not contain your API key. When it starts, it reads the
 `CHAT_API_KEY` environment variable or securely prompts you to enter the key.
@@ -619,7 +654,7 @@ The generated script does not contain your API key. When it starts, it reads the
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(script_filename, script_text)
-        zf.writestr(dataset_filename, preprocessed.to_csv(index=False))
+        zf.writestr(dataset_filename, package_input)
         zf.writestr("README.md", readme)
         zf.writestr("requirements.txt", _package_requirements(req.provider))
 
@@ -678,6 +713,13 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
 
     if not codebook or not model_slots:
         yield {"type": "error", "message": "Missing required config fields."}
+        return
+
+    try:
+        expanded_codebook_labels(codebook, participants)
+    except ValueError as exc:
+        # Reject ambiguous JSON/output keys before making any paid model calls.
+        yield {"type": "error", "message": str(exc)}
         return
 
     if row_indices is not None:
@@ -806,6 +848,110 @@ async def validate_models(request: Request, req: ValidateRequest):
 
 # ── Download coded results ──────────────────────────────────────────────────
 
+class ExportCodedRow(BaseModel):
+    index: int
+    coded: dict[str, Any]
+
+
+class ExportResultsRequest(BaseModel):
+    file_id: str
+    message_column: str
+    identifier_columns: list[str] = []
+    identity_column: str | None = None
+    order_column: str | None = None
+    order_direction: str = "asc"
+    context: list[ContextItem] = []
+    codebook: list[CodebookEntry]
+    participants: list[str] = []
+    coded_rows: list[ExportCodedRow]
+    kind: Literal["primary", "episodes"] = "primary"
+
+
+@router.post("/coding/export-results")
+@limiter.limit("30/minute")
+async def export_results(request: Request, req: ExportResultsRequest):
+    """Build either the source-row or compact episode-level XLSX result.
+
+    The browser sends only the latest aggregate value for each coded episode.
+    The original dataset is reread from the server-side upload so original rows,
+    columns, and ordering do not depend on the preprocessed browser preview.
+    """
+
+    if not req.message_column.strip():
+        raise HTTPException(400, "Message column is required.")
+    if not req.codebook:
+        raise HTTPException(400, "Codebook must have at least one entry.")
+
+    try:
+        file_info = resolve_uploaded_file(req.file_id)
+    except UploadResolutionError as exc:
+        return _upload_error_response(exc)
+
+    file_path = file_info["path"]
+    try:
+        if file_path.rsplit(".", 1)[-1].lower() == "csv":
+            source_df = pd.read_csv(file_path)
+        else:
+            source_df = pd.read_excel(file_path)
+    except Exception:
+        raise HTTPException(400, "Could not read the uploaded dataset.")
+
+    if req.message_column not in source_df.columns:
+        raise HTTPException(
+            400,
+            f"Column '{req.message_column}' not found in the uploaded dataset.",
+        )
+
+    try:
+        prepared = prepare_coding_dataset(
+            source_df,
+            message_column=req.message_column,
+            identifier_columns=req.identifier_columns,
+            identity_column=req.identity_column,
+            order_column=req.order_column,
+            order_direction=req.order_direction,
+        )
+        source_result, episode_result, _ = build_result_frames(
+            source_df=source_df,
+            prepared=prepared,
+            coded_rows=[row.model_dump() for row in req.coded_rows],
+            codebook=[entry.model_dump() for entry in req.codebook],
+            participants=req.participants,
+            message_column=req.message_column,
+            identifier_columns=req.identifier_columns,
+            context_columns=[item.column for item in req.context],
+            identity_column=req.identity_column,
+            order_column=req.order_column,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    original_name = file_info.get("filename") or "dataset"
+    original_stem = original_name.rsplit(".", 1)[0] if "." in original_name else original_name
+    safe_stem = (
+        re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(original_stem)).strip("._")
+        or "dataset"
+    )
+    try:
+        if req.kind == "episodes":
+            workbook = dataframe_to_xlsx(episode_result, sheet_name="Coded episodes")
+            filename = f"{safe_stem}_coded_episodes.xlsx"
+        else:
+            workbook = dataframe_to_xlsx(source_result, sheet_name="Coded data")
+            filename = f"{safe_stem}_coded.xlsx"
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    return Response(
+        content=workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 class CleanupRequest(BaseModel):
     file_id: str | None = None
     path: str | None = None
@@ -830,12 +976,21 @@ async def cleanup_files(request: Request, req: CleanupRequest):
 async def download_results(path: str):
     """Download coded results — single CSV or structured zip.
 
-    Only files under the system temp directory (where results are written) may be
-    read, so a caller cannot pass an arbitrary path (e.g. /etc/passwd).
+    Only the canonical result file inside a ChAT coding directory may be read;
+    unrelated files in the system temporary directory are rejected.
     """
     real = os.path.realpath(path)
-    tmp_root = os.path.realpath(tempfile.gettempdir())
-    if real != tmp_root and not real.startswith(tmp_root + os.sep):
+    result_dir = _temp_dir_for(real)
+    expected_file = (
+        os.path.realpath(os.path.join(result_dir, "coded_results.csv"))
+        if result_dir
+        else None
+    )
+    if (
+        not result_dir
+        or not os.path.basename(result_dir).startswith("llm_coding_")
+        or real != expected_file
+    ):
         raise HTTPException(403, "Invalid path")
     if not os.path.isfile(real):
         raise HTTPException(404, "File not found")
@@ -883,22 +1038,9 @@ async def download_results(path: str):
                 run_df = df[df["coder"] == runs[0]].drop(columns=["coder"], errors="ignore")
                 zf.writestr(f"{safe_name}.csv", run_df.to_csv(index=False))
             else:
-                # Multiple runs — per-model aggregate (mode across runs per row) + individual runs.
-                run_dfs = [
-                    df[df["coder"] == run_enc].drop(columns=["coder"], errors="ignore").reset_index(drop=True)
-                    for run_enc in sorted(runs)
-                ]
-                # Take the mode across runs for every non-internal column, row by row.
-                # Original columns are identical across runs, so their mode is unchanged;
-                # coded columns become the majority vote.
-                agg = run_dfs[0].copy()
-                for col in [c for c in agg.columns if not c.startswith("_")]:
-                    stacked = pd.concat([rd[col] for rd in run_dfs], axis=1)
-                    agg[col] = stacked.mode(axis=1)[0]
-                agg = agg[[c for c in agg.columns if not c.startswith("_")]]
-                zf.writestr(f"{safe_name}.csv", agg.to_csv(index=False))
-
-                # Individual runs in subfolder
+                # The runner's overall aggregate already applies each variable's
+                # configured mode/mean rule. Keep repeated per-model calls as raw
+                # records rather than manufacturing a mode-only model aggregate.
                 for i, run_enc in enumerate(sorted(runs)):
                     run_df = df[df["coder"] == run_enc].drop(columns=["coder"], errors="ignore")
                     zf.writestr(f"{safe_name}/run{i + 1}.csv", run_df.to_csv(index=False))
@@ -926,6 +1068,14 @@ def _validate_config(req: GenerateScriptRequest):
             raise HTTPException(400, f"Codebook entry {i + 1}: aggregation must be mode or mean")
         if entry.level == "sender" and not req.participants:
             raise HTTPException(400, "Per-sender variables require a participant list")
+
+    try:
+        expanded_codebook_labels(
+            [entry.model_dump() for entry in req.codebook],
+            req.participants,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
     if not req.message_column.strip():
         raise HTTPException(400, "Message column is required")
