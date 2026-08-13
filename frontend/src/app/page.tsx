@@ -49,7 +49,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
     targetId: "tour-map-table", title: "Tagging the columns",
-    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step&apos;s color. Click again to untag. Here the <strong>Message</strong> column is the Message, <strong>Session</strong> + <strong>Round</strong> are the Episode identifier, <strong>Speaker</strong> is the Sender, and <strong>Order</strong> is the Order.</p>),
+    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step&apos;s color. Click again to untag. Here <strong>Message</strong> is the Message, <strong>Session</strong> + <strong>Round</strong> are the Episode identifier, <strong>Speaker</strong> is the Sender, <strong>Order</strong> is the Order, and <strong>Treatment</strong> is Context.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping",
@@ -90,7 +90,8 @@ const CODING_TOUR_STEPS: TourStep[] = [
   },
   // ── Section 3: Experiment Instructions ──
   {
-    sectionId: "coding-panel-3", panel: 3, section: "Experiment Instructions", media: "/tour/experiment.svg",
+    sectionId: "coding-panel-3", panel: 3, section: "Experiment Instructions",
+    targetId: "tour-experiment-instructions",
     title: "Experiment Instructions",
     body: (<p>Paste the full instructions participants received — tasks, roles, payoffs, and communication rules — so the model has the same context they did.</p>),
   },
@@ -106,23 +107,23 @@ const CODING_TOUR_STEPS: TourStep[] = [
     body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently uses the first selected provider and model for one call per episode</strong>; experienced users can edit its Python script to change parameters or build a repeated- or multi-model workflow.</p>),
   },
   {
-    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
-    targetId: "tour-model-slots", title: "Models & API keys", mediaBox: { x: 5, y: 19, w: 89, h: 35 },
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
+    targetId: "tour-model-slots", title: "Models & API keys",
     body: (<p>Add one or more provider and model configurations. An API key is required for each model used by <strong>Run Coding</strong>. It is optional when generating a local package because no key is stored in the download; the script requests it at runtime.</p>),
   },
   {
-    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs", media: "/tour/models.svg",
-    targetId: "tour-runs", title: "Runs per model", mediaBox: { x: 5, y: 64, w: 89, h: 30 },
+    sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
+    targetId: "tour-runs", title: "Runs per model",
     body: (<p>Choose how many independent calls each configured model makes for every episode. The results are then combined using the method selected separately for each codebook variable.</p>),
   },
   // ── Run ──
   {
-    sectionId: "coding-run-bar", section: "Run", media: "/tour/run.svg",
+    sectionId: "coding-run-bar", section: "Run",
     title: "Run or generate a package",
     body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
   },
   {
-    sectionId: "coding-run-bar", section: "Results",
+    sectionId: "coding-run-bar", section: "Results", media: "/tour/results.svg",
     title: "Review and download results",
     body: (<p>After browser coding, ChAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
   },
@@ -765,17 +766,18 @@ const htmlEsc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&"
 const TOUR_SAMPLE_UPLOAD: UploadResult = {
   file_id: "__tour_sample__",
   file_name: "sample_conversations.csv",
-  columns: ["Session", "Round", "Speaker", "Order", "Message"],
+  columns: ["Session", "Round", "Speaker", "Order", "Message", "Treatment"],
   row_count: 6,
   preview: [
-    { Session: 1, Round: 1, Speaker: "P", Order: 1, Message: "Let's both choose In." },
-    { Session: 1, Round: 1, Speaker: "V1", Order: 2, Message: "Sounds good, I'm in." },
-    { Session: 1, Round: 1, Speaker: "P", Order: 3, Message: "Great — I'll roll." },
-    { Session: 1, Round: 2, Speaker: "P", Order: 1, Message: "Same plan this round?" },
-    { Session: 1, Round: 2, Speaker: "V1", Order: 2, Message: "Yes, let's do it." },
-    { Session: 2, Round: 1, Speaker: "V2", Order: 1, Message: "I'll pass this time." },
+    { Session: 1, Round: 1, Speaker: "P", Order: 1, Message: "Let's both choose In.", Treatment: "communication" },
+    { Session: 1, Round: 1, Speaker: "V1", Order: 2, Message: "Sounds good, I'm in.", Treatment: "communication" },
+    { Session: 1, Round: 1, Speaker: "P", Order: 3, Message: "Great — I'll roll.", Treatment: "communication" },
+    { Session: 1, Round: 2, Speaker: "P", Order: 1, Message: "Same plan this round?", Treatment: "communication" },
+    { Session: 1, Round: 2, Speaker: "V1", Order: 2, Message: "Yes, let's do it.", Treatment: "communication" },
+    { Session: 2, Round: 1, Speaker: "V2", Order: 1, Message: "I'll pass this time.", Treatment: "baseline" },
   ],
 };
+const TOUR_SAMPLE_INSTRUCTIONS = "Participants communicate before choosing between In and Out. Their payoffs depend on both participants' choices. Messages may contain proposals, promises, or refusals.";
 const tourSampleCodebook = (): CodebookEntry[] => [{
   label: "cooperation",
   type: "categorical",
@@ -1719,7 +1721,9 @@ export default function Home() {
     }
     tourSnap.current = {
       uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
-      rowsAsUnits, contextColumns, contextDescriptions, codebook, senderVerificationSignature,
+      rowsAsUnits, contextColumns, contextDescriptions, emptyMessageHandling, experimentInstructions,
+      codebook, senderVerificationSignature, modelSlots: modelSlots.map((slot) => ({ ...slot })), runsPerModel,
+      openPanels: [...openPanels],
       layoutMode, activeTool, uploadAvailability, uploadMeta, uploadError, uploadNotice,
       liveUploadId: liveUploadIdRef.current,
       serverFiles: { ...serverFilesRef.current },
@@ -1735,8 +1739,13 @@ export default function Home() {
     setIdentityColumn("Speaker");
     setOrderColumn("Order"); setOrderDirection("asc");
     setRowsAsUnits(false);
-    setContextColumns([]); setContextDescriptions({});
+    setContextColumns(["Treatment"]);
+    setContextDescriptions({ Treatment: "Experimental condition assigned to the communication episode." });
+    setEmptyMessageHandling("ignore");
+    setExperimentInstructions(TOUR_SAMPLE_INSTRUCTIONS);
     setCodebook(tourSampleCodebook());
+    setModelSlots([{ ...EMPTY_SLOT, apiKey: "" }]);
+    setRunsPerModel(3);
     setSenderVerificationSignature(JSON.stringify({
       identityColumn: "Speaker",
       participants: ["P", "V1", "V2"],
@@ -1759,8 +1768,12 @@ export default function Home() {
       setOrderColumn(s.orderColumn as string); setOrderDirection(s.orderDirection as "asc" | "desc");
       setRowsAsUnits(s.rowsAsUnits as boolean);
       setContextColumns(s.contextColumns as string[]); setContextDescriptions(s.contextDescriptions as Record<string, string>);
+      setEmptyMessageHandling(s.emptyMessageHandling as "ignore" | "code");
+      setExperimentInstructions(s.experimentInstructions as string);
       setCodebook(s.codebook as CodebookEntry[]);
       setSenderVerificationSignature(s.senderVerificationSignature as string);
+      setModelSlots(s.modelSlots as ModelSlot[]); setRunsPerModel(s.runsPerModel as number);
+      setOpenPanels(new Set(s.openPanels as number[]));
       setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
       setActiveTool(s.activeTool as "coding" | "catgen" | "analysis" | "instructions");
       setUploadAvailability(s.uploadAvailability as UploadAvailability);
@@ -1825,7 +1838,7 @@ export default function Home() {
       : [],
     [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection],
   );
-  const isPreprocessed = identifierColumns.length > 0 && !!messageColumn;
+  const isPreprocessed = !!messageColumn && (rowsAsUnits || identifierColumns.length > 0);
 
   const downloadPreprocessed = () => {
     if (!uploadResult) return;
@@ -3163,6 +3176,7 @@ ${PDF_WATERMARK_HTML}
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identifier.color }} />Identifier: <b>{rowsAsUnits ? "each row = episode" : (identifierColumns.join(" + ") || "—")}</b></span>
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identity.color }} />Sender: <b>{identityColumn || "none"}</b></span>
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.order.color }} />Order: <b>{orderColumn ? `${orderColumn} (${orderDirection})` : "file order"}</b></span>
+                              <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.context.color }} />Context: <b>{contextColumns.join(" + ") || "none"}</b></span>
                             </div>
                             <div className="colmap-recap-foot">
                               <button className="btn btn-outline btn-sm" onClick={() => setColumnModalOpen(true)}>
@@ -3337,7 +3351,7 @@ ${PDF_WATERMARK_HTML}
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-                      <div className="f">
+                      <div className="f" id="tour-experiment-instructions">
                         <div className="ta-label-row">
                           <label>Describe the experiment context</label>
                           <button id="tour-pdf-import" className="btn btn-outline btn-xs" type="button" onClick={openPdfModal} title="Convert a PDF of the instructions (including figures and tables) into text">
