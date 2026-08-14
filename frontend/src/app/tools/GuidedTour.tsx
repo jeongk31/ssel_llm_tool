@@ -21,6 +21,8 @@ export interface TourStep {
   open?: "mapping" | "codebook";
   /** for Map-Columns steps: which role/tab to activate so its instruction shows */
   mapRole?: string;
+  /** guided-tour sample mapping to reveal cumulatively at this step */
+  mappingStage?: "none" | "message" | "identifier" | "identity" | "order" | "context" | "complete";
 }
 
 interface Props {
