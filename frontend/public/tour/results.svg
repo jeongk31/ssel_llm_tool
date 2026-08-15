@@ -10,12 +10,12 @@
   </defs>
   <rect width="1200" height="720" rx="12" fill="#f4f5f7"/>
   <rect x="28" y="24" width="1144" height="672" rx="10" fill="#fff" stroke="#d9dce3" stroke-width="2"/>
-  <text x="58" y="70" class="h1">Coding complete</text>
+  <text x="58" y="70" class="h1">Coding Complete</text>
   <rect x="318" y="43" width="124" height="36" rx="18" fill="#dcfce7"/>
   <text x="380" y="67" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#16a34a">3 episodes</text>
 
   <rect x="58" y="100" width="1084" height="88" rx="8" fill="#dcfce7" stroke="#9dd9ae"/>
-  <text x="82" y="133" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#16a34a">✓ Output validation complete</text>
+  <text x="82" y="133" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#16a34a">✓ Output Validation Complete</text>
   <text x="82" y="162" class="body">No parsing failures or out-of-range values were found.</text>
 
   <text x="58" y="226" class="label">CODED EPISODES</text>
@@ -34,15 +34,15 @@
 
   <text x="58" y="466" class="label">DOWNLOAD RESULTS</text>
   <rect x="58" y="482" width="1084" height="178" rx="8" fill="#fff" stroke="#d9dce3"/>
-  <text x="82" y="517" class="h2">Coded dataset</text>
+  <text x="82" y="517" class="h2">Coded Dataset</text>
   <text x="82" y="544" class="small">Primary CSV: every original row and column, with final episode codes mapped back to each source row.</text>
   <rect x="895" y="500" width="220" height="42" rx="6" fill="#5b3a8e"/>
-  <text x="1005" y="527" text-anchor="middle" class="btn" fill="#fff">Download coded dataset</text>
+  <text x="1005" y="527" text-anchor="middle" class="btn" fill="#fff">Download Coded Dataset</text>
   <line x1="82" y1="566" x2="1118" y2="566" stroke="#e8eaef"/>
-  <text x="82" y="599" class="h2">Additional outputs</text>
+  <text x="82" y="599" class="h2">Additional Outputs</text>
   <text x="82" y="626" class="small">Download the episode-level CSV or detailed model/run archive separately when needed.</text>
   <rect x="716" y="583" width="194" height="42" rx="6" fill="#fff" stroke="#d9dce3"/>
   <text x="813" y="610" text-anchor="middle" class="btn" fill="#5f6577">Episode-level CSV</text>
   <rect x="924" y="583" width="191" height="42" rx="6" fill="#fff" stroke="#d9dce3"/>
-  <text x="1019.5" y="610" text-anchor="middle" class="btn" fill="#5f6577">Detailed outputs ZIP</text>
+  <text x="1019.5" y="610" text-anchor="middle" class="btn" fill="#5f6577">Detailed Outputs ZIP</text>
 </svg>

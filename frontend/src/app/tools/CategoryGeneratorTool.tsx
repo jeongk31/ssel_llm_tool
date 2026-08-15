@@ -343,7 +343,7 @@ export default function CategoryGenerator({ providers }: Props) {
                   <div className="catgen-page">
                     <div className="flex-row">
                       <div className="f">
-                        <label>Output type</label>
+                        <label>Output Type</label>
                         <select value={outputType} onChange={(e) => setOutputType(e.target.value)}>
                           <option value="classify">Classify (single label)</option>
                           <option value="tag">Tag (multi-label)</option>
@@ -352,7 +352,7 @@ export default function CategoryGenerator({ providers }: Props) {
                         </select>
                       </div>
                       <div className="f">
-                        <label>Target count: {targetCount}</label>
+                        <label>Target Count: {targetCount}</label>
                         <input
                           type="range" min={3} max={20} value={targetCount}
                           onChange={(e) => setTargetCount(Number(e.target.value))}
@@ -404,7 +404,7 @@ export default function CategoryGenerator({ providers }: Props) {
               <button className="panel-head" onClick={() => togglePanel(5)}>
                 <div className="panel-head-left">
                   <span className="step-badge">5</span>
-                  <span className="panel-label">References (optional)</span>
+                  <span className="panel-label">References (Optional)</span>
                 </div>
                 <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
               </button>

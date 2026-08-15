@@ -17,7 +17,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   // ── Section 1: Upload & map dataset ──
   {
     sectionId: "coding-panel-1", panel: 1, section: "Upload & Map Dataset",
-    targetId: "tour-episode-preview", title: "Upload your dataset", mappingStage: "none",
+    targetId: "tour-episode-preview", title: "Upload Your Dataset", mappingStage: "none",
     body: (<p>We have loaded a sample dataset. Each row represents a message by a sender. Later, we explain how to define communication <strong>episodes</strong>, which are combinations of messages to be coded.</p>),
   },
   // ── Map Columns popup — walk each step/role ──
@@ -28,7 +28,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "identifier", mappingStage: "identifier",
-    targetId: "tour-role-identifier", title: "Step 2 · Episode identifier",
+    targetId: "tour-role-identifier", title: "Step 2 · Episode Identifier",
     body: (<p><strong>Episode identifier</strong> (required) defines what counts as one episode. Choose <em>Group rows</em> and tag the column(s) that group messages together (e.g. Session + Round) — or <em>Each row is its own episode</em>. Rows sharing the same values are merged into one episode.</p>),
   },
   {
@@ -48,7 +48,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mappingStage: "complete",
-    targetId: "tour-map-table", title: "Tagging the columns",
+    targetId: "tour-map-table", title: "Tagging the Columns",
     body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step&apos;s color. Click again to untag. Here <strong>Message</strong> is the Message, <strong>Session</strong> + <strong>Round</strong> are the Episode identifier, <strong>Speaker</strong> is the Sender, <strong>Order</strong> is the Order, and <strong>Treatment</strong> is Context.</p>),
   },
   {
@@ -59,38 +59,38 @@ const CODING_TOUR_STEPS: TourStep[] = [
   // ── Section 2: Codebook ──
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
-    targetId: "tour-empty-handling", title: "Empty messages",
+    targetId: "tour-empty-handling", title: "Empty Messages",
     body: (<p>Choose what happens to a fully empty episode: <strong>Ignore</strong> skips the model call but keeps its original rows in the primary CSV with blank code cells; <strong>Code as Value</strong> asks the model to apply the codebook to the empty episode.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
-    targetId: "tour-codebook", title: "Codebook variables",
-    body: (<p>This summary lists your variables. Click it to open the full editor and define what to code. After saving the codebook, use <strong>Download codebook</strong> below the summary to export it in a standard format.</p>),
+    targetId: "tour-codebook", title: "Codebook Variables",
+    body: (<p>This summary lists your variables. Click it to open the full editor and define what to code. After saving the codebook, use <strong>Download Codebook</strong> below the summary to export it in a standard format.</p>),
   },
   // ── Codebook editor popup ──
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
-    targetId: "tour-cb-card", title: "Variable card",
+    targetId: "tour-cb-card", title: "Variable Card",
     body: (<p>Each variable is a card. Give it a <strong>label</strong>, a <strong>level</strong> (per episode or per sender), and a <strong>category definition</strong> describing what it measures.</p>),
   },
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
-    targetId: "tour-cb-type", title: "Variable type",
+    targetId: "tour-cb-type", title: "Variable Type",
     body: (<p>Pick the <strong>type</strong> (hover the <span aria-hidden>?</span> for details): Binary is fixed 0/1, Categorical is your named set, Numeric a number, Text free-form. Per-sender variables expand to one column per detected sender; review and verify the automatically detected list before continuing.</p>),
   },
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
-    targetId: "tour-cb-values", title: "Coded values",
+    targetId: "tour-cb-values", title: "Coded Values",
     body: (<p>For Binary/Categorical, define <strong>every coded value</strong> — the value, its definition, and optional examples/context. This is the guidance the model uses to code each episode.</p>),
   },
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
-    targetId: "tour-cb-aggregation", title: "Aggregate repeated calls",
+    targetId: "tour-cb-aggregation", title: "Aggregate Repeated Calls",
     body: (<p>Choose how repeated model calls are combined for this variable. Use <strong>majority vote</strong> for labels and free text, or <strong>average</strong> for numeric outputs. Each variable can use a different method.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
-    targetId: "tour-codebook-download", title: "Download the codebook",
+    targetId: "tour-codebook-download", title: "Download the Codebook",
     body: (<p>After saving the variables, select a format and download the completed codebook for review, reuse, or project documentation. CAT supports JSON, CSV, text, PDF, Excel, and LaTeX exports.</p>),
   },
   // ── Section 3: Experiment Instructions ──
@@ -102,34 +102,34 @@ const CODING_TOUR_STEPS: TourStep[] = [
   },
   {
     sectionId: "coding-panel-3", panel: 3, section: "Experiment Instructions",
-    targetId: "tour-pdf-import", title: "Import instructions from PDF",
+    targetId: "tour-pdf-import", title: "Import Instructions from PDF",
     body: (<p>If the instructions are in a PDF, including figures or tables, import it here. Choose a supported LLM provider and model to convert the document into editable text before using it as experiment context.</p>),
   },
   // ── Section 4: Models & Runs ──
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
-    targetId: "tour-model-execution", title: "Browser vs downloaded package",
+    targetId: "tour-model-execution", title: "Browser vs. Downloaded Package",
     body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently uses the first selected provider and model for one call per episode</strong>; experienced users can edit its Python script to change parameters or build a repeated- or multi-model workflow.</p>),
   },
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
-    targetId: "tour-model-slots", title: "Models & API keys",
+    targetId: "tour-model-slots", title: "Models & API Keys",
     body: (<p>Add one or more provider and model configurations. An API key is required for each model used by <strong>Run Coding</strong>. It is optional when generating a local package because no key is stored in the download; the script requests it at runtime.</p>),
   },
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
-    targetId: "tour-runs", title: "Runs per model",
+    targetId: "tour-runs", title: "Runs per Model",
     body: (<p>Choose how many independent calls each configured model makes for every episode. The results are then combined using the method selected separately for each codebook variable.</p>),
   },
   // ── Run ──
   {
     sectionId: "coding-run-bar", section: "Run",
-    title: "Run or generate a package",
-    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts.</p>),
+    title: "Run or Generate a Package",
+    body: (<p><strong>Generate Package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts.</p>),
   },
   {
     sectionId: "tour-results-panel", targetId: "tour-result-downloads", section: "Results",
-    title: "Review and download results",
+    title: "Review and Download Results",
     body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
   },
 ];
@@ -2763,7 +2763,7 @@ ${PDF_WATERMARK_HTML}
   ${kv("Columns", htmlEsc(uploadResult.columns.join(", ")))}
 </table>
 
-<h2>Column mapping</h2>
+<h2>Column Mapping</h2>
 <table>
   ${kv("Message", htmlEsc(summaryConfig.messageColumn || "—"))}
   ${kv("Identifier(s)", summaryConfig.rowsAsUnits ? "each row is its own episode" : htmlEsc(summaryConfig.identifierColumns.join(" + ") || "—"))}
@@ -2774,7 +2774,7 @@ ${PDF_WATERMARK_HTML}
 
 <h2>Models &amp; configuration</h2>
 <table>
-  <thead><tr><th>#</th><th>Provider</th><th>Model</th><th>Temp</th><th>Top-p</th><th>Max tokens</th></tr></thead>
+  <thead><tr><th>#</th><th>Provider</th><th>Model</th><th>Temp</th><th>Top-p</th><th>Max Tokens</th></tr></thead>
   <tbody>${rowsHtml(modelRows)}</tbody>
 </table>
 
@@ -3275,7 +3275,7 @@ ${PDF_WATERMARK_HTML}
                             </div>
                             <div className="colmap-recap-foot">
                               <button className="btn btn-outline btn-sm" onClick={() => setColumnModalOpen(true)}>
-                                {messageColumn ? "Edit column mapping" : "Map columns"}
+                                {messageColumn ? "Edit Column Mapping" : "Map Columns"}
                               </button>
                               {!mappingComplete && <span className="recap-warn">⚠ Mapping incomplete — finish it to continue.</span>}
                               {mappingComplete && currentContextConflicts.length > 0 && (
@@ -3344,7 +3344,7 @@ ${PDF_WATERMARK_HTML}
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div className="f" id="tour-empty-handling">
-                        <label>Empty message handling</label>
+                        <label>Empty Message Handling</label>
                         <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "ignore" | "code")}>
                           <option value="ignore">Ignore (skip model call)</option>
                           <option value="code">Code as Value</option>
@@ -3355,7 +3355,7 @@ ${PDF_WATERMARK_HTML}
                         </p>
                       </div>
                       <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
-                        <label>Codebook variables</label>
+                        <label>Codebook Variables</label>
                         <div className="cb-summary" onClick={() => setExpandedTable("codebook")} title="Click to edit the codebook">
                           {codebook.filter((e) => e.label.trim()).length === 0 ? (
                             <p className="hint" style={{ margin: 0 }}>No variables yet — click to define your codebook.</p>
@@ -3393,7 +3393,7 @@ ${PDF_WATERMARK_HTML}
                             )}
                             <p className={sendersOk ? "hint" : "enc-error"}>{sendersOk ? "These names were detected automatically from the mapped Sender column." : senderConfigurationMessage}</p>
                             {identityColumn && participants.length > 0 && detectedSenderInfo.blankRows.length === 0 && !senderListVerified && (
-                              <button className="btn btn-outline btn-xs" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I verified these senders</button>
+                              <button className="btn btn-outline btn-xs" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I Verified These Senders</button>
                             )}
                           </div>
                         )}
@@ -3407,7 +3407,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="cb-export-block" id="tour-codebook-download">
                         <div className="cb-export-divider" />
                         <div className="cb-export-row">
-                          <span className="cb-export-title">Download codebook</span>
+                          <span className="cb-export-title">Download Codebook</span>
                           <div className="cb-export-formats">
                             {(["json", "csv", "txt", "pdf", "xlsx", "latex"] as const).map((fmt) => (
                               <button
@@ -3583,7 +3583,7 @@ ${PDF_WATERMARK_HTML}
                                     </div>
                                     <div className="tuning-param">
                                       <div className="tuning-param-header">
-                                        <label>Max tokens</label>
+                                        <label>Max Tokens</label>
                                         <span className="tuning-param-val">{slot.maxTokens ?? 1024}</span>
                                       </div>
                                       <input type="number" min={64} max={8192} step={64} value={slot.maxTokens ?? 1024}
@@ -3608,7 +3608,7 @@ ${PDF_WATERMARK_HTML}
                       <div className="enc-voting-settings" id="tour-runs">
                         <div className="enc-voting-row">
                           <div className="f voting-runs">
-                            <label>Runs per model <span className="fv">{runsPerModel}×</span></label>
+                            <label>Runs per Model <span className="fv">{runsPerModel}×</span></label>
                             <input
                               type="range" min={1} max={10} value={runsPerModel}
                               onChange={(e) => setRunsPerModel(Number(e.target.value))}
@@ -3631,7 +3631,7 @@ ${PDF_WATERMARK_HTML}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
                   <button className="btn btn-outline btn-sm" disabled={!canGeneratePackage || generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
-                    {generating ? <><span className="spinner" /> Generating</> : "Generate package"}
+                    {generating ? <><span className="spinner" /> Generating</> : "Generate Package"}
                   </button>
                   {running ? (
                     <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
@@ -3776,8 +3776,8 @@ ${PDF_WATERMARK_HTML}
                               {validationReport.issues.length > 10 && <div className="enc-vi-more">...and {validationReport.issues.length - 10} more issues</div>}
                             </div>
                             <div className="enc-validation-actions">
-                              <button className="btn btn-outline" disabled={resultDownloadKind !== null || generating} onClick={() => handleRerun(validationReport.problematicIndices)}>Re-run affected episodes</button>
-                              <button className="btn btn-ghost" disabled={resultDownloadKind !== null || generating} onClick={() => handleRerun(null)}>Re-run all episodes</button>
+                              <button className="btn btn-outline" disabled={resultDownloadKind !== null || generating} onClick={() => handleRerun(validationReport.problematicIndices)}>Re-run Affected Episodes</button>
+                              <button className="btn btn-ghost" disabled={resultDownloadKind !== null || generating} onClick={() => handleRerun(null)}>Re-run All Episodes</button>
                             </div>
                           </>
                         )}
@@ -3787,7 +3787,7 @@ ${PDF_WATERMARK_HTML}
 
                     {runComplete && validationReport && (
                       <div className="res-section mt-12 results-download-card" id="tour-result-downloads">
-                        <div className="res-section-h">Download results</div>
+                        <div className="res-section-h">Download Results</div>
                         {validationReport.problematicIndices.length > 0 && (
                           <div className="results-download-warning">
                             These downloads include {validationReport.problematicIndices.length} unresolved coded episode{validationReport.problematicIndices.length === 1 ? "" : "s"}. Re-run the affected episodes first if you want corrected values.
@@ -3795,7 +3795,7 @@ ${PDF_WATERMARK_HTML}
                         )}
                         <div className="results-download-primary">
                           <div>
-                            <div className="results-download-title">Coded dataset</div>
+                            <div className="results-download-title">Coded Dataset</div>
                             <p className="results-download-helper">Includes every original row and column. When messages were grouped, each episode&apos;s final codes are repeated across all corresponding original rows.</p>
                           </div>
                           <button
@@ -3804,12 +3804,12 @@ ${PDF_WATERMARK_HTML}
                             aria-busy={resultDownloadKind === "primary"}
                             onClick={() => handleExportResults("primary")}
                           >
-                            {resultDownloadKind === "primary" ? <><span className="spinner" /> Preparing CSV</> : "Download coded dataset (.csv)"}
+                            {resultDownloadKind === "primary" ? <><span className="spinner" /> Preparing CSV</> : "Download Coded Dataset (.csv)"}
                           </button>
                         </div>
                         <div className="results-download-secondary">
                           <div>
-                            <div className="results-download-title">Episode-level results <span className="results-optional">Optional</span></div>
+                            <div className="results-download-title">Episode-Level Results <span className="results-optional">Optional</span></div>
                             <p className="results-download-helper">A compact CSV with one row per preprocessed communication episode.</p>
                           </div>
                           <button
@@ -3818,13 +3818,13 @@ ${PDF_WATERMARK_HTML}
                             aria-busy={resultDownloadKind === "episodes"}
                             onClick={() => handleExportResults("episodes")}
                           >
-                            {resultDownloadKind === "episodes" ? <><span className="spinner" /> Preparing</> : "Download episode-level results (.csv)"}
+                            {resultDownloadKind === "episodes" ? <><span className="spinner" /> Preparing</> : "Download Episode-Level Results (.csv)"}
                           </button>
                         </div>
                         {codedRows.length > 0 && (resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel) > 1 && (
                           <div className="results-download-details">
                             <div>
-                              <div className="results-download-title">Detailed model and run outputs</div>
+                              <div className="results-download-title">Detailed Model and Run Outputs</div>
                               <p className="results-download-helper">Individual model/run records and their aggregate. Selective reruns replace the records for affected episodes while preserving all others.</p>
                             </div>
                             <button
@@ -3833,7 +3833,7 @@ ${PDF_WATERMARK_HTML}
                               aria-busy={resultDownloadKind === "detailed"}
                               onClick={handleDownloadDetailedResults}
                             >
-                              {resultDownloadKind === "detailed" ? <><span className="spinner" /> Preparing</> : "Download detailed outputs (.zip)"}
+                              {resultDownloadKind === "detailed" ? <><span className="spinner" /> Preparing</> : "Download Detailed Outputs (.zip)"}
                             </button>
                           </div>
                         )}
@@ -3844,10 +3844,10 @@ ${PDF_WATERMARK_HTML}
                     {runComplete && (
                       <div className="res-section mt-12 run-summary-cta">
                         <div>
-                          <div className="run-summary-title">Run summary</div>
+                          <div className="run-summary-title">Run Summary</div>
                           <div className="run-summary-sub">Dataset, models, configuration, timing &amp; results — save as PDF.</div>
                         </div>
-                        <button className="btn btn-outline btn-sm" onClick={handleRunSummary}>↓ Download summary (PDF)</button>
+                        <button className="btn btn-outline btn-sm" onClick={handleRunSummary}>↓ Download Summary (PDF)</button>
                       </div>
                     )}
 
@@ -3895,7 +3895,7 @@ ${PDF_WATERMARK_HTML}
                     <div className="res-section mb-12">
                       <div className="res-section-h">
                         <span>Script Preview</span>
-                        <button className="btn btn-primary btn-xs" disabled={generating || resultDownloadKind !== null} onClick={handleDownloadPackage}>{generating ? "Preparing…" : "Download package (.zip)"}</button>
+                        <button className="btn btn-primary btn-xs" disabled={generating || resultDownloadKind !== null} onClick={handleDownloadPackage}>{generating ? "Preparing…" : "Download Package (.zip)"}</button>
                       </div>
                       <div className="script-preview">
                         <pre className="code-block">{result.script}</pre>
@@ -3909,7 +3909,7 @@ ${PDF_WATERMARK_HTML}
                       <path d="M14 2v6h6M10 12l-2 2 2 2M14 12l2 2-2 2" />
                     </svg>
                     <p>No script generated</p>
-                    <span className="text-sm">Configure the left panel, then choose Generate package.</span>
+                    <span className="text-sm">Configure the left panel, then choose Generate Package.</span>
                   </div>
                 ) : null}
                 </>)}
@@ -4013,7 +4013,7 @@ ${PDF_WATERMARK_HTML}
                   <div className="ana-section-h">Configuration</div>
                   <div className="ana-config">
                     <div className="f">
-                      <label>Episode columns (define a unique row)</label>
+                      <label>Episode Columns (Define a Unique Row)</label>
                       <div className="ana-col-picker">
                         {allRaterColumns.map((col) => (
                           <label key={col} className="ana-check">
@@ -4028,7 +4028,7 @@ ${PDF_WATERMARK_HTML}
                       </div>
                     </div>
                     <div className="f mt-12">
-                      <label>Analysis variables</label>
+                      <label>Analysis Variables</label>
                       <div className="ana-col-picker">
                         {allRaterColumns.filter((c) => !episodeColumns.includes(c)).map((col) => (
                           <label key={col} className="ana-check">
@@ -4164,7 +4164,7 @@ ${PDF_WATERMARK_HTML}
               </div>
               <div className="tool-body">
                 <div className="ana-section mt-16">
-                  <div className="ana-section-h">Questions or concerns?</div>
+                  <div className="ana-section-h">Questions or Concerns?</div>
                   <div className="faq-contact"><ContactForm /></div>
                 </div>
               </div>
@@ -4179,7 +4179,7 @@ ${PDF_WATERMARK_HTML}
           <div className="pdf-modal" onClick={(e) => e.stopPropagation()}>
             <div className="colmap-head">
               <div>
-                <h2 className="colmap-title">Import instructions from PDF</h2>
+                <h2 className="colmap-title">Import Instructions from PDF</h2>
                 <p className="colmap-sub">Only some models can read PDFs (including figures and tables). Pick one below to convert the document into text — you can review and edit it before using it. Your main coding run can still use any model you like.</p>
               </div>
               <button className="modal-close" onClick={closePdfModal} title="Close" disabled={pdfConverting}>✕</button>
@@ -4187,7 +4187,7 @@ ${PDF_WATERMARK_HTML}
 
             <div className="pdf-modal-body">
               <div className="f">
-                <label>PDF file</label>
+                <label>PDF File</label>
                 <div
                   className={`dropzone pdf-dropzone${pdfDragOver ? " drag-active" : ""}`}
                   onClick={() => pdfFileRef.current?.click()}
@@ -4280,7 +4280,7 @@ ${PDF_WATERMARK_HTML}
                 {pdfConverting ? "Converting…" : pdfResultText != null ? "Re-convert" : "Convert"}
               </button>
               {pdfResultText != null && (
-                <button className="btn btn-primary btn-sm" onClick={applyPdfText} disabled={pdfConverting}>Use this text</button>
+                <button className="btn btn-primary btn-sm" onClick={applyPdfText} disabled={pdfConverting}>Use This Text</button>
               )}
             </div>
           </div>
@@ -4300,7 +4300,7 @@ ${PDF_WATERMARK_HTML}
             <div className="colmap-modal" id="tour-map-modal">
               <div className="colmap-head">
                 <div>
-                  <h2 className="colmap-title">Map your columns</h2>
+                  <h2 className="colmap-title">Map Your Columns</h2>
                   <p className="colmap-sub">Work through the steps — click a column below to tag it for the active step. Steps marked <span className="colmap-req">*</span> are required.</p>
                 </div>
                 <button className="modal-close" onClick={closeColumnModal} title="Close without saving">✕</button>
@@ -4486,9 +4486,9 @@ ${PDF_WATERMARK_HTML}
               <p>Correct the dataset and re-upload it, or remove the inconsistent field from Context. CAT will check again before allowing you to proceed.</p>
             </div>
             <div className="modal-actions context-conflict-actions">
-              <button className="btn btn-ghost" onClick={() => setContextConflictAlert(null)}>Return to mapping</button>
-              <button className="btn btn-outline" onClick={unselectConflictingContext}>Unselect inconsistent fields</button>
-              <button className="btn btn-primary" onClick={replaceDatasetForContext}>Correct and re-upload dataset</button>
+              <button className="btn btn-ghost" onClick={() => setContextConflictAlert(null)}>Return to Mapping</button>
+              <button className="btn btn-outline" onClick={unselectConflictingContext}>Unselect Inconsistent Fields</button>
+              <button className="btn btn-primary" onClick={replaceDatasetForContext}>Correct and Re-upload Dataset</button>
             </div>
           </div>
         </div>
@@ -4537,13 +4537,13 @@ ${PDF_WATERMARK_HTML}
                       </div>
 
                       <div className="cb-field">
-                        <label>Category definition</label>
+                        <label>Category Definition</label>
                         <textarea rows={2} value={entry.definition} onChange={(e) => updateCodebook(idx, "definition", e.target.value)} placeholder="What this variable measures and how to decide it" />
                       </div>
 
                       <div className="cb-aggregation" id={idx === 0 ? "tour-cb-aggregation" : undefined}>
                         <div>
-                          <label>Aggregate repeated calls</label>
+                          <label>Aggregate Repeated Calls</label>
                           <p>How results from multiple models or runs are combined for this variable.</p>
                         </div>
                         <select value={entry.aggregation} onChange={(e) => updateCodebook(idx, "aggregation", e.target.value)}>
@@ -4562,7 +4562,7 @@ ${PDF_WATERMARK_HTML}
                         </div>
                       ) : (
                         <div className="cb-values" id={idx === 0 ? "tour-cb-values" : undefined}>
-                          <div className="cb-values-h">Coded values <span className="cb-opt">
+                          <div className="cb-values-h">Coded Values <span className="cb-opt">
                             {entry.type === "binary" ? "fixed 0 / 1 — just define what each means" : "one definition per value"}
                           </span></div>
                           <div className="cb-value-grid cb-value-head">
@@ -4583,12 +4583,12 @@ ${PDF_WATERMARK_HTML}
                                 : <button className="row-rm" onClick={() => removeValueRow(idx, vIdx)} title="Remove value" disabled={entry.values.length <= 1}>×</button>}
                             </div>
                           ))}
-                          {entry.type !== "binary" && <button className="btn btn-ghost btn-xs" onClick={() => addValueRow(idx)}>+ Add value</button>}
+                          {entry.type !== "binary" && <button className="btn btn-ghost btn-xs" onClick={() => addValueRow(idx)}>+ Add Value</button>}
                         </div>
                       )}
                     </div>
                   ))}
-                  <button className="btn btn-outline btn-sm" onClick={addCodebookRow}>+ Add variable</button>
+                  <button className="btn btn-outline btn-sm" onClick={addCodebookRow}>+ Add Variable</button>
                   {hasSenderVar && (
                     <div className={`sender-verification mt-12 ${sendersOk ? "verified" : "needs-attention"}`}>
                       <div className="sender-verification-head">
@@ -4602,7 +4602,7 @@ ${PDF_WATERMARK_HTML}
                       )}
                       <p className={sendersOk ? "hint" : "enc-error"}>{sendersOk ? "Per-sender variables will be coded once for each verified sender." : senderConfigurationMessage}</p>
                       {identityColumn && participants.length > 0 && detectedSenderInfo.blankRows.length === 0 && !senderListVerified && (
-                        <button className="btn btn-outline btn-sm" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I verified these senders</button>
+                        <button className="btn btn-outline btn-sm" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I Verified These Senders</button>
                       )}
                     </div>
                   )}
@@ -4655,16 +4655,16 @@ ${PDF_WATERMARK_HTML}
         <div className="welcome-overlay" onClick={() => dismissWelcome("later")}>
           <div className="welcome-modal" onClick={(e) => e.stopPropagation()}>
             <div className="welcome-emoji">👋</div>
-            <h2 className="welcome-title">First time here?</h2>
+            <h2 className="welcome-title">First Time Here?</h2>
             <p className="welcome-text">
               Take a quick guided walkthrough of the LLM Coding page — we&apos;ll highlight each step, from uploading your data to running the models.
             </p>
             <div className="welcome-actions">
-              <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the tour</button>
-              <button className="btn btn-outline" onClick={() => dismissWelcome("later")}>Maybe later</button>
+              <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the Tour</button>
+              <button className="btn btn-outline" onClick={() => dismissWelcome("later")}>Maybe Later</button>
             </div>
-            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>Or read the full guide →</button>
-            <button className="welcome-never" onClick={() => dismissWelcome("never")}>Don&apos;t show again</button>
+            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>Or Read the Full Guide →</button>
+            <button className="welcome-never" onClick={() => dismissWelcome("never")}>Don&apos;t Show Again</button>
           </div>
         </div>
       )}

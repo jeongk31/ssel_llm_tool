@@ -200,7 +200,7 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
           </div>
         )}
         <div className="tour-panel-actions">
-          <button className="btn btn-ghost btn-xs text-muted" onClick={onClose}>Skip tour</button>
+          <button className="btn btn-ghost btn-xs text-muted" onClick={onClose}>Skip Tour</button>
           <div className="tour-panel-nav">
             {!isFirst && <button className="btn btn-outline btn-sm" onClick={() => setIdx((i) => i - 1)}>Back</button>}
             {isLast

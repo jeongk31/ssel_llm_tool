@@ -10,7 +10,7 @@ interface Props {
 
 const SECTIONS: { value: Section; label: string }[] = [
   // { value: "coding", label: "LLM Coding" },  // hidden for now
-  { value: "demo", label: "Demo video" },
+  { value: "demo", label: "Demo Video" },
   { value: "faq", label: "FAQ" },
 ];
 
@@ -49,8 +49,8 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
     a: <>You can add several provider/model pairs and run each multiple times. More runs reduce variance at the cost of more API calls. In the codebook, choose separately for each variable whether its results use <strong>majority vote (mode)</strong> or <strong>average (mean)</strong>.</>,
   },
   {
-    q: "What's the difference between “Generate package” and “Run Coding”?",
-    a: <><strong>Generate package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. You only need to select its provider and model; no API key is required to generate the package because the script reads <code>CAT_API_KEY</code> or prompts securely at runtime. The script uses the first selected provider and model for one call per episode. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
+    q: "What's the difference between “Generate Package” and “Run Coding”?",
+    a: <><strong>Generate Package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. You only need to select its provider and model; no API key is required to generate the package because the script reads <code>CAT_API_KEY</code> or prompts securely at runtime. The script uses the first selected provider and model for one call per episode. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
   },
   {
     q: "What do the result downloads contain?",
@@ -158,7 +158,7 @@ function StepSection({ n, title, children }: { n: number; title: string; childre
 function DemoVideo() {
   return (
     <div className="ana-section mt-16">
-      <div className="ana-section-h">Demo video</div>
+      <div className="ana-section-h">Demo Video</div>
       <div className="tool-desc">
         <div className="demo-placeholder">
           <div className="demo-placeholder-icon">▶</div>
@@ -259,7 +259,7 @@ export default function HowToPage({ onNavigate }: Props) {
         {activeSection === "coding" && (
           <>
             <div className="ana-section mt-16">
-              <div className="ana-section-h">What this tool does</div>
+              <div className="ana-section-h">What This Tool Does</div>
               <div className="tool-desc">
                 <p>
                   Upload a dataset, describe your experiment, define a codebook, and have one or
@@ -318,7 +318,7 @@ export default function HowToPage({ onNavigate }: Props) {
                 Add one or more provider/model pairs. Enter an API key for every model used in browser execution. No key is required to generate the local package; its script obtains the key at runtime. Supported providers are OpenAI, Google (Gemini), DeepSeek, Anthropic (Claude), and xAI (Grok).
               </div>
               <div className="catgen-field">
-                <span className="catgen-label">Runs per model:</span>
+                <span className="catgen-label">Runs per Model:</span>
                 Run each model multiple times per episode to enable aggregation. More runs cost more API calls.
               </div>
               <div className="catgen-field"><span className="catgen-label">Aggregation:</span> Set separately for each variable in the codebook.</div>
@@ -328,16 +328,16 @@ export default function HowToPage({ onNavigate }: Props) {
             </StepSection>
 
             <div className="ana-section mt-16">
-              <div className="ana-section-h">Running it</div>
+              <div className="ana-section-h">Running It</div>
               <div className="tool-desc">
                 <p>
-                  <strong>Generate package</strong> creates a ZIP with the Python script, three CSV files containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. It can be generated without entering an API key; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The primary result download is a CSV with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional CSV provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
+                  <strong>Generate Package</strong> creates a ZIP with the Python script, three CSV files containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. It can be generated without entering an API key; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The primary result download is a CSV with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional CSV provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
                 </p>
               </div>
             </div>
 
             <div className="ana-section mt-16">
-              <div className="ana-section-h">Demo video</div>
+              <div className="ana-section-h">Demo Video</div>
               <div className="tool-desc">
                 <video controls preload="metadata" playsInline className="howto-video">
                   <source src={DEMO_VIDEO_CDN_SRC} type="video/mp4" />
@@ -374,7 +374,7 @@ export default function HowToPage({ onNavigate }: Props) {
             </div>
 
             <div className="ana-section mt-16">
-              <div className="ana-section-h">Questions or concerns?</div>
+              <div className="ana-section-h">Questions or Concerns?</div>
               <div className="faq-contact">
                 <p>Have a question that isn&apos;t answered here, found a bug, or want to give feedback? Send a message below and we&apos;ll get back to you.</p>
                 <ContactForm />
