@@ -42,7 +42,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What does “empty message handling” do?",
-    a: <>It controls fully empty communication episodes. <strong>Ignore</strong> skips the model call, while retaining the corresponding source rows with blank code cells in the primary CSV. <strong>Code as value</strong> sends the empty episode to the model so the codebook can define how it should be classified.</>,
+    a: <>It controls fully empty communication episodes. <strong>Ignore</strong> skips the model call, while retaining the corresponding source rows with blank code cells in the primary CSV. <strong>Code as Value</strong> sends the empty episode to the model so the codebook can define how it should be classified.</>,
   },
   {
     q: "How many models and runs should I use, and how are they combined?",

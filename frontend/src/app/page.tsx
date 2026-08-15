@@ -60,7 +60,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
     targetId: "tour-empty-handling", title: "Empty messages",
-    body: (<p>Choose what happens to a fully empty episode: <strong>Ignore</strong> skips the model call but keeps its original rows in the primary CSV with blank code cells; <strong>Code as value</strong> asks the model to apply the codebook to the empty episode.</p>),
+    body: (<p>Choose what happens to a fully empty episode: <strong>Ignore</strong> skips the model call but keeps its original rows in the primary CSV with blank code cells; <strong>Code as Value</strong> asks the model to apply the codebook to the empty episode.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
@@ -3347,7 +3347,7 @@ ${PDF_WATERMARK_HTML}
                         <label>Empty message handling</label>
                         <select value={emptyMessageHandling} onChange={(e) => setEmptyMessageHandling(e.target.value as "ignore" | "code")}>
                           <option value="ignore">Ignore (skip model call)</option>
-                          <option value="code">Code as value</option>
+                          <option value="code">Code as Value</option>
                         </select>
                         <p className="hint">
                           {emptyMessageHandling === "ignore" && "Fully empty episodes are not sent to a model. Their original rows remain in the primary CSV with blank code cells."}
