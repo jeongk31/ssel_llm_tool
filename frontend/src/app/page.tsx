@@ -49,7 +49,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mappingStage: "complete",
     targetId: "tour-map-table", title: "Tagging the columns",
-    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step&apos;s color. Click again to untag. Here <strong>Message</strong> is the Message, <strong>Session</strong> + <strong>Round</strong> are the Episode identifier, <strong>Speaker</strong> is the Sender, <strong>Order</strong> is the Order, and <strong>Treatment</strong> + <strong>Channel</strong> are Context.</p>),
+    body: (<p>With a step active, click a column header (or its cells) to tag it — the column highlights in that step&apos;s color. Click again to untag. Here <strong>Message</strong> is the Message, <strong>Session</strong> + <strong>Round</strong> are the Episode identifier, <strong>Speaker</strong> is the Sender, <strong>Order</strong> is the Order, and <strong>Treatment</strong> is Context.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mappingStage: "complete",
@@ -790,15 +790,15 @@ const htmlEsc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&"
 const TOUR_SAMPLE_UPLOAD: UploadResult = {
   file_id: "__tour_sample__",
   file_name: "sample_conversations.csv",
-  columns: ["Session", "Round", "Speaker", "Order", "Message", "Treatment", "Channel"],
+  columns: ["Session", "Round", "Speaker", "Order", "Message", "Treatment"],
   row_count: 6,
   preview: [
-    { Session: 1, Round: 1, Speaker: "P", Order: 1, Message: "Let's both choose In.", Treatment: "communication", Channel: "private" },
-    { Session: 1, Round: 1, Speaker: "V1", Order: 2, Message: "Sounds good, I'm in.", Treatment: "communication", Channel: "private" },
-    { Session: 1, Round: 1, Speaker: "P", Order: 3, Message: "Great — I'll roll.", Treatment: "communication", Channel: "private" },
-    { Session: 1, Round: 2, Speaker: "P", Order: 1, Message: "Same plan this round?", Treatment: "communication", Channel: "public" },
-    { Session: 1, Round: 2, Speaker: "V1", Order: 2, Message: "Yes, let's do it.", Treatment: "communication", Channel: "public" },
-    { Session: 2, Round: 1, Speaker: "V2", Order: 1, Message: "I'll pass this time.", Treatment: "baseline", Channel: "one-way" },
+    { Session: 1, Round: 1, Speaker: "P", Order: 1, Message: "Let's both choose In.", Treatment: "communication" },
+    { Session: 1, Round: 1, Speaker: "V1", Order: 2, Message: "Sounds good, I'm in.", Treatment: "communication" },
+    { Session: 1, Round: 1, Speaker: "P", Order: 3, Message: "Great — I'll roll.", Treatment: "communication" },
+    { Session: 1, Round: 2, Speaker: "P", Order: 1, Message: "Same plan this round?", Treatment: "communication" },
+    { Session: 1, Round: 2, Speaker: "V1", Order: 2, Message: "Yes, let's do it.", Treatment: "communication" },
+    { Session: 2, Round: 1, Speaker: "V2", Order: 1, Message: "I'll pass this time.", Treatment: "baseline" },
   ],
 };
 const TOUR_SAMPLE_INSTRUCTIONS = "Participants communicate before choosing between In and Out. Their payoffs depend on both participants' choices. Messages may contain proposals, promises, or refusals.";
@@ -809,9 +809,9 @@ const tourSampleCodebook = (): CodebookEntry[] => [{
   aggregation: "mode",
   definition: "Does the episode reach a cooperative agreement?",
   values: [
-    { value: "yes", definition: "Both players agree to cooperate", examples: "“let's both choose In”", context: "" },
+    { value: "yes", definition: "Both players agree to cooperate", examples: "“let's both choose In”", context: "Include explicit mutual commitments, even when phrased informally." },
     { value: "no", definition: "No agreement is reached", examples: "", context: "" },
-    { value: "mixed", definition: "Partial or ambiguous agreement", examples: "", context: "" },
+    { value: "mixed", definition: "Partial or ambiguous agreement", examples: "", context: "Use when agreement is conditional or one participant remains ambiguous." },
   ],
 }];
 const TOUR_SAMPLE_CODED_ROWS: CodedRow[] = [
@@ -1792,12 +1792,9 @@ export default function Home() {
       setIdentityColumn(stage >= stages.indexOf("identity") ? "Speaker" : "");
       setOrderColumn(stage >= stages.indexOf("order") ? "Order" : "");
       setOrderDirection("asc");
-      setContextColumns(stage >= stages.indexOf("context") ? ["Treatment", "Channel"] : []);
+      setContextColumns(stage >= stages.indexOf("context") ? ["Treatment"] : []);
       setContextDescriptions(stage >= stages.indexOf("context")
-        ? {
-            Treatment: "Experimental condition assigned to the communication episode.",
-            Channel: "Communication channel available to participants: private, public, or one-way.",
-          }
+        ? { Treatment: "Experimental condition assigned to the communication episode." }
         : {});
       setRowsAsUnits(false);
     }
