@@ -67,11 +67,6 @@ const CODING_TOUR_STEPS: TourStep[] = [
     targetId: "tour-codebook", title: "Codebook variables",
     body: (<p>This summary lists your variables. Click it to open the full editor and define what to code.</p>),
   },
-  {
-    sectionId: "coding-panel-2", panel: 2, section: "Codebook",
-    targetId: "tour-codebook-import", title: "Import a codebook file",
-    body: (<p>Instead of entering variables manually, import a CSV or Excel file using the exact nine-column format shown here. Download the CSV template, replace its examples, and upload it. CAT checks the headers, every row, variable settings, and coded values before allowing the imported codebook to replace the current one.</p>),
-  },
   // ── Codebook editor popup ──
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
@@ -153,186 +148,10 @@ interface CodebookEntry {
   values: CodedValue[];         // one definition per possible coded value
 }
 
-const CODEBOOK_IMPORT_COLUMNS = [
+const CODEBOOK_EXPORT_COLUMNS = [
   "label", "type", "level", "aggregation", "definition",
   "value", "value_definition", "examples", "context",
 ] as const;
-type CodebookImportColumn = typeof CODEBOOK_IMPORT_COLUMNS[number];
-interface CodebookImportIssue {
-  row: number;
-  column?: CodebookImportColumn | "file";
-  message: string;
-}
-interface CodebookImportReview {
-  fileName: string;
-  sourceRows: number;
-  entries: CodebookEntry[];
-  issues: CodebookImportIssue[];
-}
-
-const CODEBOOK_IMPORT_TEMPLATE_ROWS: Record<CodebookImportColumn, string>[] = [
-  {
-    label: "promise", type: "binary", level: "episode", aggregation: "mode",
-    definition: "Does the episode contain an explicit promise?", value: "0",
-    value_definition: "No explicit promise is made.", examples: "", context: "",
-  },
-  {
-    label: "promise", type: "binary", level: "episode", aggregation: "mode",
-    definition: "Does the episode contain an explicit promise?", value: "1",
-    value_definition: "At least one explicit promise is made.",
-    examples: "I will choose In.", context: "",
-  },
-  {
-    label: "cooperation", type: "categorical", level: "episode", aggregation: "mode",
-    definition: "Does the episode reach a cooperative agreement?", value: "yes",
-    value_definition: "The participants reach a cooperative agreement.",
-    examples: "Let's both choose In.", context: "",
-  },
-  {
-    label: "cooperation", type: "categorical", level: "episode", aggregation: "mode",
-    definition: "Does the episode reach a cooperative agreement?", value: "no",
-    value_definition: "No cooperative agreement is reached.", examples: "", context: "",
-  },
-  {
-    label: "confidence", type: "numeric", level: "episode", aggregation: "mean",
-    definition: "Numeric confidence expressed in the episode.", value: "",
-    value_definition: "", examples: "", context: "",
-  },
-  {
-    label: "summary", type: "text", level: "episode", aggregation: "mode",
-    definition: "Briefly summarize the episode.", value: "",
-    value_definition: "", examples: "", context: "",
-  },
-];
-
-function validateImportedCodebookRows(
-  rawRows: unknown[][],
-  fileName: string,
-): CodebookImportReview {
-  const issues: CodebookImportIssue[] = [];
-  if (rawRows.length === 0) {
-    return { fileName, sourceRows: 0, entries: [], issues: [{ row: 1, column: "file", message: "The file is empty." }] };
-  }
-
-  const header = rawRows[0].map((value, index) => {
-    const text = String(value ?? "").trim();
-    return index === 0 ? text.replace(/^\uFEFF/, "") : text;
-  });
-  const expected = [...CODEBOOK_IMPORT_COLUMNS];
-  const headerMatches = header.length === expected.length && expected.every((column, index) => header[index] === column);
-  if (!headerMatches) {
-    issues.push({
-      row: 1,
-      column: "file",
-      message: `The header must contain exactly these columns in this order: ${expected.join(", ")}. Found: ${header.filter(Boolean).join(", ") || "no headers"}.`,
-    });
-    return { fileName, sourceRows: Math.max(0, rawRows.length - 1), entries: [], issues };
-  }
-
-  const records: { row: number; data: Record<CodebookImportColumn, string> }[] = [];
-  rawRows.slice(1).forEach((raw, index) => {
-    const sheetRow = index + 2;
-    const values = raw.map((value) => String(value ?? "").trim());
-    if (values.every((value) => value === "")) return;
-    if (values.slice(expected.length).some((value) => value !== "")) {
-      issues.push({ row: sheetRow, column: "file", message: "Unexpected data appears after the required context column." });
-    }
-    const data = Object.fromEntries(expected.map((column, columnIndex) => [column, values[columnIndex] ?? ""])) as Record<CodebookImportColumn, string>;
-    records.push({ row: sheetRow, data });
-
-    for (const required of ["label", "type", "level", "aggregation", "definition"] as CodebookImportColumn[]) {
-      if (!data[required]) issues.push({ row: sheetRow, column: required, message: `${required} is required.` });
-    }
-    if (data.type && !["binary", "categorical", "numeric", "text"].includes(data.type)) {
-      issues.push({ row: sheetRow, column: "type", message: 'Use exactly "binary", "categorical", "numeric", or "text".' });
-    }
-    if (data.level && !["episode", "sender"].includes(data.level)) {
-      issues.push({ row: sheetRow, column: "level", message: 'Use exactly "episode" or "sender".' });
-    }
-    if (data.aggregation && !["mode", "mean"].includes(data.aggregation)) {
-      issues.push({ row: sheetRow, column: "aggregation", message: 'Use exactly "mode" or "mean".' });
-    }
-    if (["binary", "categorical"].includes(data.type)) {
-      if (!data.value) issues.push({ row: sheetRow, column: "value", message: `${data.type} variables require a coded value on every row.` });
-      if (!data.value_definition) issues.push({ row: sheetRow, column: "value_definition", message: `${data.type} variables require a definition for every coded value.` });
-    }
-    if (["numeric", "text"].includes(data.type)) {
-      for (const field of ["value", "value_definition", "examples", "context"] as CodebookImportColumn[]) {
-        if (data[field]) issues.push({ row: sheetRow, column: field, message: `${data.type} variables must leave ${field} blank.` });
-      }
-    }
-  });
-
-  if (records.length === 0) {
-    issues.push({ row: 2, column: "file", message: "The file has a header but contains no codebook rows." });
-    return { fileName, sourceRows: 0, entries: [], issues };
-  }
-  if (records.length > 5000) {
-    issues.push({ row: 2, column: "file", message: "The file exceeds the 5,000-row import limit." });
-  }
-
-  const groups = new Map<string, typeof records>();
-  for (const record of records) {
-    const group = groups.get(record.data.label);
-    if (group) group.push(record);
-    else groups.set(record.data.label, [record]);
-  }
-
-  const entries: CodebookEntry[] = [];
-  for (const [label, group] of groups) {
-    if (!label) continue;
-    const first = group[0];
-    for (const field of ["type", "level", "aggregation", "definition"] as CodebookImportColumn[]) {
-      const differing = group.filter((record) => record.data[field] !== first.data[field]);
-      for (const record of differing) {
-        issues.push({ row: record.row, column: field, message: `All rows for variable "${label}" must use the same ${field}. Expected "${first.data[field]}".` });
-      }
-    }
-
-    const type = first.data.type;
-    if (type === "binary") {
-      const values = group.map((record) => record.data.value);
-      if (group.length !== 2 || new Set(values).size !== 2 || !values.includes("0") || !values.includes("1")) {
-        issues.push({ row: first.row, column: "value", message: `Binary variable "${label}" must contain exactly two rows with values 0 and 1.` });
-      }
-    } else if (type === "categorical" && group.length < 1) {
-      issues.push({ row: first.row, column: "value", message: `Categorical variable "${label}" requires at least one coded value.` });
-    } else if (["numeric", "text"].includes(type) && group.length !== 1) {
-      issues.push({ row: first.row, column: "label", message: `${type} variable "${label}" must appear exactly once.` });
-    }
-
-    const valueRows = group.filter((record) => record.data.value);
-    const seenValues = new Map<string, number>();
-    for (const record of valueRows) {
-      const earlier = seenValues.get(record.data.value);
-      if (earlier != null) {
-        issues.push({ row: record.row, column: "value", message: `Duplicate coded value "${record.data.value}" for variable "${label}"; it first appears on row ${earlier}.` });
-      } else seenValues.set(record.data.value, record.row);
-    }
-
-    if (["binary", "categorical", "numeric", "text"].includes(type)
-        && ["episode", "sender"].includes(first.data.level)
-        && ["mode", "mean"].includes(first.data.aggregation)) {
-      entries.push({
-        label,
-        type,
-        level: first.data.level as "episode" | "sender",
-        aggregation: first.data.aggregation as "mode" | "mean",
-        definition: first.data.definition,
-        values: ["binary", "categorical"].includes(type)
-          ? group.map((record) => ({
-              value: record.data.value,
-              definition: record.data.value_definition,
-              examples: record.data.examples,
-              context: record.data.context,
-            }))
-          : [],
-      });
-    }
-  }
-
-  return { fileName, sourceRows: records.length, entries: issues.length === 0 ? entries : [], issues };
-}
 
 interface ExpandedVar { key: string; type: string; coded_values: string; }
 
@@ -1112,9 +931,6 @@ export default function Home() {
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [colMapError, setColMapError] = useState("");
   const [exportFormat, setExportFormat] = useState<"json" | "csv" | "txt" | "pdf" | "xlsx" | "latex">("csv");
-  const [codebookImportReview, setCodebookImportReview] = useState<CodebookImportReview | null>(null);
-  const [codebookImporting, setCodebookImporting] = useState(false);
-  const codebookImportRef = useRef<HTMLInputElement>(null);
   const [activeRole, setActiveRole] = useState<ColRole>("message");
   // Snapshots for save/discard on the two popups, and a flag guarding first hydration.
   const codebookSnapshotRef = useRef<string | null>(null);
@@ -1917,7 +1733,7 @@ export default function Home() {
   const tourSnap = useRef<Record<string, unknown> | null>(null);
   const startTour = () => {
     if (tourOpen) return;
-    if (uploading || running || generating || codebookImporting || codingActionBusyRef.current
+    if (uploading || running || generating || codingActionBusyRef.current
         || uploadAvailability === "restoring" || uploadRequestRef.current || restorePromiseRef.current) {
       showToast("Wait for dataset restoration to finish, then start the tour.");
       return;
@@ -1926,7 +1742,7 @@ export default function Home() {
       uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
       rowsAsUnits, contextColumns, contextDescriptions, emptyMessageHandling, experimentInstructions,
       codebook, senderVerificationSignature, modelSlots: modelSlots.map((slot) => ({ ...slot })), runsPerModel,
-      codebookImportReview, openPanels: [...openPanels],
+      openPanels: [...openPanels],
       layoutMode, activeTool, uploadAvailability, uploadMeta, uploadError, uploadNotice,
       liveUploadId: liveUploadIdRef.current,
       serverFiles: { ...serverFilesRef.current },
@@ -1947,7 +1763,6 @@ export default function Home() {
     setEmptyMessageHandling("ignore");
     setExperimentInstructions(TOUR_SAMPLE_INSTRUCTIONS);
     setCodebook(tourSampleCodebook());
-    setCodebookImportReview(null);
     setModelSlots([{ ...EMPTY_SLOT, apiKey: "" }]);
     setRunsPerModel(3);
     setSenderVerificationSignature(JSON.stringify({
@@ -1976,7 +1791,6 @@ export default function Home() {
       setExperimentInstructions(s.experimentInstructions as string);
       setCodebook(s.codebook as CodebookEntry[]);
       setSenderVerificationSignature(s.senderVerificationSignature as string);
-      setCodebookImportReview(s.codebookImportReview as CodebookImportReview | null);
       setModelSlots(s.modelSlots as ModelSlot[]); setRunsPerModel(s.runsPerModel as number);
       setOpenPanels(new Set(s.openPanels as number[]));
       setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
@@ -2594,89 +2408,6 @@ export default function Home() {
     }
   };
 
-  const downloadCodebookImportTemplate = () => {
-    const esc = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const header = CODEBOOK_IMPORT_COLUMNS.join(",");
-    const rows = CODEBOOK_IMPORT_TEMPLATE_ROWS.map((row) =>
-      CODEBOOK_IMPORT_COLUMNS.map((column) => esc(row[column])).join(",")
-    );
-    downloadBlob(
-      new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8" }),
-      "cat_codebook_import_template.csv",
-    );
-    showToast("Codebook import template downloaded");
-  };
-
-  const handleCodebookImportFile = async (file: File | null) => {
-    if (!file) return;
-    setCodebookImportReview(null);
-    const extension = file.name.toLowerCase().split(".").pop() ?? "";
-    if (!["csv", "xlsx", "xls"].includes(extension)) {
-      setCodebookImportReview({
-        fileName: file.name, sourceRows: 0, entries: [],
-        issues: [{ row: 1, column: "file", message: "Choose a .csv, .xlsx, or .xls file." }],
-      });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setCodebookImportReview({
-        fileName: file.name, sourceRows: 0, entries: [],
-        issues: [{ row: 1, column: "file", message: "The codebook file exceeds the 5 MB limit." }],
-      });
-      return;
-    }
-
-    setCodebookImporting(true);
-    try {
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const firstSheetName = workbook.SheetNames[0];
-      if (!firstSheetName) {
-        setCodebookImportReview({
-          fileName: file.name, sourceRows: 0, entries: [],
-          issues: [{ row: 1, column: "file", message: "The workbook does not contain a worksheet." }],
-        });
-        return;
-      }
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], {
-        header: 1, raw: false, defval: "", blankrows: true,
-      });
-      const review = validateImportedCodebookRows(rows, file.name);
-      if (review.issues.length === 0) {
-        const duplicateOutputs = duplicateExpandedKeys(expandCodebook(review.entries, participants));
-        if (duplicateOutputs.length > 0) {
-          review.issues.push({
-            row: 2,
-            column: "label",
-            message: `The imported variables produce duplicate output labels for the currently detected senders: ${duplicateOutputs.join(", ")}. Rename the conflicting labels.`,
-          });
-          review.entries = [];
-        }
-      }
-      setCodebookImportReview(review);
-    } catch (error) {
-      setCodebookImportReview({
-        fileName: file.name, sourceRows: 0, entries: [],
-        issues: [{
-          row: 1,
-          column: "file",
-          message: error instanceof Error ? `The file could not be read: ${error.message}` : "The file could not be read as CSV or Excel.",
-        }],
-      });
-    } finally {
-      setCodebookImporting(false);
-    }
-  };
-
-  const applyImportedCodebook = () => {
-    if (!codebookImportReview || codebookImportReview.issues.length > 0 || codebookImportReview.entries.length === 0) return;
-    setCodebook(codebookImportReview.entries);
-    setSenderVerificationSignature("");
-    const count = codebookImportReview.entries.length;
-    setCodebookImportReview(null);
-    showToast(`Imported ${count} codebook variable${count === 1 ? "" : "s"}`);
-  };
-
   const handleCodebookDownload = async (format: "json" | "csv" | "txt" | "pdf" | "xlsx" | "latex") => {
     const entries = codebook.filter((e) => e.label.trim());
     const filename = `codebook`;
@@ -2746,7 +2477,7 @@ export default function Home() {
 
     } else if (format === "xlsx") {
       const XLSX = await import("xlsx");
-      const ws = XLSX.utils.json_to_sheet(flatRows, { header: [...CODEBOOK_IMPORT_COLUMNS] });
+      const ws = XLSX.utils.json_to_sheet(flatRows, { header: [...CODEBOOK_EXPORT_COLUMNS] });
       ws["!cols"] = [
         { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 36 },
         { wch: 10 }, { wch: 36 }, { wch: 28 }, { wch: 28 },
@@ -3211,7 +2942,7 @@ ${PDF_WATERMARK_HTML}
     setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
     setContextColumns([]); setContextDescriptions({}); setRowsAsUnits(false); setEmptyMessageHandling("ignore");
     setContextConflictAlert(null);
-    setCodebook([newEntry()]); setSenderVerificationSignature(""); setCodebookImportReview(null); setCodebookImporting(false); setRowFilter(""); setRowFilterError("");
+    setCodebook([newEntry()]); setSenderVerificationSignature(""); setRowFilter(""); setRowFilterError("");
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1);
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
@@ -3577,76 +3308,6 @@ ${PDF_WATERMARK_HTML}
                             {identityColumn && participants.length > 0 && detectedSenderInfo.blankRows.length === 0 && !senderListVerified && (
                               <button className="btn btn-outline btn-xs" onClick={() => setSenderVerificationSignature(currentSenderSignature)}>I verified these senders</button>
                             )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="codebook-import" id="tour-codebook-import">
-                        <div className="codebook-import-head">
-                          <div>
-                            <div className="codebook-import-title">Import codebook from CSV or Excel</div>
-                            <p>Use these nine column names in this exact order. Excel files use the first worksheet.</p>
-                          </div>
-                          <span className="results-optional">Optional</span>
-                        </div>
-                        <div className="codebook-import-header-label">Exact header row — copy without renaming or reordering</div>
-                        <code className="codebook-import-header-line">{CODEBOOK_IMPORT_COLUMNS.join(",")}</code>
-                        <div className="codebook-import-schema" aria-label="Required codebook import columns">
-                          {CODEBOOK_IMPORT_COLUMNS.map((column, index) => (
-                            <span key={column}><b>{index + 1}</b>{column}</span>
-                          ))}
-                        </div>
-                        <div className="codebook-import-rules">
-                          <p><strong>Binary and categorical:</strong> one row per coded value; repeat the variable settings on every row. Binary must contain exactly <code>0</code> and <code>1</code>.</p>
-                          <p><strong>Numeric and text:</strong> exactly one row per variable; leave <code>value</code>, <code>value_definition</code>, <code>examples</code>, and <code>context</code> blank.</p>
-                          <p><strong>Allowed settings:</strong> type = <code>binary</code>, <code>categorical</code>, <code>numeric</code>, or <code>text</code>; level = <code>episode</code> or <code>sender</code>; aggregation = <code>mode</code> or <code>mean</code>.</p>
-                        </div>
-                        <div className="codebook-import-actions">
-                          <button className="btn btn-outline btn-sm" type="button" onClick={downloadCodebookImportTemplate}>↓ Download CSV template</button>
-                          <button className="btn btn-primary btn-sm" type="button" disabled={codebookImporting} onClick={() => codebookImportRef.current?.click()}>
-                            {codebookImporting ? <><span className="spinner" /> Checking file</> : "Import CSV or Excel"}
-                          </button>
-                          <input
-                            ref={codebookImportRef}
-                            className="input-hidden"
-                            type="file"
-                            accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            onClick={(event) => { event.currentTarget.value = ""; }}
-                            onChange={(event) => void handleCodebookImportFile(event.target.files?.[0] ?? null)}
-                          />
-                        </div>
-
-                        {codebookImportReview && codebookImportReview.issues.length > 0 && (
-                          <div className="codebook-import-report invalid" role="alert">
-                            <div className="codebook-import-report-title">
-                              Import blocked: {codebookImportReview.issues.length} error{codebookImportReview.issues.length === 1 ? "" : "s"} in {codebookImportReview.fileName}
-                            </div>
-                            <p>Nothing has been added or replaced. Correct every error and upload the file again.</p>
-                            <ol>
-                              {codebookImportReview.issues.slice(0, 100).map((issue, index) => (
-                                <li key={`${issue.row}-${issue.column}-${index}`}>
-                                  <strong>{issue.column === "file" ? "File" : `Row ${issue.row}${issue.column ? ` · ${issue.column}` : ""}`}:</strong> {issue.message}
-                                </li>
-                              ))}
-                            </ol>
-                            {codebookImportReview.issues.length > 100 && <p>Only the first 100 errors are shown. Correct these and upload the file again to continue checking.</p>}
-                            <button className="btn btn-ghost btn-xs" type="button" onClick={() => setCodebookImportReview(null)}>Dismiss report</button>
-                          </div>
-                        )}
-
-                        {codebookImportReview && codebookImportReview.issues.length === 0 && (
-                          <div className="codebook-import-report valid" role="status">
-                            <div className="codebook-import-report-title">File passed all checks</div>
-                            <p><strong>{codebookImportReview.fileName}</strong> contains {codebookImportReview.entries.length} variable{codebookImportReview.entries.length === 1 ? "" : "s"} across {codebookImportReview.sourceRows} data row{codebookImportReview.sourceRows === 1 ? "" : "s"}.</p>
-                            {codebookImportReview.entries.some((entry) => entry.level === "sender") && !identityColumn && (
-                              <p className="codebook-import-project-note">The file is valid, but its per-sender variables will require a mapped Sender column before coding.</p>
-                            )}
-                            <div className="codebook-import-confirm">
-                              <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCodebookImportReview(null)}>Cancel</button>
-                              <button className="btn btn-primary btn-sm" type="button" onClick={applyImportedCodebook}>
-                                Replace current codebook with {codebookImportReview.entries.length} variable{codebookImportReview.entries.length === 1 ? "" : "s"}
-                              </button>
-                            </div>
                           </div>
                         )}
                       </div>
