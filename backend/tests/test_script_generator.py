@@ -19,7 +19,7 @@ class GeneratedScriptSafetyTests(unittest.TestCase):
         fake_openai.OpenAI = FakeOpenAI
         namespace = {"__name__": "generated_chat_test"}
         with (
-            patch.dict(os.environ, {"CHAT_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"CAT_API_KEY": "test-key"}),
             patch.dict(sys.modules, {"openai": fake_openai}),
         ):
             exec(compile(script, "generated_chat_test.py", "exec"), namespace)

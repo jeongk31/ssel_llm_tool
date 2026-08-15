@@ -79,7 +79,7 @@ def _upload_error_response(
         content=content,
         headers={
             "Cache-Control": "no-store",
-            "X-ChAT-Error-Code": exc.code,
+            "X-CAT-Error-Code": exc.code,
         },
     )
 
@@ -248,7 +248,7 @@ def resolve_uploaded_file(file_id: str, *, now: float | None = None) -> dict:
 
 
 def _temp_dir_for(path: str) -> str | None:
-    """Return the top-level ChAT temp dir a path belongs to, or None if it isn't one.
+    """Return the top-level CAT temp dir a path belongs to, or None if it isn't one.
 
     Guards the cleanup endpoint so it can only ever delete our own temp dirs,
     never an arbitrary path.
@@ -273,7 +273,7 @@ def _remove_temp_dir(path: str) -> None:
 
 
 def _resolve_coding_result_path(path: str) -> str:
-    """Resolve only ChAT's canonical server-side detailed-results artifact."""
+    """Resolve only CAT's canonical server-side detailed-results artifact."""
 
     real = os.path.realpath(path)
     result_dir = _temp_dir_for(real)
@@ -366,7 +366,7 @@ def _cleanup_file_id(file_id: str) -> None:
 
 
 def sweep_temp_files(max_age_seconds: int = _TEMP_TTL_SECONDS) -> None:
-    """Delete ChAT temp dirs older than the TTL (24h backstop) and prune the store."""
+    """Delete CAT temp dirs older than the TTL (24h backstop) and prune the store."""
     now = time.time()
     expired_ids = [
         file_id
@@ -538,7 +538,7 @@ class GenerateScriptRequest(BaseModel):
     provider: str
     model: str = ""
     # Generated artifacts never embed credentials; their script obtains the key
-    # from CHAT_API_KEY or prompts at runtime.
+    # from CAT_API_KEY or prompts at runtime.
     api_key: str = ""
     participants: list[str] = []
     context: list[ContextItem] = []
@@ -699,9 +699,9 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
         result_stem=safe_stem,
     )
 
-    readme = f"""# ChAT coding package
+    readme = f"""# CAT coding package
 
-This package contains the coding configuration generated in ChAT and three CSV
+This package contains the coding configuration generated in CAT and three CSV
 files that preserve the loaded source rows, the exact preprocessed episodes,
 and their positional row-to-episode mapping.
 
@@ -736,13 +736,13 @@ To also create the compact one-row-per-episode CSV, run:
 
 This additionally writes `{safe_stem}_coded_episodes.csv`.
 
-The generated script uses the first provider and model selected in ChAT and
+The generated script uses the first provider and model selected in CAT and
 makes one call per episode. To change model parameters or create a repeated- or
 multi-model workflow, edit the generated Python script. The browser's `Run
 Coding` workflow uses all configured models and runs.
 
 The generated script does not contain your API key. When it starts, it reads the
-`CHAT_API_KEY` environment variable or securely prompts you to enter the key.
+`CAT_API_KEY` environment variable or securely prompts you to enter the key.
 """
 
     buf = io.BytesIO()
@@ -757,7 +757,7 @@ The generated script does not contain your API key. When it starts, it reads the
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="chat_{safe_stem}_package.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="cat_{safe_stem}_package.zip"'},
     )
 
 
@@ -1106,7 +1106,7 @@ async def cleanup_files(request: Request, req: CleanupRequest):
     """Delete an upload's temp working files and/or a results file (best effort).
 
     Called by the client on Reset and when a new file replaces the current one, so
-    uploaded data doesn't linger on disk. Only ChAT temp dirs can be removed.
+    uploaded data doesn't linger on disk. Only CAT temp dirs can be removed.
     """
     if req.file_id:
         _cleanup_file_id(req.file_id)
@@ -1119,7 +1119,7 @@ async def cleanup_files(request: Request, req: CleanupRequest):
 async def download_results(path: str):
     """Download coded results — single CSV or structured zip.
 
-    Only the canonical result file inside a ChAT coding directory may be read;
+    Only the canonical result file inside a CAT coding directory may be read;
     unrelated files in the system temporary directory are rejected.
     """
     path = _resolve_coding_result_path(path)

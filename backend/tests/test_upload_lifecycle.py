@@ -198,7 +198,7 @@ class UploadLifecycleTests(unittest.TestCase):
         self.assertEqual(gone.status_code, 410)
         self.assertEqual(gone.json()["code"], "UPLOAD_GONE")
         self.assertFalse(gone.json()["ok"])
-        self.assertEqual(gone.headers["x-chat-error-code"], "UPLOAD_GONE")
+        self.assertEqual(gone.headers["x-cat-error-code"], "UPLOAD_GONE")
 
     def test_category_generator_recovers_optional_sample_after_cache_clear(self):
         file_id, _ = self._store_csv()
@@ -276,7 +276,7 @@ class UploadLifecycleTests(unittest.TestCase):
             response.json()["detail"],
             "Uploaded dataset is no longer available. Please re-upload it.",
         )
-        self.assertEqual(response.headers["x-chat-error-code"], "UPLOAD_GONE")
+        self.assertEqual(response.headers["x-cat-error-code"], "UPLOAD_GONE")
         self.assertNotEqual(response.headers.get("content-type"), "application/x-ndjson")
 
     def test_package_generation_recovers_upload_without_process_cache(self):
@@ -309,7 +309,7 @@ class UploadLifecycleTests(unittest.TestCase):
             self.assertIn("PACKAGE_ROW_MAP_FILE = 'row_map.csv'", script)
             self.assertIn("--also-save-episodes", script)
             compile(script, "code_sample.py", "exec")
-            self.assertIn("CHAT_API_KEY", script)
+            self.assertIn("CAT_API_KEY", script)
 
             self.assertEqual(len(pd.read_csv(io.BytesIO(package.read("source_rows.csv")))), 1)
             self.assertEqual(len(pd.read_csv(io.BytesIO(package.read("episodes.csv")))), 1)
@@ -334,7 +334,7 @@ class UploadLifecycleTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 410)
         self.assertEqual(response.json()["code"], "UPLOAD_GONE")
-        self.assertEqual(response.headers["x-chat-error-code"], "UPLOAD_GONE")
+        self.assertEqual(response.headers["x-cat-error-code"], "UPLOAD_GONE")
         self.assertIn("re-upload", response.json()["detail"].lower())
 
     def test_generated_package_expands_codes_and_makes_episode_file_optional(self):
@@ -374,7 +374,7 @@ class UploadLifecycleTests(unittest.TestCase):
             input_path = Path(self.temp_dir.name) / "episodes.csv"
 
         namespace = {"__name__": "generated_chat_package"}
-        with patch.dict(os.environ, {"CHAT_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"CAT_API_KEY": "test-key"}):
             exec(compile(script, "code_study.py", "exec"), namespace)
         source_df, episode_df, row_map = namespace["load_package_csvs"](
             str(input_path)

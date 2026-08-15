@@ -149,7 +149,14 @@ export default function GuidedTour({ open, steps, onClose, onStepEnter }: Props)
   }
 
   return (
-    <div className="tour-root">
+    <div
+      className="tour-root"
+      data-tour-step={idx + 1}
+      data-tour-total={steps.length}
+      data-tour-title={step.title}
+      data-tour-section={step.section ?? "Walkthrough"}
+      data-tour-media={step.media ?? ""}
+    >
       {sec
         ? <div className="tour-section-spot" style={{ top: sec.top, left: sec.left, width: sec.width, height: sec.height }} />
         : <div className="tour-dim-full" />}

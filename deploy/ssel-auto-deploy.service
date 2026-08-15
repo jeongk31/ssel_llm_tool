@@ -1,5 +1,5 @@
 [Unit]
-Description=Deploy the latest CI-approved ChAT release
+Description=Deploy the latest CI-approved CAT release
 After=network-online.target
 Wants=network-online.target
 

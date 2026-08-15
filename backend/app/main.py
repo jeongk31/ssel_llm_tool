@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     from app.models.database import init_db, engine
     from app.routes.coding import sweep_temp_files
     await init_db()
-    print(f"ChAT (Chat Annotation Toolkit) API started — database: {engine.dialect.name} @ {engine.url.host}")
+    print(f"CAT (Chat Annotation Toolkit) API started — database: {engine.dialect.name} @ {engine.url.host}")
 
     async def _temp_sweeper():
         while True:
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
         sweeper.cancel()
 
 
-app = FastAPI(title="ChAT — Chat Annotation Toolkit", lifespan=lifespan)
+app = FastAPI(title="CAT — Chat Annotation Toolkit", lifespan=lifespan)
 
 # Rate limiting (public endpoints are decorated in their routers).
 app.state.limiter = limiter
@@ -59,4 +59,4 @@ app.include_router(analytics.admin_router)  # /admin (password protected)
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "ChAT — Chat Annotation Toolkit API"}
+    return {"status": "ok", "service": "CAT — Chat Annotation Toolkit API"}

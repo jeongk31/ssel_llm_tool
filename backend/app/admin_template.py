@@ -4,7 +4,7 @@ the /*__DATA__*/ placeholder appears; all rendering happens client-side."""
 ADMIN_HTML = r"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ChAT — Admin</title>
+<title>CAT — Admin</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/css/jsvectormap.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/js/jsvectormap.min.js"></script>
@@ -69,7 +69,7 @@ ADMIN_HTML = r"""<!DOCTYPE html>
 </style></head>
 <body>
 <div class="side">
-  <h2>ChAT Admin</h2>
+  <h2>CAT Admin</h2>
   <div class="tag">Usage &amp; messages</div>
   <div class="nav">
     <button data-view="home" class="active">🏠 Home</button>
@@ -257,7 +257,7 @@ function renderMessages(){
     box.appendChild(el('div','msg-body', m.body || ''));
     const actions = el('div','msg-actions');
     const reply = el('a','btn btn-p','↩ Reply by email');
-    reply.href = 'mailto:' + encodeURIComponent(m.email) + '?subject=' + encodeURIComponent('Re: ' + (m.title || 'Your message to ChAT'));
+    reply.href = 'mailto:' + encodeURIComponent(m.email) + '?subject=' + encodeURIComponent('Re: ' + (m.title || 'Your message to CAT'));
     actions.appendChild(reply);
     const tog = el('button','btn', m.status==='resolved' ? 'Mark unresolved' : 'Mark resolved');
     tog.addEventListener('click', () => toggleStatus(m, tog));

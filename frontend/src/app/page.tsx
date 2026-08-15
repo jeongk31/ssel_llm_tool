@@ -34,17 +34,17 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "identity", mappingStage: "identity",
     targetId: "tour-role-identity", title: "Step 3 · Sender",
-    body: (<p><strong>Sender</strong> (optional) identifies who wrote each message. When a codebook variable is set to <em>per sender</em>, ChAT automatically detects the distinct names in this column and asks you to verify them; blank sender values must be corrected before coding.</p>),
+    body: (<p><strong>Sender</strong> (optional) identifies who wrote each message. When a codebook variable is set to <em>per sender</em>, CAT automatically detects the distinct names in this column and asks you to verify them; blank sender values must be corrected before coding.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "order", mappingStage: "order",
     targetId: "tour-role-order", title: "Step 4 · Order",
-    body: (<p><strong>Order</strong> (optional) sequences messages within an episode. Tag a timestamp or turn-number column and choose ascending or descending order. If several rows have the same Order value, ChAT preserves their order in the uploaded dataset.</p>),
+    body: (<p><strong>Order</strong> (optional) sequences messages within an episode. Tag a timestamp or turn-number column and choose ascending or descending order. If several rows have the same Order value, CAT preserves their order in the uploaded dataset.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mapRole: "context", mappingStage: "context",
     targetId: "tour-role-context", title: "Step 5 · Context",
-    body: (<p><strong>Context</strong> (optional) tags extra fields the model should know about, such as treatment condition or communication channel. Describe each selected field here. Because each episode receives one value for a Context field, ChAT requires that field to match exactly across every source row grouped into the episode.</p>),
+    body: (<p><strong>Context</strong> (optional) tags extra fields the model should know about, such as treatment condition or communication channel. Describe each selected field here. Because each episode receives one value for a Context field, CAT requires that field to match exactly across every source row grouped into the episode.</p>),
   },
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mappingStage: "complete",
@@ -54,7 +54,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-map-modal", section: "Map Columns", open: "mapping", mappingStage: "complete",
     targetId: "tour-map-proceed", title: "Save & Proceed",
-    body: (<p>Once the required steps (Message + Episode identifier) are done, click <strong>Save &amp; Proceed</strong>. ChAT first checks that every selected Context field is consistent within each episode. Conflicts must be corrected in the source file or unselected before the grouped episode preview is created.</p>),
+    body: (<p>Once the required steps (Message + Episode identifier) are done, click <strong>Save &amp; Proceed</strong>. CAT first checks that every selected Context field is consistent within each episode. Conflicts must be corrected in the source file or unselected before the grouped episode preview is created.</p>),
   },
   // ── Section 2: Codebook ──
   {
@@ -70,7 +70,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
     targetId: "tour-codebook-import", title: "Import a codebook file",
-    body: (<p>Instead of entering variables manually, import a CSV or Excel file using the exact nine-column format shown here. Download the CSV template, replace its examples, and upload it. ChAT checks the headers, every row, variable settings, and coded values before allowing the imported codebook to replace the current one.</p>),
+    body: (<p>Instead of entering variables manually, import a CSV or Excel file using the exact nine-column format shown here. Download the CSV template, replace its examples, and upload it. CAT checks the headers, every row, variable settings, and coded values before allowing the imported codebook to replace the current one.</p>),
   },
   // ── Codebook editor popup ──
   {
@@ -125,12 +125,12 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-run-bar", section: "Run",
     title: "Run or generate a package",
-    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts.</p>),
+    body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts.</p>),
   },
   {
     sectionId: "coding-run-bar", section: "Results", media: "/tour/results.svg",
     title: "Review and download results",
-    body: (<p>After browser coding, ChAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
+    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
   },
 ];
 
@@ -486,7 +486,7 @@ async function parseDownloadArtifact(
       responseCode = typeof parsed.code === "string" ? parsed.code : null;
     } catch {}
   }
-  const errorCode = response.headers.get("X-ChAT-Error-Code") || responseCode;
+  const errorCode = response.headers.get("X-CAT-Error-Code") || responseCode;
   if (isRestorableUploadCode(errorCode)) {
     throw new UploadUnavailableError(detail || "The uploaded dataset must be restored.", errorCode);
   }
@@ -505,7 +505,7 @@ type ColRole = "message" | "identifier" | "identity" | "order" | "context";
 const ROLE_META: Record<ColRole, { label: string; short: string; color: string; bg: string; hint: string }> = {
   message:    { label: "Message",         short: "MSG", color: "#2563eb", bg: "#dbeafe", hint: "Click the column that contains the message text." },
   identifier: { label: "Episode identifier", short: "ID", color: "#16a34a", bg: "#dcfce7", hint: "Click the column(s) that define one episode — e.g. session + round. Rows sharing the same combination are merged into one episode." },
-  identity:   { label: "Sender",          short: "WHO", color: "#d97706", bg: "#fef3c7", hint: "Optional — click the column that says who sent each message. ChAT will detect its distinct sender names automatically." },
+  identity:   { label: "Sender",          short: "WHO", color: "#d97706", bg: "#fef3c7", hint: "Optional — click the column that says who sent each message. CAT will detect its distinct sender names automatically." },
   order:      { label: "Order",           short: "ORD", color: "#7c3aed", bg: "#ede9fe", hint: "Optional — click the column that orders messages within an episode. Ties keep the uploaded row order." },
   context:    { label: "Context",         short: "CTX", color: "#db2777", bg: "#fce7f3", hint: "Optional — click extra columns the model should know about. Each selected value must match exactly within an episode." },
 };
@@ -944,7 +944,7 @@ const PDF_WATERMARK_CSS = `
 `;
 const PDF_WATERMARK_HTML = `
   <div class="ssel-watermark">Social Science Experimental Laboratory<br/>New York University Abu Dhabi</div>
-  <div class="ssel-footer">Generated by ChAT (Chat Annotation Toolkit) — Social Science Experimental Laboratory, New York University Abu Dhabi</div>
+  <div class="ssel-footer">Generated by CAT (Chat Annotation Toolkit) — Social Science Experimental Laboratory, New York University Abu Dhabi</div>
 `;
 const htmlEsc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 
@@ -1769,7 +1769,7 @@ export default function Home() {
       }
     }
 
-    const headerCode = response.headers.get("X-ChAT-Error-Code");
+    const headerCode = response.headers.get("X-CAT-Error-Code");
     const responseCode = headerCode || (typeof data?.code === "string" ? data.code : null);
     const detail = typeof data?.detail === "string" ? data.detail : "";
     if (!response.ok) {
@@ -1812,7 +1812,7 @@ export default function Home() {
     }
   };
 
-  // If (and only if) the server returns ChAT's stable stale-upload code, restore
+  // If (and only if) the server returns CAT's stable stale-upload code, restore
   // the IndexedDB File and retry the requested operation once with its fresh ID.
   const withReadyUpload = async <T,>(
     operation: (activeUpload: UploadResult) => Promise<T>,
@@ -2180,7 +2180,7 @@ export default function Home() {
             provider,
             model,
             // Generated packages never contain credentials; the local script reads
-            // CHAT_API_KEY or prompts securely when it starts.
+            // CAT_API_KEY or prompts securely when it starts.
             api_key: "provided_at_runtime",
             model_slots: [],
           }),
@@ -2197,7 +2197,7 @@ export default function Home() {
               responseCode = typeof parsed.code === "string" ? parsed.code : null;
             } catch {}
           }
-          const errorCode = res.headers.get("X-ChAT-Error-Code") || responseCode;
+          const errorCode = res.headers.get("X-CAT-Error-Code") || responseCode;
           if (isRestorableUploadCode(errorCode)) {
             throw new UploadUnavailableError(detail || "The uploaded dataset must be restored.", errorCode);
           }
@@ -2210,7 +2210,7 @@ export default function Home() {
         return {
           blob: await res.blob(),
           filename: (res.headers.get("Content-Disposition") || "").match(/filename="?([^";]+)"?/)?.[1]
-            || "chat_coding_package.zip",
+            || "cat_coding_package.zip",
         };
       });
       const { blob, filename } = download;
@@ -2602,7 +2602,7 @@ export default function Home() {
     );
     downloadBlob(
       new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8" }),
-      "chat_codebook_import_template.csv",
+      "cat_codebook_import_template.csv",
     );
     showToast("Codebook import template downloaded");
   };
@@ -2848,7 +2848,7 @@ export default function Home() {
         return [header, def, "\\addlinespace[2pt]", rows].filter(Boolean).join("\n");
       }).join("\n\\midrule\n");
 
-      const tex = `% Codebook — generated by ChAT (Chat Annotation Toolkit)
+      const tex = `% Codebook — generated by CAT (Chat Annotation Toolkit)
 % Requires in your preamble: \\usepackage{booktabs}
 \\begin{table}[htbp]
 \\centering
@@ -3320,13 +3320,13 @@ ${PDF_WATERMARK_HTML}
             role="button" tabIndex={0}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveTool("coding"); }}
           >
-            ChAT — Chat Annotation Toolkit
+            CAT — Chat Annotation Toolkit
           </span>
           <span className="topbar-badge">beta</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
-            <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn ChAT</button>
+            <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn CAT</button>
             <button className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`} onClick={() => setActiveTool("contact")}>Contact Us</button>
           </div>
         </div>
@@ -4685,7 +4685,7 @@ ${PDF_WATERMARK_HTML}
                   ) : participants.length === 0 ? (
                     <p><b>⚠ No senders detected.</b> Choose a Sender column containing at least one nonblank value.</p>
                   ) : sendersOk ? (
-                    <p><b>✓ Sender list verified.</b> ChAT will code each sender detected in <b>{identityColumn}</b>: {participants.join(", ")}.</p>
+                    <p><b>✓ Sender list verified.</b> CAT will code each sender detected in <b>{identityColumn}</b>: {participants.join(", ")}.</p>
                   ) : (
                     <p><b>⚠ Verification required.</b> Review and verify the detected sender list in the Codebook.</p>
                   )}
@@ -4727,7 +4727,7 @@ ${PDF_WATERMARK_HTML}
                   <span>Example: {conflict.exampleEpisode} contains <b>{conflict.exampleValues.join(" and ")}</b>.</span>
                 </div>
               ))}
-              <p>Correct the dataset and re-upload it, or remove the inconsistent field from Context. ChAT will check again before allowing you to proceed.</p>
+              <p>Correct the dataset and re-upload it, or remove the inconsistent field from Context. CAT will check again before allowing you to proceed.</p>
             </div>
             <div className="modal-actions context-conflict-actions">
               <button className="btn btn-ghost" onClick={() => setContextConflictAlert(null)}>Return to mapping</button>

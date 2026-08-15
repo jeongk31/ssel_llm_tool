@@ -40,7 +40,7 @@ export async function streamJsonLines<T>(
         if (typeof parsed.code === "string") responseCode = parsed.code;
       } catch {}
     }
-    const headerCode = response.headers.get("X-ChAT-Error-Code");
+    const headerCode = response.headers.get("X-CAT-Error-Code");
     throw new StreamResponseError(
       detail || `Streaming request failed (${response.status})`,
       { status: response.status, code: headerCode || responseCode, contentType },

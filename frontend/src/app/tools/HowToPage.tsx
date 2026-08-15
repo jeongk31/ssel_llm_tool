@@ -4,10 +4,6 @@ import { useState } from "react";
 
 type Section = "overview" | "coding" | "catgen" | "analysis" | "faq" | "demo";
 
-const DEMO_VIDEO_CDN_SRC =
-  "https://cdn.jsdelivr.net/gh/jeongk31/ssel_llm_tool@4cd7a00/frontend/public/demos/coding-demo.mp4";
-const DEMO_VIDEO_LOCAL_SRC = "/demos/coding-demo.mp4?v=2";
-
 interface Props {
   onNavigate?: (tool: "coding" | "catgen" | "analysis") => void;
 }
@@ -21,8 +17,8 @@ const SECTIONS: { value: Section; label: string }[] = [
 // FAQ content — each entry renders as its own card.
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
-    q: "What does ChAT do?",
-    a: <>ChAT (Chat Annotation Toolkit) codes qualitative communication data into structured variables using LLMs. You upload a dataset, map columns into communication <strong>episodes</strong>, define a <strong>codebook</strong>, and one or more models code every episode according to your definitions.</>,
+    q: "What does CAT do?",
+    a: <>CAT (Chat Annotation Toolkit) codes qualitative communication data into structured variables using LLMs. You upload a dataset, map columns into communication <strong>episodes</strong>, define a <strong>codebook</strong>, and one or more models code every episode according to your definitions.</>,
   },
   {
     q: "What is a communication episode?",
@@ -30,7 +26,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Do you store my dataset or my API keys?",
-    a: <>Your API keys are <strong>never</strong> saved — not in the database, logs, or browser storage; they live only in memory during a run and travel over HTTPS. To restore your work after a refresh or browser restart, ChAT keeps a copy of the current dataset in this browser on your device. It is not stored in ChAT&apos;s database. The server uses a temporary working copy. Reset and successful dataset replacement request best-effort immediate cleanup; scheduled cleanup removes temporary files after they pass the 24-hour threshold. <strong>Reset</strong> also removes the browser copy. Usage metadata is <strong>not anonymous</strong>: the database records a browser session identifier, IP address, best-effort location, user agent, referrer, event time, and run configuration such as selected providers/models and run, variable, row, and episode counts. It never stores API keys or dataset contents.</>,
+    a: <>Your API keys are <strong>never</strong> saved — not in the database, logs, or browser storage; they live only in memory during a run and travel over HTTPS. To restore your work after a refresh or browser restart, CAT keeps a copy of the current dataset in this browser on your device. It is not stored in CAT&apos;s database. The server uses a temporary working copy. Reset and successful dataset replacement request best-effort immediate cleanup; scheduled cleanup removes temporary files after they pass the 24-hour threshold. <strong>Reset</strong> also removes the browser copy. Usage metadata is <strong>not anonymous</strong>: the database records a browser session identifier, IP address, best-effort location, user agent, referrer, event time, and run configuration such as selected providers/models and run, variable, row, and episode counts. It never stores API keys or dataset contents.</>,
   },
   {
     q: "How do I set up the codebook?",
@@ -42,7 +38,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between per-episode and per-sender variables?",
-    a: <><strong>Per episode</strong> produces one value for the whole episode. <strong>Per sender</strong> produces one value for each sender and expands into a column per detected name (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). ChAT reads these names automatically from the mapped Sender column; review and verify the list before continuing. Blank Sender cells must be corrected.</>,
+    a: <><strong>Per episode</strong> produces one value for the whole episode. <strong>Per sender</strong> produces one value for each sender and expands into a column per detected name (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). CAT reads these names automatically from the mapped Sender column; review and verify the list before continuing. Blank Sender cells must be corrected.</>,
   },
   {
     q: "What does “empty message handling” do?",
@@ -54,7 +50,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between “Generate package” and “Run Coding”?",
-    a: <><strong>Generate package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. You only need to select its provider and model; no API key is required to generate the package because the script reads <code>CHAT_API_KEY</code> or prompts securely at runtime. The script uses the first selected provider and model for one call per episode. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
+    a: <><strong>Generate package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. You only need to select its provider and model; no API key is required to generate the package because the script reads <code>CAT_API_KEY</code> or prompts securely at runtime. The script uses the first selected provider and model for one call per episode. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
   },
   {
     q: "What do the result downloads contain?",
@@ -70,7 +66,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "If I refresh the page, do I lose my work?",
-    a: <>Normally, no. In the same browser and website, ChAT saves the current dataset, mapping, codebook, models, and settings locally and restores them automatically. API keys are deliberately not saved, so you must re-enter them. If you clear site data, use private browsing, switch browsers or devices, or the browser removes local storage, you will need to re-upload the dataset. Use <strong>Reset</strong> to clear the saved project and local dataset copy.</>,
+    a: <>Normally, no. In the same browser and website, CAT saves the current dataset, mapping, codebook, models, and settings locally and restores them automatically. API keys are deliberately not saved, so you must re-enter them. If you clear site data, use private browsing, switch browsers or devices, or the browser removes local storage, you will need to re-upload the dataset. Use <strong>Reset</strong> to clear the saved project and local dataset copy.</>,
   },
 ];
 
@@ -160,23 +156,15 @@ function StepSection({ n, title, children }: { n: number; title: string; childre
 }
 
 function DemoVideo() {
-  const [failed, setFailed] = useState(false);
   return (
     <div className="ana-section mt-16">
       <div className="ana-section-h">Demo video</div>
       <div className="tool-desc">
-        {failed ? (
-          <div className="demo-placeholder">
-            <div className="demo-placeholder-icon">▶</div>
-            <p><strong>Demo video coming soon.</strong></p>
-          </div>
-        ) : (
-          <video controls preload="metadata" playsInline className="howto-video" onError={() => setFailed(true)}>
-            <source src={DEMO_VIDEO_CDN_SRC} type="video/mp4" />
-            <source src={DEMO_VIDEO_LOCAL_SRC} type="video/mp4" />
-          </video>
-        )}
-        <p className="howto-cite mt-12">A short walkthrough: uploading data, mapping columns into episodes, building a codebook, and running the coding.</p>
+        <div className="demo-placeholder">
+          <div className="demo-placeholder-icon">▶</div>
+          <p><strong>Updated CAT demo video coming soon.</strong></p>
+        </div>
+        <p className="howto-cite mt-12">The previous recording has been withdrawn while the CAT-branded walkthrough is prepared.</p>
       </div>
     </div>
   );
@@ -244,7 +232,7 @@ export default function HowToPage({ onNavigate }: Props) {
     <div className="tool-page active">
       <div className="tool-header">
         <div>
-          <h1>Learn ChAT</h1>
+          <h1>Learn CAT</h1>
           <p className="tool-desc">
             What each tool does, what every field expects, and short demos to watch it in action.
           </p>
@@ -287,13 +275,13 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
               <div className="howto-warning mt-12">
                 <strong>Citation.</strong> All example instructions, coding schemes, and sample data
-                used throughout ChAT are drawn from {PAPER_CITATION_FULL}
+                used throughout CAT are drawn from {PAPER_CITATION_FULL}
               </div>
             </div>
 
             <StepSection n={1} title="Upload & Map Dataset">
               <p>
-                A <strong>communication episode</strong> is a combination of messages exchanged through the same channel — or a collection of messages sent by one sender — and it&apos;s what the model codes. Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one episode (or choose “each row is its own episode”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Tied Order values retain their uploaded row order. Every selected Context field must match exactly within an episode; ChAT blocks the mapping until inconsistencies are corrected or the field is unselected. The grouped episodes then appear in the preprocessed preview.
+                A <strong>communication episode</strong> is a combination of messages exchanged through the same channel — or a collection of messages sent by one sender — and it&apos;s what the model codes. Upload a CSV or Excel file, then map your columns in the popup: tag the <strong>message</strong> column, the <strong>identifier(s)</strong> that define one episode (or choose “each row is its own episode”), and optionally the <strong>sender</strong> identity, the message <strong>order</strong>, and any <strong>context</strong> columns. Tied Order values retain their uploaded row order. Every selected Context field must match exactly within an episode; CAT blocks the mapping until inconsistencies are corrected or the field is unselected. The grouped episodes then appear in the preprocessed preview.
               </p>
             </StepSection>
 
@@ -307,7 +295,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <pre className="howto-example">{CODING_EXAMPLE_MULTI}</pre>
               <p className="howto-cite">Coding schemes adapted from {PAPER_CITATION_SHORT}.</p>
               <div className="howto-warning mt-12">
-                <strong>Per-sender variables</strong> expand into one output column per detected sender (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). ChAT obtains these names from the mapped Sender column and asks you to verify the list; blank Sender values must be corrected in the source dataset.
+                <strong>Per-sender variables</strong> expand into one output column per detected sender (e.g. <code>cooperation_P</code>, <code>cooperation_V1</code>). CAT obtains these names from the mapped Sender column and asks you to verify the list; blank Sender values must be corrected in the source dataset.
               </div>
             </StepSection>
 
@@ -343,7 +331,7 @@ export default function HowToPage({ onNavigate }: Props) {
               <div className="ana-section-h">Running it</div>
               <div className="tool-desc">
                 <p>
-                  <strong>Generate package</strong> creates a ZIP with the Python script, three CSV files containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. It can be generated without entering an API key; the local script reads <code>CHAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The primary result download is a CSV with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional CSV provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
+                  <strong>Generate package</strong> creates a ZIP with the Python script, three CSV files containing the source rows, exact preprocessed episodes, and their row map, plus a README and requirements. It can be generated without entering an API key; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts. <strong>Run Coding</strong> validates your API keys, then streams results as each episode is processed. When it finishes, a validation report flags out-of-range or failed episodes so you can re-run just those. The primary result download is a CSV with every original row and column plus the final aggregate codes, repeated across rows belonging to the same episode. A separate optional CSV provides one row per preprocessed episode, while detailed model and run outputs remain a distinct download when available.
                 </p>
               </div>
             </div>

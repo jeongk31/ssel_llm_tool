@@ -1,4 +1,4 @@
-# ChAT — Chat Annotation Toolkit
+# CAT — Chat Annotation Toolkit
 
 A web application from the **Social Science Experimental Laboratory (NYU Abu Dhabi)** for
 coding qualitative communication data into structured variables using one or more LLMs.

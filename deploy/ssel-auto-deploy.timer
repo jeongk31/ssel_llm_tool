@@ -1,5 +1,5 @@
 [Unit]
-Description=Check GitHub for a CI-approved ChAT release
+Description=Check GitHub for a CI-approved CAT release
 
 [Timer]
 OnBootSec=2min
