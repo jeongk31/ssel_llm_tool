@@ -123,7 +123,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
     body: (<p><strong>Generate package</strong> prepares a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. <strong>The package uses the first selected provider and model for one call per episode</strong>; repeated- and multi-model execution is available through <strong>Run Coding</strong> in the browser. The API key is not included; the local script reads <code>CAT_API_KEY</code> or prompts securely when it starts.</p>),
   },
   {
-    sectionId: "coding-run-bar", section: "Results", media: "/tour/results.svg",
+    sectionId: "tour-results-panel", targetId: "tour-result-downloads", section: "Results",
     title: "Review and download results",
     body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
   },
@@ -795,6 +795,31 @@ const tourSampleCodebook = (): CodebookEntry[] => [{
     { value: "mixed", definition: "Partial or ambiguous agreement", examples: "", context: "" },
   ],
 }];
+const TOUR_SAMPLE_CODED_ROWS: CodedRow[] = [
+  {
+    index: 0,
+    original: { Message: "[P] Let's both choose In.\n[V1] Sounds good, I'm in.\n[P] Great — I'll roll." },
+    coded: { cooperation: "yes" },
+  },
+  {
+    index: 1,
+    original: { Message: "[P] Same plan this round?\n[V1] Yes, let's do it." },
+    coded: { cooperation: "yes" },
+  },
+  {
+    index: 2,
+    original: { Message: "[V2] I'll pass this time." },
+    coded: { cooperation: "no" },
+  },
+];
+const TOUR_SAMPLE_VALIDATION: ValidationReport = {
+  totalRows: 3,
+  validRows: 3,
+  errorRows: 0,
+  outOfRangeRows: 0,
+  issues: [],
+  problematicIndices: [],
+};
 
 // ── ModelSlot type ────────────────────────────────────────────────────────────
 
@@ -1706,6 +1731,26 @@ export default function Home() {
   }, [persistenceReady]);
 
   const handleStepEnter = useCallback((s: TourStep) => {
+    const showingResults = s.section === "Results";
+    if (showingResults) {
+      setLayoutMode("hidden");
+      setRightView("run");
+      setRunProgress({ current: 3, total: 3, percent: 100 });
+      codedRowsRef.current = TOUR_SAMPLE_CODED_ROWS;
+      setCodedRows(TOUR_SAMPLE_CODED_ROWS);
+      setRunErrors([]);
+      setRunComplete({ total_rows: 3, coded_rows: 3, file_path: "" });
+      setValidationReport(TOUR_SAMPLE_VALIDATION);
+    } else {
+      setLayoutMode("fill");
+      setRightView("script");
+      setRunProgress(null);
+      codedRowsRef.current = [];
+      setCodedRows([]);
+      setRunErrors([]);
+      setRunComplete(null);
+      setValidationReport(null);
+    }
     if (s.mappingStage) {
       const stages = ["none", "message", "identifier", "identity", "order", "context", "complete"] as const;
       const stage = stages.indexOf(s.mappingStage);
@@ -1744,6 +1789,7 @@ export default function Home() {
       codebook, senderVerificationSignature, modelSlots: modelSlots.map((slot) => ({ ...slot })), runsPerModel,
       openPanels: [...openPanels],
       layoutMode, activeTool, uploadAvailability, uploadMeta, uploadError, uploadNotice,
+      rightView, runProgress, codedRows, runErrors, runComplete, validationReport,
       liveUploadId: liveUploadIdRef.current,
       serverFiles: { ...serverFilesRef.current },
     };
@@ -1763,7 +1809,7 @@ export default function Home() {
     setEmptyMessageHandling("ignore");
     setExperimentInstructions(TOUR_SAMPLE_INSTRUCTIONS);
     setCodebook(tourSampleCodebook());
-    setModelSlots([{ ...EMPTY_SLOT, apiKey: "" }]);
+    setModelSlots([{ ...EMPTY_SLOT, apiKey: "sk-example-not-a-real-key" }]);
     setRunsPerModel(3);
     setSenderVerificationSignature(JSON.stringify({
       identityColumn: "Speaker",
@@ -1794,6 +1840,14 @@ export default function Home() {
       setModelSlots(s.modelSlots as ModelSlot[]); setRunsPerModel(s.runsPerModel as number);
       setOpenPanels(new Set(s.openPanels as number[]));
       setLayoutMode(s.layoutMode as "fill" | "side" | "hidden");
+      setRightView(s.rightView as "script" | "run");
+      setRunProgress(s.runProgress as RunProgress | null);
+      const restoredCodedRows = s.codedRows as CodedRow[];
+      codedRowsRef.current = restoredCodedRows;
+      setCodedRows(restoredCodedRows);
+      setRunErrors(s.runErrors as string[]);
+      setRunComplete(s.runComplete as { total_rows: number; coded_rows: number; file_path: string } | null);
+      setValidationReport(s.validationReport as ValidationReport | null);
       setActiveTool(s.activeTool as "coding" | "catgen" | "analysis" | "instructions");
       setUploadAvailability(s.uploadAvailability as UploadAvailability);
       setUploadMeta(s.uploadMeta as StoredUploadMetadata | null);
@@ -3093,7 +3147,7 @@ ${PDF_WATERMARK_HTML}
               <div
                 className="config-col"
                 style={{
-                  width: tourOpen ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
+                  width: tourOpen && layoutMode !== "hidden" ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
                   minWidth: 0,
                   borderRight: layoutMode === "hidden" && !tourOpen ? "none" : undefined,
                 }}
@@ -3567,7 +3621,7 @@ ${PDF_WATERMARK_HTML}
               </div>
 
               {/* ── Right: Results Column ── */}
-              <div className="results-col" style={{ flex: 1, minWidth: 0 }}>
+              <div className="results-col" id="tour-results-panel" style={{ flex: 1, minWidth: 0 }}>
                 {layoutMode !== "fill" && (<>
                 {(result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
                   <div className="tab-strip tab-strip-gap">

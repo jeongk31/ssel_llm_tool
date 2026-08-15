@@ -11,8 +11,8 @@
   <rect width="1200" height="720" rx="12" fill="#f4f5f7"/>
   <rect x="28" y="24" width="1144" height="672" rx="10" fill="#fff" stroke="#d9dce3" stroke-width="2"/>
   <text x="58" y="70" class="h1">Coding complete</text>
-  <rect x="270" y="43" width="124" height="36" rx="18" fill="#dcfce7"/>
-  <text x="332" y="67" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#16a34a">3 episodes</text>
+  <rect x="318" y="43" width="124" height="36" rx="18" fill="#dcfce7"/>
+  <text x="380" y="67" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#16a34a">3 episodes</text>
 
   <rect x="58" y="100" width="1084" height="88" rx="8" fill="#dcfce7" stroke="#9dd9ae"/>
   <text x="82" y="133" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#16a34a">✓ Output validation complete</text>
