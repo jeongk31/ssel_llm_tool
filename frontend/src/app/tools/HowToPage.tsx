@@ -18,7 +18,7 @@ const SECTIONS: { value: Section; label: string }[] = [
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
     q: "What does CAT do?",
-    a: <>CAT (Chat Annotation Toolkit) codes qualitative communication data into structured variables using LLMs. You upload a dataset, map columns into communication <strong>episodes</strong>, define a <strong>codebook</strong>, and one or more models code every episode according to your definitions.</>,
+    a: <>CAT (Communication Annotation Tool) codes qualitative communication data into structured variables using LLMs. You upload a dataset, map columns into communication <strong>episodes</strong>, define a <strong>codebook</strong>, and one or more models code every episode according to your definitions.</>,
   },
   {
     q: "What is a communication episode?",

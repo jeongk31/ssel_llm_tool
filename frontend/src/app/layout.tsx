@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
-  title: "CAT — Chat Annotation Toolkit",
+  title: "CAT — Communication Annotation Tool",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

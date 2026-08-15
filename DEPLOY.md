@@ -1,6 +1,6 @@
 # Deployment & Data Storage
 
-CAT (Chat Annotation Toolkit) stores its usage analytics in **PostgreSQL**, selected
+CAT (Communication Annotation Tool) stores its usage analytics in **PostgreSQL**, selected
 entirely by the **`DATABASE_URL`** environment variable. Postgres is **required** — there
 is no SQLite fallback, so a missing or misconfigured `DATABASE_URL` is a loud startup
 error rather than a silent switch to throwaway storage.
@@ -62,7 +62,7 @@ Use Railway's managed Postgres, which runs as its own service and persists indep
 3. **Redeploy** the backend (make sure the deployed commit includes `asyncpg` support).
 
 Verify: the backend's `DATABASE_URL` now shows a real `postgresql://…railway.internal:5432/railway`
-value; the deploy logs show `CAT (Chat Annotation Toolkit) API started — database: postgresql`
+value; the deploy logs show `CAT (Communication Annotation Tool) API started — database: postgresql`
 with no traceback; and the Postgres service's **Data** tab lists the `usage_events` table.
 
 ---
