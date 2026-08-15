@@ -7,7 +7,7 @@ from app.services.providers.base import LLMProvider
 
 
 class OpenAICompatibleProvider(LLMProvider):
-    """Works with OpenAI, Together, DeepSeek, Mistral — any OpenAI-compatible API."""
+    """Works with OpenAI, xAI, Together, DeepSeek, Mistral — any OpenAI-compatible API."""
 
     async def complete(self, prompt: str, system_prompt: str = "", params: dict | None = None) -> dict:
         params = params or {}

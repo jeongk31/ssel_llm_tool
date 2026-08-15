@@ -635,9 +635,10 @@ def _get_provider_code(provider: str) -> tuple[str, str, str]:
             response_text = response.text''',
         )
     else:
-        # OpenAI-compatible: openai, deepseek, mistral, together
+        # OpenAI-compatible: openai, deepseek, xAI, mistral, together
         base_urls = {
             "deepseek": "https://api.deepseek.com",
+            "xai": "https://api.x.ai/v1",
             "mistral": "https://api.mistral.ai/v1",
             "together": "https://api.together.xyz/v1",
         }

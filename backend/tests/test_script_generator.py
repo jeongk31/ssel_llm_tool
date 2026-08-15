@@ -4,7 +4,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from app.services.script_generator import generate_coding_script
+from app.services.script_generator import _get_provider_code, generate_coding_script
 
 
 class GeneratedScriptSafetyTests(unittest.TestCase):
@@ -134,6 +134,20 @@ class GeneratedScriptSafetyTests(unittest.TestCase):
                 model="test-model",
                 package_source_file="source_rows.csv",
             )
+
+    def test_xai_package_uses_the_official_openai_compatible_endpoint(self):
+        imports, setup, call = _get_provider_code("xai")
+
+        self.assertEqual(imports, "from openai import OpenAI")
+        self.assertIn('base_url="https://api.x.ai/v1"', setup)
+        self.assertIn("client.chat.completions.create", call)
+
+    def test_anthropic_package_uses_the_anthropic_sdk(self):
+        imports, setup, call = _get_provider_code("anthropic")
+
+        self.assertEqual(imports, "import anthropic")
+        self.assertIn("anthropic.Anthropic", setup)
+        self.assertIn("client.messages.create", call)
 
 
 if __name__ == "__main__":

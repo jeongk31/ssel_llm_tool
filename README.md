@@ -13,7 +13,7 @@ download the results or a ready-to-run Python script.
 | Frontend | Next.js (App Router), TypeScript, React |
 | Backend | Python, FastAPI, SQLAlchemy (async) |
 | Database | PostgreSQL (async via `asyncpg`) — required; see below |
-| LLM Providers | OpenAI, Google (Gemini), DeepSeek |
+| LLM Providers | OpenAI, Google (Gemini), DeepSeek, Anthropic (Claude), xAI (Grok) |
 | Styling | Custom CSS design system (no Tailwind) |
 
 ## Project structure

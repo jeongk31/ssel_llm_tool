@@ -13,8 +13,9 @@ PROVIDER_REGISTRY: dict[str, tuple[type[LLMProvider], str, str | None]] = {
     "gpt-4o":           (OpenAICompatibleProvider, "gpt-4o", None),
     "gpt-4o-mini":      (OpenAICompatibleProvider, "gpt-4o-mini", None),
     # Anthropic
-    "claude-opus-4":    (AnthropicProvider, "claude-opus-4-20250514", None),
-    "claude-sonnet-4":  (AnthropicProvider, "claude-sonnet-4-20250514", None),
+    "claude-opus-4-8":  (AnthropicProvider, "claude-opus-4-8", None),
+    "claude-sonnet-4-6":(AnthropicProvider, "claude-sonnet-4-6", None),
+    "claude-haiku-4-5-20251001": (AnthropicProvider, "claude-haiku-4-5-20251001", None),
     # Google
     "gemini-3.1-pro":   (GeminiProvider, "gemini-3.1-pro-preview", None),
     "gemini-3-flash":   (GeminiProvider, "gemini-3-flash-preview", None),
@@ -26,6 +27,9 @@ PROVIDER_REGISTRY: dict[str, tuple[type[LLMProvider], str, str | None]] = {
     # DeepSeek — OpenAI-compatible
     "deepseek-chat":    (OpenAICompatibleProvider, "deepseek-chat", "https://api.deepseek.com"),
     "deepseek-reasoner":(OpenAICompatibleProvider, "deepseek-reasoner", "https://api.deepseek.com"),
+    # xAI (Grok) — OpenAI-compatible
+    "grok-4.5":         (OpenAICompatibleProvider, "grok-4.5", "https://api.x.ai/v1"),
+    "grok-4.3":         (OpenAICompatibleProvider, "grok-4.3", "https://api.x.ai/v1"),
     # Mistral — OpenAI-compatible
     "mistral-large":    (OpenAICompatibleProvider, "mistral-large-latest", "https://api.mistral.ai/v1"),
     "mistral-small":    (OpenAICompatibleProvider, "mistral-small-latest", "https://api.mistral.ai/v1"),

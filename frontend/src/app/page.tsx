@@ -65,7 +65,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
     targetId: "tour-codebook", title: "Codebook variables",
-    body: (<p>This summary lists your variables. Click it to open the full editor and define what to code.</p>),
+    body: (<p>This summary lists your variables. Click it to open the full editor and define what to code. After saving the codebook, use <strong>Download codebook</strong> below the summary to export it in a standard format.</p>),
   },
   // ── Codebook editor popup ──
   {
@@ -87,6 +87,11 @@ const CODING_TOUR_STEPS: TourStep[] = [
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
     targetId: "tour-cb-aggregation", title: "Aggregate repeated calls",
     body: (<p>Choose how repeated model calls are combined for this variable. Use <strong>majority vote</strong> for labels and free text, or <strong>average</strong> for numeric outputs. Each variable can use a different method.</p>),
+  },
+  {
+    sectionId: "coding-panel-2", panel: 2, section: "Codebook",
+    targetId: "tour-codebook-download", title: "Download the codebook",
+    body: (<p>After saving the variables, select a format and download the completed codebook for review, reuse, or project documentation. CAT supports JSON, CSV, text, PDF, Excel, and LaTeX exports.</p>),
   },
   // ── Section 3: Experiment Instructions ──
   {
@@ -665,7 +670,7 @@ function validateCodedRows(rows: CodedRow[], vars: ExpandedVar[]): ValidationRep
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-const PROVIDERS: { value: string; label: string; models: { value: string; label: string; noTemperature?: boolean }[] }[] = [
+const PROVIDERS: { value: string; label: string; models: { value: string; label: string; noTemperature?: boolean; noTopP?: boolean; temperatureMax?: number }[] }[] = [
   {
     value: "openai", label: "OpenAI", models: [
       { value: "gpt-4.1", label: "GPT-4.1" },
@@ -698,6 +703,19 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
       { value: "deepseek-reasoner", label: "DeepSeek R1", noTemperature: true },
     ],
   },
+  {
+    value: "anthropic", label: "Anthropic (Claude)", models: [
+      { value: "claude-opus-4-8", label: "Claude Opus 4.8", noTemperature: true, noTopP: true },
+      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", noTopP: true, temperatureMax: 1 },
+      { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", noTopP: true, temperatureMax: 1 },
+    ],
+  },
+  {
+    value: "xai", label: "xAI (Grok)", models: [
+      { value: "grok-4.5", label: "Grok 4.5" },
+      { value: "grok-4.3", label: "Grok 4.3" },
+    ],
+  },
 ];
 
 // Curated list of providers/models that support native PDF (document + vision)
@@ -719,8 +737,9 @@ const PDF_MODELS: { provider: string; label: string; models: { value: string; la
   },
   {
     provider: "anthropic", label: "Anthropic (Claude)", models: [
-      { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
-      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+      { value: "claude-opus-4-8", label: "Claude Opus 4.8" },
+      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+      { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
     ],
   },
 ];
@@ -851,6 +870,18 @@ function modelIgnoresTemperature(provider: string, model: string): boolean {
   return modelInfo?.noTemperature === true;
 }
 
+function modelIgnoresTopP(provider: string, model: string): boolean {
+  const provInfo = PROVIDERS.find((p) => p.value === provider);
+  const modelInfo = provInfo?.models.find((m) => m.value === model);
+  return modelInfo?.noTopP === true;
+}
+
+function modelTemperatureMax(provider: string, model: string): number {
+  const provInfo = PROVIDERS.find((p) => p.value === provider);
+  const modelInfo = provInfo?.models.find((m) => m.value === model);
+  return modelInfo?.temperatureMax ?? 2;
+}
+
 function buildSlotPayload(slot: ModelSlot) {
   const base = {
     provider: slot.provider,
@@ -861,13 +892,15 @@ function buildSlotPayload(slot: ModelSlot) {
   if (!slot.tuningEnabled) return base;
 
   const noTemp = modelIgnoresTemperature(slot.provider, slot.model);
+  const noTopP = modelIgnoresTopP(slot.provider, slot.model);
+  const temperature = Math.min(slot.temperature ?? 0.2, modelTemperatureMax(slot.provider, slot.model));
 
   if (slot.provider === "gemini") {
     return {
       ...base,
       generation_config: {
-        ...(noTemp ? {} : { temperature: slot.temperature }),
-        topP: slot.topP,
+        ...(noTemp ? {} : { temperature }),
+        ...(noTopP ? {} : { topP: slot.topP }),
         maxOutputTokens: slot.maxTokens,
       },
     };
@@ -876,16 +909,16 @@ function buildSlotPayload(slot: ModelSlot) {
   if (slot.provider === "deepseek") {
     return {
       ...base,
-      ...(noTemp ? {} : { temperature: slot.temperature }),
-      top_p: slot.topP,
+      ...(noTemp ? {} : { temperature }),
+      ...(noTopP ? {} : { top_p: slot.topP }),
       max_tokens: slot.maxTokens,
     };
   }
 
   return {
     ...base,
-    ...(noTemp ? {} : { temperature: slot.temperature }),
-    top_p: slot.topP,
+    ...(noTemp ? {} : { temperature }),
+    ...(noTopP ? {} : { top_p: slot.topP }),
     max_completion_tokens: slot.maxTokens,
   };
 }
@@ -3371,10 +3404,10 @@ ${PDF_WATERMARK_HTML}
                       </button>
 
                       {/* ── Codebook export ── */}
-                      <div className="cb-export-block">
+                      <div className="cb-export-block" id="tour-codebook-download">
                         <div className="cb-export-divider" />
                         <div className="cb-export-row">
-                          <span className="cb-export-title">Export codebook</span>
+                          <span className="cb-export-title">Download codebook</span>
                           <div className="cb-export-formats">
                             {(["json", "csv", "txt", "pdf", "xlsx", "latex"] as const).map((fmt) => (
                               <button
@@ -3395,7 +3428,7 @@ ${PDF_WATERMARK_HTML}
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
                             </svg>
-                            Export
+                            Download
                           </button>
                         </div>
                       </div>
@@ -3459,6 +3492,8 @@ ${PDF_WATERMARK_HTML}
                           const provInfo = PROVIDERS.find((p) => p.value === slot.provider);
                           const modelInfo = provInfo?.models.find((m) => m.value === slot.model);
                           const noTemp = modelIgnoresTemperature(slot.provider, slot.model);
+                          const noTopP = modelIgnoresTopP(slot.provider, slot.model);
+                          const temperatureMax = modelInfo?.temperatureMax ?? 2;
 
                           return (
                             <div className="model-slot" key={idx}>
@@ -3518,8 +3553,14 @@ ${PDF_WATERMARK_HTML}
                                 </div>
 
                                 <div className="slot-tuning">
-                                  {noTemp && (
-                                    <div className="slot-tuning-warn">This model ignores temperature — the parameter will not be sent.</div>
+                                  {(noTemp || noTopP) && (
+                                    <div className="slot-tuning-warn">
+                                      {noTemp && noTopP
+                                        ? "This model uses provider-controlled sampling — temperature and top-p will not be sent."
+                                        : noTemp
+                                        ? "This model ignores temperature — the parameter will not be sent."
+                                        : "This model ignores top-p — the parameter will not be sent."}
+                                    </div>
                                   )}
                                   <div className="tuning-params-grid">
                                     <div className="tuning-param">
@@ -3527,17 +3568,17 @@ ${PDF_WATERMARK_HTML}
                                         <label className={noTemp ? "text-muted" : ""}>Temperature</label>
                                         <span className={`tuning-param-val${noTemp ? " text-muted" : ""}`}>{noTemp ? "N/A" : (slot.temperature ?? 0.2).toFixed(2)}</span>
                                       </div>
-                                      <input type="range" min={0} max={2} step={0.05} value={slot.temperature ?? 0.2} disabled={noTemp}
+                                      <input type="range" min={0} max={temperatureMax} step={0.05} value={Math.min(slot.temperature ?? 0.2, temperatureMax)} disabled={noTemp}
                                         onChange={(e) => updateSlot(idx, { temperature: parseFloat(e.target.value) })} className={noTemp ? "range-disabled" : ""} />
-                                      <div className="tuning-param-bounds"><span>0</span><span>2</span></div>
+                                      <div className="tuning-param-bounds"><span>0</span><span>{temperatureMax}</span></div>
                                     </div>
                                     <div className="tuning-param">
                                       <div className="tuning-param-header">
-                                        <label>Top-p</label>
-                                        <span className="tuning-param-val">{(slot.topP ?? 1.0).toFixed(2)}</span>
+                                        <label className={noTopP ? "text-muted" : ""}>Top-p</label>
+                                        <span className={`tuning-param-val${noTopP ? " text-muted" : ""}`}>{noTopP ? "N/A" : (slot.topP ?? 1.0).toFixed(2)}</span>
                                       </div>
-                                      <input type="range" min={0} max={1} step={0.05} value={slot.topP ?? 1.0}
-                                        onChange={(e) => updateSlot(idx, { topP: parseFloat(e.target.value) })} />
+                                      <input type="range" min={0} max={1} step={0.05} value={slot.topP ?? 1.0} disabled={noTopP}
+                                        onChange={(e) => updateSlot(idx, { topP: parseFloat(e.target.value) })} className={noTopP ? "range-disabled" : ""} />
                                       <div className="tuning-param-bounds"><span>0</span><span>1</span></div>
                                     </div>
                                     <div className="tuning-param">

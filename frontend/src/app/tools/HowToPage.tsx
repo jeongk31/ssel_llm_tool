@@ -62,7 +62,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Which LLM providers are supported?",
-    a: <>OpenAI, Google (Gemini), and DeepSeek. Browser execution requires an API key for each configured model. Package generation does not require a key because the local script obtains it when run.</>,
+    a: <>OpenAI, Google (Gemini), DeepSeek, Anthropic (Claude), and xAI (Grok). Browser execution requires an API key for each configured model. Package generation does not require a key because the local script obtains it when run.</>,
   },
   {
     q: "If I refresh the page, do I lose my work?",
@@ -315,7 +315,7 @@ export default function HowToPage({ onNavigate }: Props) {
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>
-                Add one or more provider/model pairs. Enter an API key for every model used in browser execution. No key is required to generate the local package; its script obtains the key at runtime. Supported providers are OpenAI, Google (Gemini), and DeepSeek.
+                Add one or more provider/model pairs. Enter an API key for every model used in browser execution. No key is required to generate the local package; its script obtains the key at runtime. Supported providers are OpenAI, Google (Gemini), DeepSeek, Anthropic (Claude), and xAI (Grok).
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Runs per model:</span>
