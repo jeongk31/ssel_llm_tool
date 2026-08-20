@@ -2,6 +2,7 @@
 node_modules/
 venv/
 .venv/
+.venv-server/
 __pycache__/
 *.py[cod]
 
