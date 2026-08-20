@@ -206,6 +206,6 @@ readable citation metadata; the DOI will be added when one is assigned.
 - [Changelog](CHANGELOG.md)
 - [Deferred features](DEFERRED_FEATURES.md)
 
-The project license remains pending confirmation by the authorized NYU office. Until a
-license is added, copyright law reserves reuse rights beyond those otherwise provided
-by law.
+CAT is released under the [BSD 3-Clause License](LICENSE). If CAT is used in research,
+the authors also request citation of the accompanying methodological paper as described
+above.

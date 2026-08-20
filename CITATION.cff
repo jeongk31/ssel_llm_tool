@@ -2,6 +2,7 @@ cff-version: 1.2.0
 message: "If you use CAT in research, please cite the accompanying paper."
 title: "CAT: An LLM-based Tool for Content Analysis in Experimental Economics"
 type: software
+license: BSD-3-Clause
 authors:
   - family-names: "Baranski"
     given-names: "Andrzej"
