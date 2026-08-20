@@ -102,15 +102,6 @@ body{
   background:linear-gradient(90deg, var(--purple) 0%, var(--teal) 55%, transparent 100%);
   opacity:.45;
 }
-.status-chip{
-  display:flex;align-items:center;gap:6px;
-  font-size:12px;font-weight:500;color:var(--text-2);
-  background:var(--bg);border:1px solid var(--border);
-  padding:4px 12px 4px 10px;border-radius:20px;
-}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--good);transition:background .2s}
-.status-dot.status-running{background:var(--mid)}
-
 /* ═══════════════════════════════════════════════════ */
 /* LAYOUT                                              */
 /* ═══════════════════════════════════════════════════ */
@@ -1587,15 +1578,6 @@ input[type="range"]::-webkit-slider-thumb{
 }
 .welcome-never:hover{color:var(--text)}
 
-/* "?" walkthrough button on the Coding page header */
-/* .tour-help-btn{
-  flex-shrink:0;width:28px;height:28px;border-radius:50%;
-  border:1px solid var(--border);background:var(--surface);
-  color:var(--purple);font-weight:700;font-size:14px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:background .15s,border-color .15s,box-shadow .15s;
-}
-.tour-help-btn:hover{background:var(--purple-bg);border-color:var(--purple-lt);box-shadow:0 0 0 3px rgba(91,45,142,.1)} */
 .tour-help-btn{
   flex-shrink:0;
   border-radius:20px;
@@ -1606,12 +1588,6 @@ input[type="range"]::-webkit-slider-thumb{
   transition:background .15s,border-color .15s,box-shadow .15s;
 }
 .tour-help-btn:hover{background:var(--purple-bg);border-color:var(--purple-lt);box-shadow:0 0 0 3px rgba(91,45,142,.1)}
-.tour-help-icon{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:16px;height:16px;border-radius:50%;
-  background:var(--purple-bg);color:var(--purple);
-  font-size:11px;font-weight:700;flex-shrink:0;
-}
 
 
 /* ═══════════════════════════════════════════════════ */
@@ -2252,6 +2228,18 @@ textarea.ta-fit{
 
 .cb-aggregation-control select {
   width: 100%;
+}
+
+.cb-aggregation-note {
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--purple-lt);
+  border-radius: var(--radius);
+  background: var(--purple-bg);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 @media (max-width: 760px) {

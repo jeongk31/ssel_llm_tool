@@ -3031,10 +3031,7 @@ ${PDF_WATERMARK_HTML}
         </div>
         <div className="topbar-right">
           <button className="btn btn-ghost btn-xs text-muted" onClick={handleReset}>Reset</button>
-          <div className="status-chip">
-            <span className={`status-dot ${running ? "status-running" : ""}`} />
-            {running ? "Running" : "Ready"}
-          </div>
+          <button className="tour-help-btn" onClick={startTour}>Guided Tour</button>
         </div>
       </nav>
 
@@ -3050,10 +3047,6 @@ ${PDF_WATERMARK_HTML}
                   <span className="episode-def-text"> the unit of analysis — a combination of messages exchanged through the same channel, or a collection of messages sent by one sender. Rows that share your chosen identifier(s) are merged into one episode.</span>
                 </div>
               </div>
-              <button className="tour-help-btn" onClick={startTour} title="Guided walkthrough" aria-label="Start guided walkthrough">
-                <span className="tour-help-icon">?</span>
-
-              </button>
             </div>
 
             <div className={`pipeline-layout split layout-${layoutMode}`} style={{ display: "flex", gap: 0 }}>
@@ -4182,7 +4175,7 @@ ${PDF_WATERMARK_HTML}
                               <option value="mean">Average (mean)</option>
                             </select>
                             {entry.type === "categorical" && (
-                              <span className="text-muted text-sm">For aggregation, each permitted value becomes a separate binary column, and CAT applies this rule to each column.</span>
+                              <p className="cb-aggregation-note">For aggregation, each permitted value becomes a separate binary column, and CAT applies the selected rule to each column.</p>
                             )}
                           </div>
                         )}
