@@ -2181,7 +2181,7 @@ textarea.ta-fit{
 
 .privacy-consent {
   position: fixed;
-  z-index: 2000;
+  z-index: 3000;
   inset: 0;
   display: flex;
   align-items: center;
@@ -2193,23 +2193,40 @@ textarea.ta-fit{
 
 .privacy-consent-dialog {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  width: min(760px, 100%);
-  padding: 24px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 22px;
+  width: min(520px, 100%);
+  padding: 30px;
   color: var(--text-1);
   background: #fff;
   border: 1px solid #d8c6e8;
-  border-radius: 12px;
-  box-shadow: 0 12px 36px rgba(35, 20, 50, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 20px 55px rgba(35, 20, 50, 0.24);
+}
+
+.privacy-consent-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--purple);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.privacy-consent h2 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 22px;
+  line-height: 1.25;
 }
 
 .privacy-consent p {
-  margin: 5px 0 0;
+  margin: 10px 0 12px;
   color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .privacy-consent a {
@@ -2219,17 +2236,22 @@ textarea.ta-fit{
 
 .privacy-consent-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  flex: 0 0 auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
 }
 
 @media (max-width: 760px) {
   .privacy-consent-dialog {
-    align-items: stretch;
-    flex-direction: column;
+    padding: 24px;
   }
 
   .privacy-consent-actions {
     flex-direction: column-reverse;
+  }
+
+  .privacy-consent-actions .btn {
+    width: 100%;
   }
 }

@@ -5,6 +5,8 @@ first archival release version.
 
 ## Unreleased
 
+- Reworked the analytics consent notice as a centered privacy dialog with its decision
+  buttons below the explanatory text and ensured it appears above first-visit overlays.
 - Reworked repeated-call exports into one complete-results ZIP with overall outputs,
   per-LLM outputs, and unchanged individual-run files. Free-text responses are exported
   separately, and categorical aggregates use one binary column per permitted value.
