@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   title: "CAT — Communication Annotation Tool",
 };
 
+// The application shell changes with each deployment. Render it dynamically so
+// shared proxies cannot keep serving HTML that references an obsolete JS bundle.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

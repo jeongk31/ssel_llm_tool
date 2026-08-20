@@ -10,6 +10,22 @@ const nextConfig: NextConfig = {
   // Pin the workspace root to this folder so Turbopack doesn't infer a parent
   // directory (e.g. ~/ via a stray lockfile) and try to scan the whole home dir.
   turbopack: { root: process.cwd() },
+  async headers() {
+    return [
+      {
+        source: "/",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+        ],
+      },
+      {
+        source: "/privacy",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

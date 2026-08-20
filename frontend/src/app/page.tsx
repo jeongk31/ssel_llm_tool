@@ -4270,18 +4270,21 @@ ${PDF_WATERMARK_HTML}
 
       {analyticsConsent === "undecided" && (
         <div className="privacy-consent" role="dialog" aria-modal="true" aria-labelledby="privacy-consent-title">
-          <div>
-            <strong id="privacy-consent-title">Optional usage analytics</strong>
-            <p>
-              If you accept, CAT records a browser identifier, IP-derived location, browser metadata,
-              and basic configuration counts. It never records API keys or dataset contents. If you
-              reject, CAT records only one anonymous visit count with no location or browser identifier.
-              {" "}<a href="/privacy" target="_blank" rel="noopener noreferrer">Read the privacy notice</a>.
-            </p>
-          </div>
-          <div className="privacy-consent-actions">
-            <button className="btn btn-outline" onClick={() => chooseAnalytics("rejected")}>Reject optional analytics</button>
-            <button className="btn btn-primary" onClick={() => chooseAnalytics("accepted")}>Accept optional analytics</button>
+          <div className="privacy-consent-dialog">
+            <div>
+              <strong id="privacy-consent-title">Allow optional location analytics?</strong>
+              <p>
+                If you accept, CAT records your public IP address, approximate IP-derived location,
+                a browser identifier, browser metadata, and basic configuration counts. CAT never
+                records API keys or dataset contents. If you reject, CAT records only one anonymous
+                visit count—without your IP address, location, or browser identifier.
+                {" "}<a href="/privacy" target="_blank" rel="noopener noreferrer">Read the privacy notice</a>.
+              </p>
+            </div>
+            <div className="privacy-consent-actions">
+              <button className="btn btn-outline" onClick={() => chooseAnalytics("rejected")}>No, count anonymously</button>
+              <button className="btn btn-primary" onClick={() => chooseAnalytics("accepted")}>Yes, allow analytics</button>
+            </div>
           </div>
         </div>
       )}
