@@ -12,7 +12,12 @@ function commonHeaders(size: number) {
   return {
     "Accept-Ranges": "bytes",
     "Cache-Control": "public, max-age=86400, must-revalidate",
-    "Content-Type": "video/mp4",
+    // The university's public security proxy withholds video/mp4 responses even
+    // though the same byte ranges work on the local Next.js service. The video
+    // element declares the MP4 source type, while this generic transport type
+    // lets the proxy pass the range response through unchanged.
+    "Content-Type": "application/octet-stream",
+    "Content-Disposition": 'inline; filename="coding-demo.mp4"',
     "Content-Length": String(size),
   };
 }
