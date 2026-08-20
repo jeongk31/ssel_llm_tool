@@ -1,6 +1,6 @@
 # Direct runtime dependencies. Update deliberately, then regenerate requirements.txt
 # with: pip-compile --generate-hashes --strip-extras --output-file=backend/requirements.txt backend/requirements.in
-fastapi==0.135.2
+fastapi==0.141.1
 # Keep FastAPI's current TestClient API free of Starlette 1.6's httpx deprecation.
 starlette==1.0.0
 uvicorn[standard]==0.42.0
