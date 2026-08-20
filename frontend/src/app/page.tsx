@@ -3030,7 +3030,7 @@ ${PDF_WATERMARK_HTML}
           </div>
         </div>
         <div className="topbar-right">
-          <button className="btn btn-ghost btn-xs text-muted" onClick={handleReset}>Reset</button>
+          <button className="btn btn-outline btn-sm topbar-reset-btn" onClick={handleReset}>Reset</button>
           <button className="tour-help-btn" onClick={startTour}>Guided Tour</button>
         </div>
       </nav>
