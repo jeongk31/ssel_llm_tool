@@ -14,8 +14,13 @@ export default function HelpTip({ text }: { text: React.ReactNode }) {
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const left = Math.min(Math.max(r.left + r.width / 2, 130), window.innerWidth - 130);
-    setPos({ top: r.bottom + 8, left });
+    const bubbleWidth = 240;
+    const gap = 10;
+    const fitsRight = r.right + gap + bubbleWidth <= window.innerWidth - 12;
+    const left = fitsRight
+      ? r.right + gap
+      : Math.max(12, r.left - gap - bubbleWidth);
+    setPos({ top: r.top + r.height / 2, left });
   };
   const hide = () => setPos(null);
 
