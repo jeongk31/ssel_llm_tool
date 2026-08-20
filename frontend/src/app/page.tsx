@@ -109,7 +109,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
     targetId: "tour-model-execution", title: "Browser vs. Downloaded Package",
-    body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently uses the first selected provider and model for one call per episode</strong>; experienced users can edit its Python script to change parameters or build a repeated- or multi-model workflow.</p>),
+    body: (<p><strong>Run Coding</strong> uses all configured models and can aggregate their calls. The <strong>downloaded package currently records only the first selected provider and model and uses them for one call per episode</strong>. CAT does not save an API key or the configured tuning settings for package generation; the local script obtains the key at runtime, and experienced users can edit the script to change its parameters.</p>),
   },
   {
     sectionId: "coding-panel-4", panel: 4, section: "Models & Runs",
@@ -3484,7 +3484,7 @@ ${PDF_WATERMARK_HTML}
 
                       <div className="model-execution-note" id="tour-model-execution">
                         <strong>Browser and package execution differ.</strong>
-                        <span><strong>Run Coding</strong> uses all models and runs configured below and requires their API keys. The downloaded package requires only the first provider and model selection—<strong>no API key is needed to generate it</strong>—and makes one call per episode after the local script obtains a key at runtime.</span>
+                        <span><strong>Run Coding</strong> uses all models and runs configured below and requires their API keys. For package generation, CAT does not save an API key or the configured tuning settings; the downloaded package records only the first selected provider and model and makes one call per episode after the local script obtains a key at runtime.</span>
                       </div>
 
                       <div className="model-slots" id="tour-model-slots">

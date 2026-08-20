@@ -50,7 +50,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between “Generate Package” and “Run Coding”?",
-    a: <><strong>Generate Package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. You only need to select its provider and model; no API key is required to generate the package because the script reads <code>CAT_API_KEY</code> or prompts securely at runtime. The script uses the first selected provider and model for one call per episode. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
+    a: <><strong>Generate Package</strong> downloads a ZIP containing the script, three CSV files (source rows, exact preprocessed episodes, and their row map), a README, and requirements. CAT does not save an API key or the configured tuning settings for package generation. The package records only the first selected provider and model, uses them for one call per episode, and reads <code>CAT_API_KEY</code> or prompts securely at runtime. <strong>Run Coding</strong> requires and validates the keys for all configured models, then codes every episode live in the app using all configured models and runs.</>,
   },
   {
     q: "What do the result downloads contain?",
@@ -311,7 +311,7 @@ export default function HowToPage({ onNavigate }: Props) {
 
             <StepSection n={4} title="Models & Runs">
               <div className="howto-warning mb-12">
-                <strong>Execution modes differ.</strong> <strong>Run Coding</strong> uses every configured model and run. The downloaded package currently uses the first selected provider and model for one call per episode; experienced users can modify the generated Python script to change parameters or create a repeated- or multi-model workflow.
+                <strong>Execution modes differ.</strong> <strong>Run Coding</strong> uses every configured model and run. For package generation, CAT does not save an API key or the configured tuning settings. The downloaded package records only the first selected provider and model and uses them for one call per episode; experienced users can modify the generated Python script to change its parameters or create a repeated- or multi-model workflow.
               </div>
               <div className="catgen-field">
                 <span className="catgen-label">Models:</span>

@@ -317,6 +317,7 @@ class UploadLifecycleTests(unittest.TestCase):
             self.assertEqual(row_map.to_dict("records"), [{"source_row": 1, "episode": 1}])
             requirements = package.read("requirements.txt").decode("utf-8")
             self.assertNotIn("openpyxl", requirements.splitlines())
+            self.assertEqual(requirements.splitlines(), ["pandas==2.3.3", "openai==2.29.0"])
 
     def test_package_generation_returns_stable_gone_upload_signal(self):
         payload = {

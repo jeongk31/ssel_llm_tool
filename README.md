@@ -63,7 +63,8 @@ episode, CAT assigns the episode-level codes to each of those rows.
 LLM_TOOL/
 ├── requirements.txt               # Root Python dependency entry point
 ├── backend/
-│   ├── requirements.txt           # Backend Python dependencies
+│   ├── requirements.in            # Direct Python dependencies
+│   ├── requirements.txt           # Fully pinned Python dependency lock
 │   ├── app/
 │   │   ├── main.py                # FastAPI application and registered routes
 │   │   ├── config.py              # Environment-based application settings
@@ -154,6 +155,11 @@ npm run build
 The GitHub Actions workflow also compiles the backend, runs its tests, checks required
 application routes, audits production frontend dependencies, and builds the frontend.
 
+To update Python dependencies deliberately, edit `backend/requirements.in`, regenerate
+the lock with `python -m pip install pip-tools==7.6.1` followed by
+`pip-compile --generate-hashes --strip-extras --output-file=backend/requirements.txt backend/requirements.in`,
+and run the complete test suite before committing the result.
+
 ## Generated local package
 
 The generated ZIP contains a Python script, `source_rows.csv`, `episodes.csv`,
@@ -162,7 +168,8 @@ contains an API key; its script reads `CAT_API_KEY` or requests the key securely
 runtime.
 
 The current generated package uses the first configured provider and model and makes
-one call per episode. Multi-model execution and repeated calls are available through
+one call per episode. CAT does not save an API key or the configured tuning settings
+for package generation. Multi-model execution and repeated calls are available through
 the browser workflow.
 
 ## Data handling

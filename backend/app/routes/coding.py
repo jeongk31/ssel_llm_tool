@@ -593,13 +593,13 @@ async def generate_script(request: Request, req: GenerateScriptRequest):
 
 
 def _package_requirements(provider: str) -> str:
-    packages = ["pandas"]
+    packages = ["pandas==2.3.3"]
     if provider == "anthropic":
-        packages.append("anthropic")
+        packages.append("anthropic==0.86.0")
     elif provider == "gemini":
-        packages.append("google-genai")
+        packages.append("google-genai==1.68.0")
     else:
-        packages.append("openai")
+        packages.append("openai==2.29.0")
     return "\n".join(packages) + "\n"
 
 
@@ -736,10 +736,11 @@ To also create the compact one-row-per-episode CSV, run:
 
 This additionally writes `{safe_stem}_coded_episodes.csv`.
 
-The generated script uses the first provider and model selected in CAT and
-makes one call per episode. To change model parameters or create a repeated- or
-multi-model workflow, edit the generated Python script. The browser's `Run
-Coding` workflow uses all configured models and runs.
+For package generation, CAT does not save an API key or the configured tuning
+settings. The generated script records the first provider and model selected in
+CAT and makes one call per episode. To change model parameters or create a
+repeated- or multi-model workflow, edit the generated Python script. The
+browser's `Run Coding` workflow uses all configured models and runs.
 
 The generated script does not contain your API key. When it starts, it reads the
 `CAT_API_KEY` environment variable or securely prompts you to enter the key.

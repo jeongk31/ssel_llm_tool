@@ -2,7 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.services.coding_runner import _get_provider_instance
+import pandas as pd
+
+from app.services.coding_runner import _get_provider_instance, run_coding
 from app.services.providers.anthropic_provider import AnthropicProvider
 from app.services.providers.openai_provider import OpenAICompatibleProvider
 from app.services.providers import get_provider
@@ -62,6 +64,46 @@ class AnthropicParameterTests(unittest.IsolatedAsyncioTestCase):
         request = create.await_args.kwargs
         self.assertEqual(request["temperature"], 0.2)
         self.assertNotIn("top_p", request)
+
+
+class CodingRunnerParameterTests(unittest.IsolatedAsyncioTestCase):
+    async def _run_with_slot(self, slot):
+        provider = SimpleNamespace(complete=AsyncMock(return_value={"response": '{"flag": 1}'}))
+        with patch("app.services.coding_runner._get_provider_instance", return_value=provider):
+            updates = [
+                update
+                async for update in run_coding(
+                    df=pd.DataFrame([{"message": "hello"}]),
+                    message_column="message",
+                    experiment_instructions="",
+                    coding_instructions="",
+                    codebook=[{"label": "flag", "type": "binary", "aggregation": "mode"}],
+                    model_slots=[{
+                        "provider": "openai",
+                        "model": "test-model",
+                        "api_key": "test-key",
+                        **slot,
+                    }],
+                    max_retries=1,
+                )
+            ]
+        self.assertTrue(any(update.get("type") == "complete" for update in updates))
+        return provider.complete.await_args.kwargs["params"]
+
+    async def test_explicit_zero_sampling_values_reach_provider(self):
+        params = await self._run_with_slot({
+            "temperature": 0,
+            "top_p": 0,
+            "max_tokens": 64,
+            "generation_config": {"temperature": 0.7, "topP": 0.8, "maxOutputTokens": 128},
+        })
+
+        self.assertEqual(params, {"temperature": 0, "top_p": 0, "max_tokens": 64})
+
+    async def test_omitted_sampling_values_use_provider_defaults(self):
+        params = await self._run_with_slot({})
+
+        self.assertEqual(params, {"temperature": 0.1, "top_p": 1.0, "max_tokens": 2048})
 
 
 if __name__ == "__main__":

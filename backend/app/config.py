@@ -1,9 +1,11 @@
 import json
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     # Required. Must be a PostgreSQL connection string (set via the DATABASE_URL
     # environment variable). There is no SQLite fallback — a missing/invalid value
     # is a hard startup error.
@@ -17,10 +19,6 @@ class Settings(BaseSettings):
     admin_password: str = ""
     # Max upload size in MB (override via MAX_UPLOAD_MB env var).
     max_upload_mb: int = 25
-
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
 
     @property
     def cors_origins_list(self) -> list[str]:

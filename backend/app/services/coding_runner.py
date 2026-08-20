@@ -159,6 +159,11 @@ def _parse_llm_json(text: str) -> dict | None:
     return None
 
 
+def _first_not_none(*values: Any) -> Any:
+    """Return the first explicitly supplied value, preserving valid zeroes."""
+    return next((value for value in values if value is not None), None)
+
+
 def _aggregate_results(
     all_coded: list[dict[str, Any]],
     labels: list[str],
@@ -230,28 +235,18 @@ async def run_coding(
     # Build provider instances
     if model_slots and len(model_slots) > 0:
         providers = []
-        # for slot in model_slots:
-        #     p = _get_provider_instance(slot["provider"], slot["model"], slot["api_key"])
-        #     # providers.append({"instance": p, "label": f"{slot['provider']}/{slot['model']}"})
-        #     providers.append({
-        #         "instance": p,
-        #         "label": f"{slot['provider']}/{slot['model']}",
-        #         "params": {
-        #             "temperature":  slot.get("temperature"),
-        #             "top_p":        slot.get("top_p"),
-        #             "max_tokens":   slot.get("max_tokens") or slot.get("max_completion_tokens"),
-        #             # Gemini sends these nested — flatten them out here
-        #             **(slot.get("generation_config") or {}),
-        #         },
-        #     })
         for slot in model_slots:
             p = _get_provider_instance(slot["provider"], slot["model"], slot["api_key"])
-            
+
             gen_cfg = slot.get("generation_config") or {}
             params = {
-                "temperature": slot.get("temperature") or gen_cfg.get("temperature"),
-                "top_p":       slot.get("top_p") or gen_cfg.get("topP"),
-                "max_tokens":  slot.get("max_tokens") or slot.get("max_completion_tokens") or gen_cfg.get("maxOutputTokens"),
+                "temperature": _first_not_none(slot.get("temperature"), gen_cfg.get("temperature")),
+                "top_p": _first_not_none(slot.get("top_p"), gen_cfg.get("topP")),
+                "max_tokens": _first_not_none(
+                    slot.get("max_tokens"),
+                    slot.get("max_completion_tokens"),
+                    gen_cfg.get("maxOutputTokens"),
+                ),
             }
             # Strip Nones so defaults in complete() kick in for unset params
             params = {k: v for k, v in params.items() if v is not None}
