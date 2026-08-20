@@ -39,3 +39,7 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Framework-generated AI assistant guidance (recreated by Next.js)
+frontend/AGENTS.md
+frontend/CLAUDE.md

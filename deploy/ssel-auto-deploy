@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly APP_DIR="/opt/ssel-chat"
-readonly APP_USER="jkl499"
-readonly BRANCH="main"
-readonly REPOSITORY="jeongk31/ssel_llm_tool"
-readonly STATE_DIR="/var/lib/ssel-chat-deploy"
+readonly APP_DIR="${CAT_APP_DIR:?Set CAT_APP_DIR in the deployment environment file}"
+readonly APP_USER="${CAT_APP_USER:?Set CAT_APP_USER in the deployment environment file}"
+readonly BRANCH="${CAT_BRANCH:-main}"
+readonly REPOSITORY="${CAT_REPOSITORY:-jeongk31/ssel_llm_tool}"
+readonly STATE_DIR="${CAT_STATE_DIR:-/var/lib/ssel-chat-deploy}"
 readonly DEPLOYED_SHA_FILE="${STATE_DIR}/deployed-sha"
 readonly LOCK_FILE="/run/lock/ssel-chat-deploy.lock"
 

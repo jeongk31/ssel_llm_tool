@@ -33,9 +33,7 @@ def _async_url(url: str) -> str:
     if not url:
         raise RuntimeError(
             "DATABASE_URL is not set. This app requires a PostgreSQL database. "
-            "Set DATABASE_URL to your Postgres connection string "
-            "(on Railway: add a Postgres service, then set DATABASE_URL=${{Postgres.DATABASE_URL}} "
-            "on the backend service and redeploy)."
+            "Set DATABASE_URL to the PostgreSQL connection string supplied by the deployment environment."
         )
     if "${" in url:
         raise RuntimeError(
@@ -71,7 +69,7 @@ async def init_db():
 
 
 def _drop_legacy_tables(conn):
-    """The app only needs `usage_events`; drop unused legacy tables if present."""
+    """Drop explicitly identified tables left by removed prototype features."""
     for table in ("pipeline_runs", "projects"):
         conn.exec_driver_sql(f"DROP TABLE IF EXISTS {table}")
 

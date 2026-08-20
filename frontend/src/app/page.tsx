@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import CategoryGenerator from "@/app/tools/CategoryGeneratorTool";
-import Instructions, { EXAMPLE_INSTRUCTIONS, PAPER_CITATION_SHORT, ContactForm } from "@/app/tools/HowToPage";
+import Image from "next/image";
+import Instructions, { EXAMPLE_INSTRUCTIONS, ContactForm } from "@/app/tools/HowToPage";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -594,24 +594,6 @@ interface ValidationReport {
   problematicIndices: number[];
 }
 
-interface MetricResult {
-  estimate: number | null;
-  se: number | null;
-  ci_lower: number | null;
-  ci_upper: number | null;
-}
-
-interface VariableMetrics {
-  variable: string;
-  variable_type: string;
-  n_items: number;
-  n_raters: number;
-  percent_agreement: MetricResult;
-  cohens_kappa: MetricResult;
-  gwets_ac1: MetricResult;
-  error?: string;
-}
-
 // ── Single-row validation ─────────────────────────────────────────────────────
 
 function checkRow(
@@ -927,17 +909,19 @@ function buildSlotPayload(slot: ModelSlot) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<"coding" | "catgen" | "analysis" | "instructions" | "contact">("coding");
+  const [activeTool, setActiveTool] = useState<"coding" | "instructions" | "contact">("coding");
+  const [analyticsConsent, setAnalyticsConsent] = useState<"loading" | "undecided" | "accepted" | "rejected">("loading");
   const [tourOpen, setTourOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
+    if (analyticsConsent !== "accepted" && analyticsConsent !== "rejected") return;
     try {
       if (localStorage.getItem("coding_welcome_dismissed") === "never") return;
     } catch {}
     const t = setTimeout(() => setShowWelcome(true), 600);
     return () => clearTimeout(t);
-  }, []);
+  }, [analyticsConsent]);
 
   const dismissWelcome = (mode: "tour" | "later" | "never" | "guide") => {
     if (mode === "never") {
@@ -1077,10 +1061,6 @@ export default function Home() {
   const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
   const duplicateCodeLabels = useMemo(() => duplicateExpandedKeys(expandedVars), [expandedVars]);
 
-  // Row filter
-  const [rowFilter, setRowFilter] = useState("");
-  const [rowFilterError, setRowFilterError] = useState("");
-
   // Model slots
   const [modelSlots, setModelSlots] = useState<ModelSlot[]>([{ ...EMPTY_SLOT }]);
   const [runsPerModel, setRunsPerModel] = useState(1);
@@ -1112,16 +1092,6 @@ export default function Home() {
   const [resultExportConfig, setResultExportConfig] = useState<ResultExportConfig | null>(null);
   const codedRowsRef = useRef<CodedRow[]>([]);
 
-  // Analysis state
-  const [analysisRaters, setAnalysisRaters] = useState<{ name: string; type: "human" | "llm"; uploadResult: UploadResult | null; uploading: boolean }[]>([]);
-  const [episodeColumns, setEpisodeColumns] = useState<string[]>([]);
-  const [analysisVariables, setAnalysisVariables] = useState<string[]>([]);
-  const [crossCheckResult, setCrossCheckResult] = useState<{ ok: boolean; common_episodes: number; per_rater: { name: string; total_episodes: number }[]; warnings: string[]; missing_columns: { rater: string; missing?: string[]; error?: string }[] } | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<Record<string, unknown> | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisError, setAnalysisError] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
-
   // Console
   const [consoleLogs, setConsoleLogs] = useState<{ time: string; level: "info" | "warn" | "error"; msg: string }[]>([]);
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -1152,14 +1122,9 @@ export default function Home() {
     });
   };
 
-  const openAllPanels = () => {
-    setSkipPanelAnim(true);
-    setOpenPanels(new Set([1, 2, 3, 4]));
-  };
-
   useEffect(() => { codedRowsRef.current = codedRows; }, [codedRows]);
 
-  // ── Usage analytics (metadata only — never keys or data) ────────────────────
+  // ── Consent-gated usage analytics (never keys or dataset content) ───────────
   // The backend sits behind the Next.js proxy, so it can't see the visitor's real
   // IP. Resolve the client's public IP once (client-side) and send it in the payload.
   const clientIpRef = useRef<string | null>(null);
@@ -1172,12 +1137,24 @@ export default function Home() {
     } catch { clientIpRef.current = ""; }
     return clientIpRef.current ?? "";
   };
-  const trackEvent = async (event: "visit" | "run") => {
+  const trackEvent = async (event: "visit" | "run", choice = analyticsConsent) => {
     try {
+      if (choice === "rejected") {
+        if (event === "visit") {
+          fetch("/api/analytics/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: "visit", consent: "rejected" }),
+            keepalive: true,
+          }).catch(() => {});
+        }
+        return;
+      }
+      if (choice !== "accepted") return;
       let sid = localStorage.getItem("ssel_session_id");
       if (!sid) { sid = (crypto.randomUUID?.() ?? String(Date.now() + Math.random())); localStorage.setItem("ssel_session_id", sid); }
       const client_ip = await getClientIp();
-      const body: Record<string, unknown> = { event, session_id: sid, client_ip };
+      const body: Record<string, unknown> = { event, consent: "accepted", session_id: sid, client_ip };
       if (event === "run") {
         body.providers = modelSlots.map((s) => s.provider);
         body.models = modelSlots.map((s) => s.model);
@@ -1193,12 +1170,27 @@ export default function Home() {
     } catch {}
   };
 
-  // Count one visit per browser session.
   useEffect(() => {
-    try { if (sessionStorage.getItem("ssel_visited")) return; sessionStorage.setItem("ssel_visited", "1"); } catch {}
-    trackEvent("visit");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    try {
+      const saved = localStorage.getItem("cat_analytics_consent");
+      setAnalyticsConsent(saved === "accepted" || saved === "rejected" ? saved : "undecided");
+    } catch {
+      setAnalyticsConsent("undecided");
+    }
   }, []);
+
+  // Count one visit per browser session only after the visitor makes a choice.
+  useEffect(() => {
+    if (analyticsConsent !== "accepted" && analyticsConsent !== "rejected") return;
+    try { if (sessionStorage.getItem("ssel_visited")) return; sessionStorage.setItem("ssel_visited", "1"); } catch {}
+    void trackEvent("visit", analyticsConsent);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyticsConsent]);
+
+  const chooseAnalytics = (choice: "accepted" | "rejected") => {
+    try { localStorage.setItem("cat_analytics_consent", choice); } catch {}
+    setAnalyticsConsent(choice);
+  };
 
   // ── Persistence: keep the whole coding setup across refreshes ────────────────
   const PERSIST_KEY = "chat_coding_v1";
@@ -1842,7 +1834,7 @@ export default function Home() {
     setEmptyMessageHandling("ignore");
     setExperimentInstructions(TOUR_SAMPLE_INSTRUCTIONS);
     setCodebook(tourSampleCodebook());
-    setModelSlots([{ ...EMPTY_SLOT, apiKey: "sk-example-not-a-real-key" }]);
+    setModelSlots([{ ...EMPTY_SLOT, apiKey: "guided-tour-placeholder" }]);
     setRunsPerModel(3);
     setSenderVerificationSignature(JSON.stringify({
       identityColumn: "Speaker",
@@ -1881,7 +1873,8 @@ export default function Home() {
       setRunErrors(s.runErrors as string[]);
       setRunComplete(s.runComplete as { total_rows: number; coded_rows: number; file_path: string } | null);
       setValidationReport(s.validationReport as ValidationReport | null);
-      setActiveTool(s.activeTool as "coding" | "catgen" | "analysis" | "instructions");
+      const restoredTool = s.activeTool;
+      setActiveTool(restoredTool === "instructions" || restoredTool === "contact" ? restoredTool : "coding");
       setUploadAvailability(s.uploadAvailability as UploadAvailability);
       setUploadMeta(s.uploadMeta as StoredUploadMetadata | null);
       setUploadError(s.uploadError as string);
@@ -2042,8 +2035,7 @@ export default function Home() {
     duplicateCodeLabels.length === 0 &&
     sendersOk &&
     currentContextConflicts.length === 0 &&
-    modelSlots.length > 0 &&
-    !rowFilterError
+    modelSlots.length > 0
   );
   const canGeneratePackage = Boolean(
     codingSetupReady &&
@@ -2231,8 +2223,6 @@ export default function Home() {
     setValidationReport(null);
     setResultDownloadError("");
     setResultExportConfig(buildResultExportConfig());
-    setAnalysisResults(null);
-    setAnalysisError("");
     setGenerateError("");
     setConsoleLogs([]);
     setRightView("run");
@@ -2790,82 +2780,6 @@ ${PDF_WATERMARK_HTML}
     showToast("Run summary opened — save as PDF from the print dialog");
   };
 
-  // ── Analysis handlers ─────────────────────────────────────────────────────
-
-  const handleAnalysisRaterUpload = async (idx: number, file: File) => {
-    setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, uploading: true } : r));
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/coding/upload", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Upload failed");
-      const data: UploadResult = await res.json();
-      setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, uploadResult: data, uploading: false } : r));
-    } catch {
-      setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, uploading: false } : r));
-    }
-  };
-
-  const handleCrossCheck = async () => {
-    setAnalysisLoading(true);
-    setAnalysisError("");
-    setCrossCheckResult(null);
-    try {
-      const res = await fetch("/api/agreement/cross-check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          raters: analysisRaters.filter((r) => r.uploadResult).map((r) => ({
-            file_id: r.uploadResult!.file_id, name: r.name, rater_type: r.type,
-          })),
-          episode_columns: episodeColumns,
-          analysis_variables: analysisVariables,
-        }),
-      });
-      if (!res.ok) { const err = await res.json().catch(() => ({ detail: "Failed" })); throw new Error(err.detail || "Cross-check failed"); }
-      setCrossCheckResult(await res.json());
-    } catch (e: unknown) {
-      setAnalysisError(e instanceof Error ? e.message : "Cross-check failed");
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
-
-  const handleComputeAnalysis = async () => {
-    setAnalysisLoading(true);
-    setAnalysisError("");
-    setAnalysisResults(null);
-    try {
-      const res = await fetch("/api/agreement/compute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          raters: analysisRaters.filter((r) => r.uploadResult).map((r) => ({
-            file_id: r.uploadResult!.file_id, name: r.name, rater_type: r.type,
-          })),
-          episode_columns: episodeColumns,
-          analysis_variables: analysisVariables,
-        }),
-      });
-      if (!res.ok) { const err = await res.json().catch(() => ({ detail: "Failed" })); throw new Error(err.detail || "Computation failed"); }
-      setAnalysisResults(await res.json());
-    } catch (e: unknown) {
-      setAnalysisError(e instanceof Error ? e.message : "Computation failed");
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
-
-  const allRaterColumns = (() => {
-    const uploaded = analysisRaters.filter((r) => r.uploadResult);
-    if (uploaded.length === 0) return [];
-    let cols = new Set(uploaded[0].uploadResult!.columns);
-    for (const r of uploaded.slice(1)) {
-      cols = new Set([...cols].filter((c) => r.uploadResult!.columns.includes(c)));
-    }
-    return [...cols];
-  })();
-
   const handleRerun = async (indices: number[] | null) => {
     if (!uploadResult || uploadAvailability !== "ready" || resultDownloadKind) return;
     const previousDetailedPath = indices ? runComplete?.file_path : null;
@@ -3029,79 +2943,23 @@ ${PDF_WATERMARK_HTML}
     setIdentifierColumns([]); setIdentityColumn(""); setOrderColumn(""); setOrderDirection("asc");
     setContextColumns([]); setContextDescriptions({}); setRowsAsUnits(false); setEmptyMessageHandling("ignore");
     setContextConflictAlert(null);
-    setCodebook([newEntry()]); setSenderVerificationSignature(""); setRowFilter(""); setRowFilterError("");
+    setCodebook([newEntry()]); setSenderVerificationSignature("");
     setModelSlots([{ ...EMPTY_SLOT }]); setRunsPerModel(1);
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError(""); setValidationReport(null);
     setResultExportConfig(null);
     setResultDownloadKind(null); setResultDownloadError("");
-    setAnalysisRaters([]); setAnalysisResults(null); setAnalysisError("");
-    setCrossCheckResult(null); setEpisodeColumns([]); setAnalysisVariables([]);
     setConsoleLogs([]); setRightView("script"); setExpandedTable(null);
     setOpenPanels(new Set([1]));
     if (fileRef.current) fileRef.current.value = "";
     showToast("All fields cleared");
   };
 
-  // ── Row filter ────────────────────────────────────────────────────────────
-
-  const parseRowFilter = (input: string, maxRow: number): { indices: number[]; error: string } => {
-    const trimmed = input.trim();
-    if (!trimmed) return { indices: [], error: "" };
-    if (!/^[\d,\-\s]+$/.test(trimmed)) return { indices: [], error: "Invalid characters. Use numbers, commas, and dashes (e.g. 1-5, 8, 12-15)." };
-    const parts = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
-    const indices: Set<number> = new Set();
-    for (const part of parts) {
-      if (part.includes("-")) {
-        const [startStr, endStr, ...rest] = part.split("-");
-        if (rest.length > 0 || !startStr || !endStr) return { indices: [], error: `Invalid range: "${part}". Use format like 1-5.` };
-        const start = parseInt(startStr, 10); const end = parseInt(endStr, 10);
-        if (isNaN(start) || isNaN(end)) return { indices: [], error: `Invalid range: "${part}".` };
-        if (start > end) return { indices: [], error: `Invalid range: "${part}". Start must be ≤ end.` };
-        if (start < 1 || end > maxRow) return { indices: [], error: `Range ${part} is out of bounds (1–${maxRow}).` };
-        for (let i = start; i <= end; i++) indices.add(i - 1);
-      } else {
-        const num = parseInt(part, 10);
-        if (isNaN(num)) return { indices: [], error: `Invalid number: "${part}".` };
-        if (num < 1 || num > maxRow) return { indices: [], error: `Row ${num} is out of bounds (1–${maxRow}).` };
-        indices.add(num - 1);
-      }
-    }
-    return { indices: Array.from(indices).sort((a, b) => a - b), error: "" };
-  };
-
-  const handleRowFilterChange = (value: string) => {
-    setRowFilter(value);
-    if (!value.trim()) { setRowFilterError(""); return; }
-    const maxRow = uploadResult?.row_count ?? 0;
-    if (maxRow === 0) { setRowFilterError("Upload a file first."); return; }
-    const { error } = parseRowFilter(value, maxRow);
-    setRowFilterError(error);
-  };
-
   // ── Derived values ────────────────────────────────────────────────────────
 
   const codebookLabels = expandedVars.map((v) => v.key);
   const visibleRows = codedRows.slice(-5);
-  const parsedFilter = uploadResult ? parseRowFilter(rowFilter, uploadResult.row_count) : { indices: [], error: "" };
-  const filterActive = rowFilter.trim() !== "" && !parsedFilter.error;
-
-  // ── Agreement helpers ─────────────────────────────────────────────────────
-
-  const _metricColor = (v: number | null) => {
-    if (v == null) return "";
-    if (v >= 0.8) return "metric-good";
-    if (v >= 0.6) return "metric-mid";
-    return "metric-bad";
-  };
-  const _fmtMetric = (m: MetricResult) => {
-    if (m.estimate == null) return "—";
-    const est = m.estimate.toFixed(3);
-    if (m.ci_lower != null && m.ci_upper != null) return `${est} (${m.ci_lower.toFixed(2)}–${m.ci_upper.toFixed(2)})`;
-    return est;
-  };
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -3117,7 +2975,7 @@ ${PDF_WATERMARK_HTML}
               aria-label="Visit the NYU Abu Dhabi website"
               title="NYU Abu Dhabi"
             >
-              <img src="/nyuad_logo.avif" alt="NYU Abu Dhabi" className="topbar-logo topbar-logo-nyuad" />
+              <Image src="/nyuad_logo.avif" alt="NYU Abu Dhabi" width={138} height={24} className="topbar-logo topbar-logo-nyuad" priority />
             </a>
             <div className="topbar-sep" aria-hidden="true" />
             <a
@@ -3128,7 +2986,7 @@ ${PDF_WATERMARK_HTML}
               aria-label="Visit the Social Science Experimental Laboratory website"
               title="Social Science Experimental Laboratory"
             >
-              <img src="/ssel_logo.png" alt="SSELab" className="topbar-logo" />
+              <Image src="/ssel_logo.png" alt="SSELab" width={110} height={24} className="topbar-logo" priority />
             </a>
           </div>
           <div className="topbar-sep" />
@@ -3146,6 +3004,7 @@ ${PDF_WATERMARK_HTML}
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn CAT</button>
             <button className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`} onClick={() => setActiveTool("contact")}>Contact Us</button>
+            <button className="topbar-tab" onClick={() => { setShowWelcome(false); setAnalyticsConsent("undecided"); }}>Privacy</button>
           </div>
         </div>
         <div className="topbar-right">
@@ -3462,7 +3321,7 @@ ${PDF_WATERMARK_HTML}
                           onChange={(e) => setExperimentInstructions(e.target.value)}
                           placeholder={EXAMPLE_INSTRUCTIONS}
                         />
-                        <p className="hint">Provide context about what the data represents and the research goals. Have a PDF with figures or tables? Use <strong>Import from PDF</strong> to convert it to text first. <span className="cite-note">Example shown is from {PAPER_CITATION_SHORT}.</span></p>
+                        <p className="hint">Provide context about what the data represents and the research goals. Have a PDF with figures or tables? Use <strong>Import from PDF</strong> to convert it to text first. <span className="cite-note">The placeholder is a constructed example.</span></p>
                       </div>
                     </div></div></div>
                   </div>
@@ -3917,242 +3776,7 @@ ${PDF_WATERMARK_HTML}
             </div>
           </div>
 
-          {activeTool === "catgen" && <CategoryGenerator providers={PROVIDERS} />}
-
-          {/* Analysis page */}
-          <div className={`tool-page ${activeTool === "analysis" ? "active" : ""}`}>
-            <div className="tool-header">
-              <div>
-                <h1>Results Analysis</h1>
-                <p className="tool-desc">Upload rater files, configure episode matching, and compute inter-rater agreement.</p>
-              </div>
-            </div>
-            <div className="tool-body">
-              <div className="ana-section">
-                <div className="ana-section-h">Upload Raters</div>
-                <div className="ana-groups">
-                  <div className="ana-group">
-                    <div className="ana-group-head">
-                      <span className="ana-group-label">Human Coders</span>
-                      <select
-                        className="ana-count-sel"
-                        value={analysisRaters.filter((r) => r.type === "human").length}
-                        onChange={(e) => {
-                          const n = Number(e.target.value);
-                          const cur = analysisRaters.filter((r) => r.type === "human");
-                          const others = analysisRaters.filter((r) => r.type !== "human");
-                          if (n > cur.length) {
-                            const add = Array.from({ length: n - cur.length }, (_, i) => ({ name: `Human ${cur.length + i + 1}`, type: "human" as const, uploadResult: null, uploading: false }));
-                            setAnalysisRaters([...others, ...cur, ...add]);
-                          } else { setAnalysisRaters([...others, ...cur.slice(0, n)]); }
-                          setCrossCheckResult(null); setAnalysisResults(null);
-                        }}
-                      >
-                        {[0,1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                    </div>
-                    {analysisRaters.filter((r) => r.type === "human").map((rater) => {
-                      const idx = analysisRaters.indexOf(rater);
-                      return (
-                        <div key={idx} className="ana-rater-row">
-                          <input className="ana-rater-name" value={rater.name} onChange={(e) => setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, name: e.target.value } : r))} />
-                          {rater.uploadResult ? (
-                            <span className="tag">{rater.uploadResult.file_name} ({rater.uploadResult.row_count} rows)</span>
-                          ) : (
-                            <label className="btn btn-outline btn-xs ana-upload-label">
-                              <input type="file" accept=".csv,.xlsx,.xls" className="input-hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAnalysisRaterUpload(idx, f); }} />
-                              {rater.uploading ? <><span className="spinner" /> Uploading</> : "Upload"}
-                            </label>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="ana-group">
-                    <div className="ana-group-head">
-                      <span className="ana-group-label">LLM Results</span>
-                      <select
-                        className="ana-count-sel"
-                        value={analysisRaters.filter((r) => r.type === "llm").length}
-                        onChange={(e) => {
-                          const n = Number(e.target.value);
-                          const cur = analysisRaters.filter((r) => r.type === "llm");
-                          const others = analysisRaters.filter((r) => r.type !== "llm");
-                          if (n > cur.length) {
-                            const add = Array.from({ length: n - cur.length }, (_, i) => ({ name: `LLM ${cur.length + i + 1}`, type: "llm" as const, uploadResult: null, uploading: false }));
-                            setAnalysisRaters([...others, ...cur, ...add]);
-                          } else { setAnalysisRaters([...others, ...cur.slice(0, n)]); }
-                          setCrossCheckResult(null); setAnalysisResults(null);
-                        }}
-                      >
-                        {[0,1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                    </div>
-                    {analysisRaters.filter((r) => r.type === "llm").map((rater) => {
-                      const idx = analysisRaters.indexOf(rater);
-                      return (
-                        <div key={idx} className="ana-rater-row">
-                          <input className="ana-rater-name" value={rater.name} onChange={(e) => setAnalysisRaters((prev) => prev.map((r, i) => i === idx ? { ...r, name: e.target.value } : r))} />
-                          {rater.uploadResult ? (
-                            <span className="tag">{rater.uploadResult.file_name} ({rater.uploadResult.row_count} rows)</span>
-                          ) : (
-                            <label className="btn btn-outline btn-xs ana-upload-label">
-                              <input type="file" accept=".csv,.xlsx,.xls" className="input-hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAnalysisRaterUpload(idx, f); }} />
-                              {rater.uploading ? <><span className="spinner" /> Uploading</> : "Upload"}
-                            </label>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {allRaterColumns.length > 0 && (
-                <div className="ana-section mt-16">
-                  <div className="ana-section-h">Configuration</div>
-                  <div className="ana-config">
-                    <div className="f">
-                      <label>Episode Columns (Define a Unique Row)</label>
-                      <div className="ana-col-picker">
-                        {allRaterColumns.map((col) => (
-                          <label key={col} className="ana-check">
-                            <input type="checkbox" checked={episodeColumns.includes(col)} onChange={(e) => {
-                              if (e.target.checked) { setEpisodeColumns((prev) => [...prev, col]); setAnalysisVariables((prev) => prev.filter((v) => v !== col)); }
-                              else setEpisodeColumns((prev) => prev.filter((c) => c !== col));
-                              setCrossCheckResult(null); setAnalysisResults(null);
-                            }} />
-                            {col}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="f mt-12">
-                      <label>Analysis Variables</label>
-                      <div className="ana-col-picker">
-                        {allRaterColumns.filter((c) => !episodeColumns.includes(c)).map((col) => (
-                          <label key={col} className="ana-check">
-                            <input type="checkbox" checked={analysisVariables.includes(col)} onChange={(e) => {
-                              if (e.target.checked) setAnalysisVariables((prev) => [...prev, col]);
-                              else setAnalysisVariables((prev) => prev.filter((v) => v !== col));
-                              setCrossCheckResult(null); setAnalysisResults(null);
-                            }} />
-                            {col}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {episodeColumns.length > 0 && analysisVariables.length > 0 && analysisRaters.filter((r) => r.uploadResult).length >= 2 && (
-                <div className="ana-section mt-16">
-                  <div className="ana-actions">
-                    <button className="btn btn-outline btn-sm" disabled={analysisLoading} onClick={handleCrossCheck}>
-                      {analysisLoading && !analysisResults ? <><span className="spinner" /> Checking</> : "Cross-check files"}
-                    </button>
-                    <button className="btn btn-primary btn-sm" disabled={analysisLoading || !crossCheckResult?.ok} onClick={handleComputeAnalysis}>
-                      {analysisLoading && !crossCheckResult ? <><span className="spinner" /> Computing</> : "Compute Agreement"}
-                    </button>
-                  </div>
-                  {analysisError && <p className="enc-error mt-8">{analysisError}</p>}
-                  {crossCheckResult && (
-                    <div className={`ana-crosscheck mt-12 ${crossCheckResult.ok ? "ok" : "fail"}`}>
-                      {crossCheckResult.ok ? (
-                        <>
-                          <div className="ana-cc-line ok"><strong>{crossCheckResult.common_episodes}</strong> episodes in common across all raters</div>
-                          {crossCheckResult.warnings.map((w, i) => <div key={i} className="ana-cc-line warn">{w}</div>)}
-                        </>
-                      ) : (
-                        crossCheckResult.missing_columns.map((mc, i) => (
-                          <div key={i} className="ana-cc-line fail">{mc.rater}: {mc.error || `missing columns: ${mc.missing?.join(", ")}`}</div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                  {analysisResults && (() => {
-                    const res = analysisResults as Record<string, unknown>;
-                    const sections = [
-                      { key: "inter_human", label: "Inter-Human" },
-                      { key: "inter_llm", label: "Inter-LLM" },
-                      { key: "human_vs_llm", label: "Human vs LLM" },
-                    ];
-                    return (
-                      <div className="ana-results mt-16">
-                        <div className="ana-section-h">Overall Agreement</div>
-                        <div className="ana-overall-grid">
-                          {sections.map(({ key, label }) => {
-                            const data = res[key] as { overall: Record<string, { estimate: number | null }> } | null;
-                            if (!data) return <div key={key} className="ana-overall-card muted"><div className="ana-oc-label">{label}</div><div className="ana-oc-na">N/A (need 2+ raters)</div></div>;
-                            const ov = data.overall;
-                            return (
-                              <div key={key} className="ana-overall-card">
-                                <div className="ana-oc-label">{label}</div>
-                                <div className="ana-oc-metrics">
-                                  <div className="ana-oc-metric">
-                                    <span className="ana-oc-val">{ov.percent_agreement?.estimate != null ? `${(ov.percent_agreement.estimate * 100).toFixed(1)}%` : "—"}</span>
-                                    <span className="ana-oc-key">Agreement</span>
-                                  </div>
-                                  <div className="ana-oc-metric">
-                                    <span className={`ana-oc-val ${_metricColor(ov.cohens_kappa?.estimate ?? null)}`}>{ov.cohens_kappa?.estimate != null ? ov.cohens_kappa.estimate.toFixed(3) : "—"}</span>
-                                    <span className="ana-oc-key">Kappa</span>
-                                  </div>
-                                  <div className="ana-oc-metric">
-                                    <span className={`ana-oc-val ${_metricColor(ov.gwets_ac1?.estimate ?? null)}`}>{ov.gwets_ac1?.estimate != null ? ov.gwets_ac1.estimate.toFixed(3) : "—"}</span>
-                                    <span className="ana-oc-key">AC1</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <button className="btn btn-ghost btn-xs mt-12" onClick={() => setDetailsOpen((p) => !p)}>
-                          {detailsOpen ? "Hide details" : "Show details (per variable, per pair)"}
-                        </button>
-                        {detailsOpen && sections.map(({ key, label }) => {
-                          const data = res[key] as { per_pair: Record<string, Record<string, { percent_agreement: MetricResult; cohens_kappa: MetricResult; gwets_ac1: MetricResult; n_items: number }>>; pairs: string[] } | null;
-                          if (!data) return null;
-                          return (
-                            <div key={key} className="ana-detail-section mt-12">
-                              <div className="ana-detail-label">{label}</div>
-                              {data.pairs.map((pair) => (
-                                <div key={pair} className="ana-detail-pair">
-                                  <div className="ana-detail-pair-label">{pair}</div>
-                                  <table className="tbl tbl-compact">
-                                    <thead>
-                                      <tr><th>Variable</th><th className="tc">Items</th><th className="tc">% Agree</th><th className="tc">Kappa</th><th className="tc">AC1</th></tr>
-                                    </thead>
-                                    <tbody>
-                                      {analysisVariables.map((v) => {
-                                        const m = data.per_pair[pair]?.[v];
-                                        if (!m) return <tr key={v}><td>{v}</td><td className="tc text-muted" colSpan={4}>—</td></tr>;
-                                        return (
-                                          <tr key={v}>
-                                            <td className="fw-600">{v}</td>
-                                            <td className="tc text-muted">{m.n_items}</td>
-                                            <td className="tc">{m.percent_agreement.estimate != null ? `${(m.percent_agreement.estimate * 100).toFixed(1)}%` : "—"}</td>
-                                            <td className={`tc ${_metricColor(m.cohens_kappa.estimate)}`}>{_fmtMetric(m.cohens_kappa)}</td>
-                                            <td className={`tc ${_metricColor(m.gwets_ac1.estimate)}`}>{_fmtMetric(m.gwets_ac1)}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {activeTool === "instructions" && <Instructions onNavigate={(tool) => setActiveTool(tool)} />}
+          {activeTool === "instructions" && <Instructions />}
 
           {activeTool === "contact" && (
             <div className="tool-page active">
@@ -4643,6 +4267,24 @@ ${PDF_WATERMARK_HTML}
       )}
 
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+
+      {analyticsConsent === "undecided" && (
+        <div className="privacy-consent" role="dialog" aria-modal="true" aria-labelledby="privacy-consent-title">
+          <div>
+            <strong id="privacy-consent-title">Optional usage analytics</strong>
+            <p>
+              If you accept, CAT records a browser identifier, IP-derived location, browser metadata,
+              and basic configuration counts. It never records API keys or dataset contents. If you
+              reject, CAT records only one anonymous visit count with no location or browser identifier.
+              {" "}<a href="/privacy" target="_blank" rel="noopener noreferrer">Read the privacy notice</a>.
+            </p>
+          </div>
+          <div className="privacy-consent-actions">
+            <button className="btn btn-outline" onClick={() => chooseAnalytics("rejected")}>Reject optional analytics</button>
+            <button className="btn btn-primary" onClick={() => chooseAnalytics("accepted")}>Accept optional analytics</button>
+          </div>
+        </div>
+      )}
 
       <GuidedTour
         open={tourOpen}

@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r backend/requirements.txt
 
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install pip-audit==2.10.1
+          python -m pip_audit -r backend/requirements.txt --disable-pip --progress-spinner off
+
       - name: Compile backend
         run: python -m compileall -q backend/app
 
@@ -45,22 +50,27 @@ jobs:
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
         run: |
           python - <<'PY'
-          from app.routes import coding, generate
+          from app.main import app
 
-          paths = {
-              route.path
-              for router in (coding.router, generate.router)
-              for route in router.routes
-              if hasattr(route, "path")
-          }
+          # Inspect the resolved OpenAPI routes. Recent FastAPI/Starlette versions
+          # retain included routers as nested objects in app.routes.
+          paths = set(app.openapi()["paths"])
           required = {
-              "/coding/run-stream",
-              "/coding/upload-status/{file_id}",
-              "/generate/categories-stream",
+              "/api/coding/run-stream",
+              "/api/coding/upload-status/{file_id}",
           }
           missing = required - paths
           if missing:
               raise SystemExit(f"Missing required routes: {sorted(missing)}")
+          deferred = {
+              "/api/files/upload",
+              "/api/generate/categories-stream",
+              "/api/agreement/cross-check",
+              "/api/agreement/compute",
+          }
+          unexpectedly_active = deferred & paths
+          if unexpectedly_active:
+              raise SystemExit(f"Deferred routes are active: {sorted(unexpectedly_active)}")
           PY
 
   frontend:
@@ -83,6 +93,9 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint frontend
+        run: npm run lint
 
       - name: Build frontend
         env:

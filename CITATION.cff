@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use CAT in research, please cite the accompanying paper."
+title: "CAT: An LLM-based Tool for Content Analysis in Experimental Economics"
+type: software
+authors:
+  - family-names: "Baranski"
+    given-names: "Andrzej"
+    email: "a.baranski@nyu.edu"
+  - family-names: "Cooper"
+    given-names: "David J."
+    email: "david-j-cooper@uiowa.edu"
+  - family-names: "Lee"
+    given-names: "Jeong Kyu"
+    email: "jkl499@nyu.edu"
+repository-code: "https://github.com/jeongk31/ssel_llm_tool"
+url: "https://ssel.chatkit.nyuad.nyu.edu/"
+abstract: "A browser-based tool for LLM-assisted content analysis of communication data."
+preferred-citation:
+  type: unpublished
+  title: "CAT: An LLM-based Tool for Content Analysis in Experimental Economics"
+  authors:
+    - family-names: "Baranski"
+      given-names: "Andrzej"
+    - family-names: "Cooper"
+      given-names: "David J."
+    - family-names: "Lee"
+      given-names: "Jeong Kyu"
+  year: 2026

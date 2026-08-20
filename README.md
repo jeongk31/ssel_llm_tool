@@ -9,38 +9,29 @@ Researchers can upload a dataset, define communication episodes, create a coding
 manual, provide experimental context, run one or more LLMs, review validation results,
 and download coded data without writing application code.
 
-## Main features
-
-- Upload CSV or Excel (`.csv`, `.xlsx`, or `.xls`) datasets.
-- Map source columns to `Message`, `Episode Identifier`, `Sender`, `Order`, and
-  `Context` roles.
-- Group multiple source rows into communication episodes while retaining the link
-  between every episode and its original rows.
-- Define binary, categorical, numeric, and free-text coding variables.
-- Code variables once per episode or separately for each detected sender.
-- Add definitions, permitted values, examples, and study-specific context to the
-  coding manual.
-- Enter experimental instructions directly or convert a PDF into editable text with
-  a supported document-capable model.
-- Run supported models from OpenAI, Google Gemini, DeepSeek, Anthropic Claude, and
-  xAI Grok.
-- Repeat model calls and aggregate results separately for each coding variable.
-- Monitor episode-level progress, inspect validation issues, and selectively rerun
-  affected episodes.
-- Download a source-row CSV, an optional episode-level CSV, and detailed aggregate
-  and call-level results.
-- Generate a standalone local-execution package without embedding an API key.
-
 ## Coding workflow
 
-1. Upload the source dataset.
-2. Map columns to the roles CAT uses to construct communication episodes.
-3. Review the preprocessed episode-level data.
-4. Create the coding manual and choose how repeated responses are aggregated.
-5. Add the experimental instructions and other relevant context.
-6. Configure the provider, model, parameters, and number of calls.
-7. Run the coding task or generate a standalone package.
-8. Review validation results and download the coded data.
+The guided tour uses a small, constructed dataset; it does not contain participant
+data.
+
+1. Upload a CSV or Excel (`.csv`, `.xlsx`, or `.xls`) source dataset.
+2. Map source columns to CAT's `Message`, `Episode Identifier`, `Sender`, `Order`,
+   and `Context` roles. CAT groups source rows into communication episodes while
+   retaining the link between every episode and its original rows.
+3. Review and, if needed, download the preprocessed episode-level data.
+4. Create binary, categorical, numeric, or free-text coding variables. Variables can
+   be coded once per episode or separately for each detected sender and can include
+   definitions, permitted values, examples, and study-specific context.
+5. Enter experimental instructions directly or convert a PDF into editable text with
+   a supported document-capable model.
+6. Configure models from OpenAI, Google Gemini, DeepSeek, Anthropic Claude, or xAI
+   Grok, including model parameters and the number of calls.
+7. Run the task in the browser or generate a standalone local-execution package that
+   does not contain an API key. Browser runs can use multiple models and repeated calls,
+   with aggregation selected separately for each coding variable.
+8. Monitor episode-level progress, inspect validation issues, selectively rerun affected
+   episodes, and download the source-row CSV, optional episode-level CSV, and detailed
+   aggregate and call-level results.
 
 The primary coded CSV preserves the order and columns of the uploaded source data and
 appends the final coding variables. If several source rows form one communication
@@ -57,6 +48,11 @@ episode, CAT assigns the episode-level codes to each of those rows.
 | Model integrations | OpenAI-compatible APIs, Google Gemini, and Anthropic |
 | Styling | Project-specific CSS |
 
+The public production service runs on a university-hosted Red Hat Enterprise Linux
+server behind Nginx and HTTPS. The frontend and backend run as systemd-managed services,
+and PostgreSQL provides the persistent metadata store. Hostnames, credentials, internal
+paths, and administrative details are intentionally excluded from public documentation.
+
 ## Repository structure
 
 ```text
@@ -69,7 +65,7 @@ LLM_TOOL/
 │   │   ├── main.py                # FastAPI application and registered routes
 │   │   ├── config.py              # Environment-based application settings
 │   │   ├── models/database.py     # Usage and contact-message database models
-│   │   ├── routes/                # Coding, exports, instructions, and analysis APIs
+│   │   ├── routes/                # Coding, exports, instructions, analytics, and contact APIs
 │   │   └── services/              # LLM execution, aggregation, and result generation
 │   └── tests/                     # Backend test suite
 ├── frontend/
@@ -160,18 +156,6 @@ the lock with `python -m pip install pip-tools==7.6.1` followed by
 `pip-compile --generate-hashes --strip-extras --output-file=backend/requirements.txt backend/requirements.in`,
 and run the complete test suite before committing the result.
 
-## Generated local package
-
-The generated ZIP contains a Python script, `source_rows.csv`, `episodes.csv`,
-`row_map.csv`, a package-specific README, and a requirements file. The package never
-contains an API key; its script reads `CAT_API_KEY` or requests the key securely at
-runtime.
-
-The current generated package uses the first configured provider and model and makes
-one call per episode. CAT does not save an API key or the configured tuning settings
-for package generation. Multi-model execution and repeated calls are available through
-the browser workflow.
-
 ## Data handling
 
 - API keys are kept in memory only for the requested operation.
@@ -183,8 +167,13 @@ the browser workflow.
 - The browser stores the current project configuration and a local copy of the uploaded
   dataset so work can be restored after a refresh. Resetting the project clears this
   browser copy.
-- CAT stores operational usage metadata and contact-form submissions in PostgreSQL. It
-  does not store dataset contents or API keys in that database.
+- CAT asks for consent before collecting optional usage analytics. Acceptance enables
+  the disclosed browser, IP-derived location, and configuration metadata. Rejection
+  records only one anonymous visit count without a location or browser identifier.
+- CAT stores consented operational metadata and contact-form submissions in PostgreSQL.
+  It does not store dataset contents or API keys in that database.
+
+See the complete [privacy notice](PRIVACY.md).
 
 Researchers are responsible for determining whether sending their data to the selected
 LLM provider complies with participant consent, institutional requirements, data-use
@@ -205,6 +194,18 @@ themselves establish that a classification is correct.
 ## Citation
 
 If CAT is used in research, please cite the accompanying paper, *CAT: An LLM-based Tool
-for Content Analysis in Experimental Economics*. The complete bibliographic citation
-and archival release identifier will be added when the paper and software release are
-published.
+for Content Analysis in Experimental Economics*, by Andrzej Baranski, David J. Cooper,
+and Jeong Kyu Lee. The repository's [`CITATION.cff`](CITATION.cff) provides machine-
+readable citation metadata; the DOI will be added when one is assigned.
+
+## Project policies
+
+- [Contributing](CONTRIBUTING.md)
+- [Security reporting](SECURITY.md)
+- [Privacy](PRIVACY.md)
+- [Changelog](CHANGELOG.md)
+- [Deferred features](DEFERRED_FEATURES.md)
+
+The project license remains pending confirmation by the authorized NYU office. Until a
+license is added, copyright law reserves reuse rights beyond those otherwise provided
+by law.

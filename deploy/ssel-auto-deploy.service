@@ -5,13 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+EnvironmentFile=/etc/ssel-chat-deploy.conf
 ExecStart=/usr/local/sbin/ssel-auto-deploy
 
 # Restrict the root service while retaining the paths and systemd access needed
 # to update the application and restart its two services.
 PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=/opt/ssel-chat /var/lib/ssel-chat-deploy /run/lock
+ProtectSystem=true
 NoNewPrivileges=true
 
 [Install]

@@ -106,6 +106,23 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
     event = str(payload.get("event", ""))[:20]
     if event not in ("visit", "run"):
         return {"ok": False}
+    consent = str(payload.get("consent", ""))
+
+    # A rejected visitor contributes only one anonymous visit record. Do not
+    # inspect, geolocate, or persist request metadata, browser identifiers, or
+    # run configuration for this path.
+    if consent == "rejected":
+        if event != "visit":
+            return {"ok": False}
+        db.add(UsageEvent(event="visit"))
+        await db.commit()
+        return {"ok": True, "anonymous": True}
+
+    # Detailed analytics are accepted only when the client explicitly records
+    # the visitor's affirmative choice.
+    if consent != "accepted":
+        return {"ok": False}
+
     providers = payload.get("providers") if isinstance(payload.get("providers"), list) else []
     models = payload.get("models") if isinstance(payload.get("models"), list) else []
 
@@ -120,8 +137,6 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
         except ValueError:
             pass
     geo = await _geo_lookup(ip)
-    cc_header = request.headers.get("cf-ipcountry") or request.headers.get("x-vercel-ip-country") or ""
-
     ev = UsageEvent(
         event=event,
         session_id=str(payload.get("session_id", ""))[:64],
@@ -136,7 +151,7 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
         per_sender=bool(payload.get("per_sender", False)),
         ip=ip[:64],
         country=(geo.get("country") or "")[:80],
-        country_code=(geo.get("country_code") or cc_header)[:4],
+        country_code=(geo.get("country_code") or "")[:4],
         city=(geo.get("city") or "")[:120],
         region=(geo.get("region") or "")[:120],
         user_agent=(request.headers.get("user-agent") or "")[:400],

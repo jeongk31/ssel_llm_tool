@@ -1,4 +1,3 @@
-import asyncio
 import io
 import json
 import os
@@ -17,8 +16,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.ratelimit import limiter
-from app.routes import agreement, coding
-from app.services import category_runner
+from app.routes import coding
 
 
 class UploadLifecycleTests(unittest.TestCase):
@@ -36,7 +34,6 @@ class UploadLifecycleTests(unittest.TestCase):
         app.state.limiter = limiter
         app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
         app.include_router(coding.router, prefix="/api")
-        app.include_router(agreement.router, prefix="/api")
         self.client = TestClient(app)
 
     def tearDown(self):
@@ -199,68 +196,6 @@ class UploadLifecycleTests(unittest.TestCase):
         self.assertEqual(gone.json()["code"], "UPLOAD_GONE")
         self.assertFalse(gone.json()["ok"])
         self.assertEqual(gone.headers["x-cat-error-code"], "UPLOAD_GONE")
-
-    def test_category_generator_recovers_optional_sample_after_cache_clear(self):
-        file_id, _ = self._store_csv()
-        coding._uploaded_files.clear()
-        prompts: list[str] = []
-
-        class FakeProvider:
-            async def complete(self, prompt, **kwargs):
-                prompts.append(prompt)
-                return {"response": '[{"label":"cooperation"}]'}
-
-        async def collect_updates():
-            updates = []
-            with (
-                patch.object(category_runner, "_get_provider_instance", return_value=FakeProvider()),
-                patch.object(category_runner.asyncio, "sleep", return_value=None),
-            ):
-                async for update in category_runner.run_category_generation(
-                    provider="openai",
-                    model="example-model",
-                    api_key="placeholder",
-                    goals="Find cooperation",
-                    hypothesis="",
-                    output_type="classify",
-                    target_count=1,
-                    domain="",
-                    references="",
-                    file_id=file_id,
-                    message_column="message",
-                ):
-                    updates.append(update)
-            return updates
-
-        updates = asyncio.run(collect_updates())
-
-        self.assertIn('"text": "hello"', prompts[0])
-        self.assertEqual(updates[-1], {"type": "complete", "total": 1})
-
-    def test_agreement_cross_check_recovers_raters_after_cache_clear(self):
-        first_id, _ = coding._store_uploaded_file(
-            b"episode,label\n1,yes\n2,no\n", "human.csv", "csv"
-        )
-        second_id, _ = coding._store_uploaded_file(
-            b"episode,label\n1,yes\n2,no\n", "llm.csv", "csv"
-        )
-        coding._uploaded_files.clear()
-
-        response = self.client.post(
-            "/api/agreement/cross-check",
-            json={
-                "raters": [
-                    {"file_id": first_id, "name": "Human", "rater_type": "human"},
-                    {"file_id": second_id, "name": "LLM", "rater_type": "llm"},
-                ],
-                "episode_columns": ["episode"],
-                "analysis_variables": ["label"],
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["ok"])
-        self.assertEqual(response.json()["common_episodes"], 2)
 
     def test_run_stream_rejects_stale_upload_before_streaming_200(self):
         gone_id = uuid.uuid4().hex
