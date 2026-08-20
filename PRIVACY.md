@@ -24,6 +24,13 @@ security and operations.
 The choice is stored in the browser as `cat_analytics_consent`. Visitors can select
 **Privacy** in CAT's navigation to change their choice for future events.
 
+## Demonstration video
+
+The demonstration video is delivered on demand from CAT's public GitHub repository.
+The browser does not request the video until the visitor presses play. GitHub receives
+the connection information needed to deliver the video, which may include the visitor's
+IP address and browser request metadata.
+
 ## Research data and API keys
 
 CAT does not store API keys in its database, browser storage, generated packages, or

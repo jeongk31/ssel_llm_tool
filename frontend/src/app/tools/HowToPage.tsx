@@ -73,8 +73,8 @@ function DemoVideo() {
     <div className="ana-section mt-16">
       <div className="ana-section-h">Demo Video</div>
       <div className="tool-desc">
-        <video controls preload="metadata" playsInline style={{ width: "100%", borderRadius: 8 }}>
-          <source src="/demo-video" type="video/mp4" />
+        <video controls preload="none" playsInline style={{ width: "100%", borderRadius: 8 }}>
+          <source src="https://raw.githubusercontent.com/jeongk31/ssel_llm_tool/main/frontend/public/demos/coding-demo.mp4" type="video/mp4" />
           Your browser does not support embedded video.
         </video>
         <p className="howto-cite mt-12">This walkthrough demonstrates the published CAT coding workflow.</p>

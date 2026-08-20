@@ -37,6 +37,14 @@ export default function PrivacyPage() {
         <strong> Privacy</strong> in CAT&apos;s navigation to change the choice for future events.
       </p>
 
+      <h2>Demonstration video</h2>
+      <p>
+        The demonstration video is delivered on demand from CAT&apos;s public GitHub repository.
+        Your browser does not request the video until you press play. GitHub receives the
+        connection information needed to deliver the video, which may include your IP address
+        and browser request metadata.
+      </p>
+
       <h2>Research data and API keys</h2>
       <p>
         CAT does not store API keys in its database, browser storage, generated packages, or
