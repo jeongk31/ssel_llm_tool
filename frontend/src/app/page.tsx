@@ -86,7 +86,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
     targetId: "tour-cb-aggregation", title: "Aggregate Repeated Calls",
-    body: (<p>Choose mode or mean for numeric and binary outputs. When mode has no unique winner, CAT uses the median; with an even number of responses, this is the average of the two middle values. Categorical responses are expanded into one binary column per permitted value before this rule is applied. Free-text responses are not aggregated and are exported separately with every model/run response.</p>),
+    body: (<p>Choose mode or mean for numeric and binary outputs. When mode has no unique winner, CAT uses the median; with an even number of responses, this is the average of the two middle values. For aggregation, CAT converts each categorical value into its own binary output column (for example, <code>option_a</code>, <code>option_b</code>, and <code>option_c</code>) and applies the selected rule to each column. CAT does not aggregate free-text variables or include them in the main aggregate file; it exports every text response in a separate text-results CSV.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
@@ -4174,12 +4174,17 @@ ${PDF_WATERMARK_HTML}
                           <p>How results from multiple models or runs are combined. A tied numeric mode uses the median (the average of the two middle values when the count is even).</p>
                         </div>
                         {entry.type === "text" ? (
-                          <span className="text-muted text-sm">Not available for text; every response is exported separately.</span>
+                          <span className="text-muted text-sm">Text cannot be aggregated. CAT excludes it from the main aggregate file and exports every model/run response in a separate text-results CSV.</span>
                         ) : (
-                          <select value={entry.aggregation} onChange={(e) => updateCodebook(idx, "aggregation", e.target.value)}>
-                            <option value="mode">Majority vote (mode)</option>
-                            <option value="mean">Average (mean)</option>
-                          </select>
+                          <div className="cb-aggregation-control">
+                            <select value={entry.aggregation} onChange={(e) => updateCodebook(idx, "aggregation", e.target.value)}>
+                              <option value="mode">Majority vote (mode)</option>
+                              <option value="mean">Average (mean)</option>
+                            </select>
+                            {entry.type === "categorical" && (
+                              <span className="text-muted text-sm">For aggregation, each permitted value becomes a separate binary column, and CAT applies this rule to each column.</span>
+                            )}
+                          </div>
                         )}
                       </div>
 
@@ -4321,7 +4326,7 @@ ${PDF_WATERMARK_HTML}
               <button className="btn btn-primary" onClick={() => dismissWelcome("tour")}>Take the Tour</button>
               <button className="btn btn-outline" onClick={() => dismissWelcome("later")}>Maybe Later</button>
             </div>
-            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>Or Read the Full Guide →</button>
+            <button className="welcome-link" onClick={() => dismissWelcome("guide")}>Or View Demo Video →</button>
             <button className="welcome-never" onClick={() => dismissWelcome("never")}>Don&apos;t Show Again</button>
           </div>
         </div>
