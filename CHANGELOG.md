@@ -5,6 +5,10 @@ first archival release version.
 
 ## Unreleased
 
+- Reworked repeated-call exports into one complete-results ZIP with overall outputs,
+  per-LLM outputs, and unchanged individual-run files. Free-text responses are exported
+  separately, and categorical aggregates use one binary column per permitted value.
+- Changed tied numeric modes to use the median and documented the even-count rule.
 - Added consent-gated usage analytics with an anonymous count-only rejection path.
 - Added the BSD 3-Clause project license and machine-readable license metadata.
 - Removed category-generation and legacy upload endpoints from the publication scope.

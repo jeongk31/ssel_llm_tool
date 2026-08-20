@@ -86,7 +86,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-cb-editor", section: "Codebook Editor", open: "codebook",
     targetId: "tour-cb-aggregation", title: "Aggregate Repeated Calls",
-    body: (<p>Choose how repeated model calls are combined for this variable. Use <strong>majority vote</strong> for labels and free text, or <strong>average</strong> for numeric outputs. Each variable can use a different method.</p>),
+    body: (<p>Choose mode or mean for numeric and binary outputs. When mode has no unique winner, CAT uses the median; with an even number of responses, this is the average of the two middle values. Categorical responses are expanded into one binary column per permitted value before this rule is applied. Free-text responses are not aggregated and are exported separately with every model/run response.</p>),
   },
   {
     sectionId: "coding-panel-2", panel: 2, section: "Codebook",
@@ -130,7 +130,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-results-panel", targetId: "tour-result-downloads", section: "Results",
     title: "Review and Download Results",
-    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. The primary <strong>coded dataset</strong> CSV keeps every original row and column, repeating an episode&apos;s final codes across its corresponding source rows. An optional <strong>episode-level</strong> CSV provides one row per preprocessed episode. Detailed model and run outputs remain available separately; a selective rerun replaces the earlier call records for the affected episodes.</p>),
+    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. A single download contains the complete results. With one model call, CAT returns the coded source-row CSV as before. With repeated or multi-model coding, CAT returns a ZIP containing up to two overall files (aggregated non-text results and unaggregated text responses), the corresponding files for each LLM, and every original model/run result.</p>),
   },
 ];
 
@@ -174,6 +174,30 @@ function expandCodebook(codebook: CodebookEntry[], participants: string[]): Expa
       for (const p of participants) out.push({ key: `${label}_${p}`, type: e.type, coded_values: cv });
     } else {
       out.push({ key: label, type: e.type, coded_values: cv });
+    }
+  }
+  return out;
+}
+
+const aggregateValueSuffix = (value: string) =>
+  value.trim().replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._-]+|[._-]+$/g, "") || "blank";
+
+function expandAggregateResults(codebook: CodebookEntry[], participants: string[]): ExpandedVar[] {
+  const out: ExpandedVar[] = [];
+  for (const entry of codebook) {
+    const label = entry.label.trim();
+    if (!label || entry.type === "text") continue;
+    const bases = entry.level === "sender" && participants.length > 0
+      ? participants.map((participant) => `${label}_${participant}`)
+      : [label];
+    for (const base of bases) {
+      if (entry.type === "categorical") {
+        for (const value of entry.values.map((item) => item.value.trim()).filter(Boolean)) {
+          out.push({ key: `${base}_${aggregateValueSuffix(value)}`, type: "numeric", coded_values: "" });
+        }
+      } else {
+        out.push({ key: base, type: "numeric", coded_values: "" });
+      }
     }
   }
   return out;
@@ -537,7 +561,7 @@ interface CodedRow {
   coded: Record<string, unknown>;
 }
 
-type ResultDownloadKind = "primary" | "episodes" | "detailed";
+type ResultDownloadKind = "results";
 
 interface ResultExportConfig {
   messageColumn: string;
@@ -1059,7 +1083,9 @@ export default function Home() {
     [uploadResult, identifierColumns, contextColumns, rowsAsUnits],
   );
   const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
+  const aggregateVars = useMemo(() => expandAggregateResults(codebook, participants), [codebook, participants]);
   const duplicateCodeLabels = useMemo(() => duplicateExpandedKeys(expandedVars), [expandedVars]);
+  const duplicateAggregateLabels = useMemo(() => duplicateExpandedKeys(aggregateVars), [aggregateVars]);
 
   // Model slots
   const [modelSlots, setModelSlots] = useState<ModelSlot[]>([{ ...EMPTY_SLOT }]);
@@ -1090,6 +1116,14 @@ export default function Home() {
   const [resultDownloadKind, setResultDownloadKind] = useState<ResultDownloadKind | null>(null);
   const [resultDownloadError, setResultDownloadError] = useState("");
   const [resultExportConfig, setResultExportConfig] = useState<ResultExportConfig | null>(null);
+  const aggregationActive = (resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel) > 1;
+  const resultVars = useMemo(() => {
+    const resultCodebook = resultExportConfig?.codebook ?? codebook;
+    const resultParticipants = resultExportConfig?.participants ?? participants;
+    return aggregationActive
+      ? expandAggregateResults(resultCodebook, resultParticipants)
+      : expandCodebook(resultCodebook, resultParticipants);
+  }, [aggregationActive, codebook, participants, resultExportConfig]);
   const codedRowsRef = useRef<CodedRow[]>([]);
 
   // Console
@@ -1337,6 +1371,10 @@ export default function Home() {
       showToast("Every output label must be unique");
       return;
     }
+    if (duplicateAggregateLabels.length > 0) {
+      showToast("Categorical values must create unique aggregate labels");
+      return;
+    }
     if (hasSenderVar && !sendersOk) {
       showToast(senderConfigurationMessage);
       return;
@@ -1361,7 +1399,7 @@ export default function Home() {
   useEffect(() => {
     if (runComplete) setRunFinishedAt(new Date().toISOString());
     if (runComplete) {
-      const report = validateCodedRows(codedRowsRef.current, expandedVars);
+      const report = validateCodedRows(codedRowsRef.current, resultVars);
       setValidationReport(report);
       if (report.problematicIndices.length === 0) {
         log("info", "Validation passed: all coded episodes are within the expected ranges.");
@@ -2033,6 +2071,7 @@ export default function Home() {
     experimentInstructions.trim() &&
     codebook.every((e) => e.label.trim() && e.type) &&
     duplicateCodeLabels.length === 0 &&
+    duplicateAggregateLabels.length === 0 &&
     sendersOk &&
     currentContextConflicts.length === 0 &&
     modelSlots.length > 0
@@ -2344,7 +2383,7 @@ export default function Home() {
               } else if (msg.type === "row") {
                 const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
                 setCodedRows((prev) => [...prev, row]);
-                const issues = checkRow(row.index, row.coded, expandedVars);
+                const issues = checkRow(row.index, row.coded, resultVars);
                 for (const issue of issues) {
                   const detail = issue.issueType === "api_error"
                     ? `Episode ${row.index + 1}: ${issue.value}`
@@ -2422,10 +2461,11 @@ export default function Home() {
     setRunning(false);
   };
 
-  const handleExportResults = async (kind: "primary" | "episodes") => {
+  const handleExportResults = async () => {
     if (!runComplete || !uploadResult || running || generating || resultDownloadKind) return;
     const exportConfig = resultExportConfig ?? buildResultExportConfig();
-    setResultDownloadKind(kind);
+    const bundled = exportConfig.modelCallCount > 1;
+    setResultDownloadKind("results");
     setResultDownloadError("");
     const uploadRecovery = { used: false };
     try {
@@ -2447,39 +2487,21 @@ export default function Home() {
             // Send only the latest aggregate value for each episode. Selective
             // reruns replace entries in codedRows by index before this export.
             coded_rows: codedRows.map(({ index, coded }) => ({ index, coded })),
-            kind,
+            kind: "primary",
+            result_path: runComplete.file_path,
+            model_call_count: exportConfig.modelCallCount,
           }),
         });
         return parseDownloadArtifact(
           response,
-          "csv",
-          kind === "primary" ? `${fallbackStem}_coded.csv` : `${fallbackStem}_coded_episodes.csv`,
+          bundled ? "zip" : "csv",
+          bundled ? `${fallbackStem}_coded_results.zip` : `${fallbackStem}_coded.csv`,
         );
       }, { recovery: uploadRecovery });
       downloadBlob(artifact.blob, artifact.filename);
-      showToast(kind === "primary" ? "Coded dataset downloaded" : "Episode-level results downloaded");
+      showToast(bundled ? "Complete results package downloaded" : "Coded dataset downloaded");
     } catch (error) {
       setResultDownloadError(error instanceof Error ? error.message : "Could not download the results.");
-    } finally {
-      setResultDownloadKind(null);
-    }
-  };
-
-  const handleDownloadDetailedResults = async () => {
-    const modelCallCount = resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel;
-    if (!runComplete || running || generating || modelCallCount <= 1 || resultDownloadKind) return;
-    setResultDownloadKind("detailed");
-    setResultDownloadError("");
-    try {
-      const response = await fetch(`/api/coding/download?path=${encodeURIComponent(runComplete.file_path)}`, {
-        method: "GET",
-        cache: "no-store",
-      });
-      const artifact = await parseDownloadArtifact(response, "zip", "coded_model_run_outputs.zip");
-      downloadBlob(artifact.blob, artifact.filename);
-      showToast("Detailed model and run outputs downloaded");
-    } catch (error) {
-      setResultDownloadError(error instanceof Error ? error.message : "Could not download the detailed outputs.");
     } finally {
       setResultDownloadKind(null);
     }
@@ -2494,14 +2516,14 @@ export default function Home() {
       const level = e.level;
       if (e.values.length === 0) {
         return [{
-          label: e.label, type: e.type, level, aggregation: e.aggregation, definition: e.definition,
+          label: e.label, type: e.type, level, aggregation: e.type === "text" ? "not aggregated" : e.aggregation, definition: e.definition,
           value: "", value_definition: "", examples: "", context: "",
         }];
       }
       return e.values
         .filter((v) => v.value.trim() || v.definition.trim())
         .map((v) => ({
-          label: e.label, type: e.type, level, aggregation: e.aggregation, definition: e.definition,
+          label: e.label, type: e.type, level, aggregation: e.type === "text" ? "not aggregated" : e.aggregation, definition: e.definition,
           value: v.value, value_definition: v.definition, examples: v.examples, context: v.context,
         }));
     });
@@ -2511,7 +2533,7 @@ export default function Home() {
         label: e.label,
         type: e.type,
         level: e.level,
-        aggregation: e.aggregation,
+        aggregation: e.type === "text" ? "not aggregated" : e.aggregation,
         definition: e.definition,
         values: e.values
           .filter((v) => v.value.trim() || v.definition.trim())
@@ -2537,7 +2559,7 @@ export default function Home() {
       const lines = entries.map((e, i) => {
         const head = [
           `${i + 1}. ${e.label} (${e.type}, ${e.level === "sender" ? "per sender" : "per episode"})`,
-          `   Aggregation: ${e.aggregation === "mean" ? "average (mean)" : "majority vote (mode)"}`,
+          `   Aggregation: ${e.type === "text" ? "not aggregated; every response is exported separately" : e.aggregation === "mean" ? "average (mean)" : "majority vote (mode)"}`,
           `   Definition: ${e.definition}`,
         ];
         const valueLines = e.values
@@ -2580,7 +2602,7 @@ export default function Home() {
             <div class="var-head">
               <span class="var-num">${i + 1}</span>
               <span class="var-label">${htmlEsc(e.label)}</span>
-              <span class="var-meta">${htmlEsc(e.type)} · ${e.level === "sender" ? "per sender" : "per episode"} · ${e.aggregation === "mean" ? "average" : "majority vote"}</span>
+              <span class="var-meta">${htmlEsc(e.type)} · ${e.level === "sender" ? "per sender" : "per episode"} · ${e.type === "text" ? "not aggregated" : e.aggregation === "mean" ? "average" : "majority vote"}</span>
             </div>
             <p class="var-def">${htmlEsc(e.definition)}</p>
             ${valueRows ? `
@@ -2636,7 +2658,7 @@ export default function Home() {
         .replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
       const DASH = "---";
       const blocks = entries.map((e) => {
-        const meta = `${e.type}, ${e.level === "sender" ? "per sender" : "per episode"}, ${e.aggregation === "mean" ? "average" : "majority vote"}`;
+        const meta = `${e.type}, ${e.level === "sender" ? "per sender" : "per episode"}, ${e.type === "text" ? "not aggregated" : e.aggregation === "mean" ? "average" : "majority vote"}`;
         const header = `\\multicolumn{3}{@{}l}{\\textbf{${esc(e.label)}} \\quad \\textit{(${esc(meta)})}} \\\\`;
         const def = e.definition.trim() ? `\\multicolumn{3}{@{}p{\\linewidth}}{${esc(e.definition)}} \\\\` : "";
         const vals = e.values.filter((v) => v.value.trim() || v.definition.trim());
@@ -2712,7 +2734,7 @@ ${blocks}
     const summaryCodebook = summaryConfig.codebook.filter((e) => e.label.trim());
     const cbRows = summaryCodebook.map((e) => {
       const vals = TYPE_HAS_VALUES(e.type) ? e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") : "—";
-      return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${e.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)"}</td><td>${htmlEsc(vals)}</td></tr>`;
+      return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${e.type === "text" ? "Not aggregated" : e.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)"}</td><td>${htmlEsc(vals)}</td></tr>`;
     });
 
     const kv = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`;
@@ -2863,7 +2885,7 @@ ${PDF_WATERMARK_HTML}
                 } else {
                   setCodedRows((prev) => [...prev, row]);
                 }
-                const issues = checkRow(row.index, row.coded, expandedVars);
+                const issues = checkRow(row.index, row.coded, resultVars);
                 for (const issue of issues) {
                   const detail = issue.issueType === "api_error"
                     ? `Episode ${row.index + 1}: ${issue.value}`
@@ -2958,7 +2980,7 @@ ${PDF_WATERMARK_HTML}
 
   // ── Derived values ────────────────────────────────────────────────────────
 
-  const codebookLabels = expandedVars.map((v) => v.key);
+  const codebookLabels = resultVars.map((v) => v.key);
   const visibleRows = codedRows.slice(-5);
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -3222,7 +3244,7 @@ ${PDF_WATERMARK_HTML}
                             codebook.map((e, i) => e.label.trim() ? (
                               <div className="cb-sum-row" key={i}>
                                 <span className="cb-sum-label">{e.label}</span>
-                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per episode"} · {e.aggregation === "mean" ? "average" : "majority vote"}</span>
+                                <span className="cb-sum-meta">{e.type} · {e.level === "sender" ? "per sender" : "per episode"} · {e.type === "text" ? "not aggregated" : e.aggregation === "mean" ? "average" : "majority vote"}</span>
                                 <span className="cb-sum-vals">{
                                   e.type === "numeric" ? "number"
                                   : e.type === "text" ? "free text"
@@ -3237,6 +3259,11 @@ ${PDF_WATERMARK_HTML}
                         {duplicateCodeLabels.length > 0 && (
                           <p className="enc-error mt-8" role="alert">
                             Output labels must be unique. Rename the conflicting variable or sender labels: {duplicateCodeLabels.join(", ")}.
+                          </p>
+                        )}
+                        {duplicateAggregateLabels.length > 0 && (
+                          <p className="enc-error mt-8" role="alert">
+                            Categorical values create duplicate aggregate columns. Rename the conflicting values or variables: {duplicateAggregateLabels.join(", ")}.
                           </p>
                         )}
                         {hasSenderVar && (
@@ -3654,48 +3681,24 @@ ${PDF_WATERMARK_HTML}
                         )}
                         <div className="results-download-primary">
                           <div>
-                            <div className="results-download-title">Coded Dataset</div>
-                            <p className="results-download-helper">Includes every original row and column. When messages were grouped, each episode&apos;s final codes are repeated across all corresponding original rows.</p>
+                            <div className="results-download-title">Complete Results</div>
+                            <p className="results-download-helper">
+                              {aggregationActive
+                                ? "Downloads one ZIP containing overall aggregates, text responses when present, per-LLM aggregates, and every original LLM/run result."
+                                : "Downloads the coded dataset with every original row and column, including all coded variable types."}
+                            </p>
                           </div>
                           <button
                             className="btn btn-primary"
                             disabled={resultDownloadKind !== null || generating}
-                            aria-busy={resultDownloadKind === "primary"}
-                            onClick={() => handleExportResults("primary")}
+                            aria-busy={resultDownloadKind === "results"}
+                            onClick={handleExportResults}
                           >
-                            {resultDownloadKind === "primary" ? <><span className="spinner" /> Preparing CSV</> : "Download Coded Dataset (.csv)"}
+                            {resultDownloadKind === "results"
+                              ? <><span className="spinner" /> Preparing</>
+                              : aggregationActive ? "Download All Results (.zip)" : "Download Results (.csv)"}
                           </button>
                         </div>
-                        <div className="results-download-secondary">
-                          <div>
-                            <div className="results-download-title">Episode-Level Results <span className="results-optional">Optional</span></div>
-                            <p className="results-download-helper">A compact CSV with one row per preprocessed communication episode.</p>
-                          </div>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            disabled={resultDownloadKind !== null || generating}
-                            aria-busy={resultDownloadKind === "episodes"}
-                            onClick={() => handleExportResults("episodes")}
-                          >
-                            {resultDownloadKind === "episodes" ? <><span className="spinner" /> Preparing</> : "Download Episode-Level Results (.csv)"}
-                          </button>
-                        </div>
-                        {codedRows.length > 0 && (resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel) > 1 && (
-                          <div className="results-download-details">
-                            <div>
-                              <div className="results-download-title">Detailed Model and Run Outputs</div>
-                              <p className="results-download-helper">Individual model/run records and their aggregate. Selective reruns replace the records for affected episodes while preserving all others.</p>
-                            </div>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              disabled={resultDownloadKind !== null || generating || running}
-                              aria-busy={resultDownloadKind === "detailed"}
-                              onClick={handleDownloadDetailedResults}
-                            >
-                              {resultDownloadKind === "detailed" ? <><span className="spinner" /> Preparing</> : "Download Detailed Outputs (.zip)"}
-                            </button>
-                          </div>
-                        )}
                         {resultDownloadError && <p className="enc-error results-download-error" role="alert">{resultDownloadError}</p>}
                       </div>
                     )}
@@ -4168,12 +4171,16 @@ ${PDF_WATERMARK_HTML}
                       <div className="cb-aggregation" id={idx === 0 ? "tour-cb-aggregation" : undefined}>
                         <div>
                           <label>Aggregate Repeated Calls</label>
-                          <p>How results from multiple models or runs are combined for this variable.</p>
+                          <p>How results from multiple models or runs are combined. A tied numeric mode uses the median (the average of the two middle values when the count is even).</p>
                         </div>
-                        <select value={entry.aggregation} onChange={(e) => updateCodebook(idx, "aggregation", e.target.value)}>
-                          <option value="mode">Majority vote (mode)</option>
-                          <option value="mean">Average (mean)</option>
-                        </select>
+                        {entry.type === "text" ? (
+                          <span className="text-muted text-sm">Not available for text; every response is exported separately.</span>
+                        ) : (
+                          <select value={entry.aggregation} onChange={(e) => updateCodebook(idx, "aggregation", e.target.value)}>
+                            <option value="mode">Majority vote (mode)</option>
+                            <option value="mean">Average (mean)</option>
+                          </select>
+                        )}
                       </div>
 
                       {!TYPE_HAS_VALUES(entry.type) ? (
@@ -4233,6 +4240,11 @@ ${PDF_WATERMARK_HTML}
                   {duplicateCodeLabels.length > 0 && (
                     <p className="enc-error mt-12" role="alert">
                       Output labels must be unique. Rename the conflicting variable or sender labels: {duplicateCodeLabels.join(", ")}.
+                    </p>
+                  )}
+                  {duplicateAggregateLabels.length > 0 && (
+                    <p className="enc-error mt-8" role="alert">
+                      Categorical values create duplicate aggregate columns. Rename the conflicting values or variables: {duplicateAggregateLabels.join(", ")}.
                     </p>
                   )}
                   <div className="cb-editor-foot">

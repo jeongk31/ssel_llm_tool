@@ -26,7 +26,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "How do I set up the codebook?",
-    a: <>Each variable has a <strong>label</strong>, <strong>type</strong>, <strong>level</strong>, <strong>definition</strong>, and its own aggregation method. For Binary/Categorical variables, define every allowed <strong>value</strong> with its own definition (plus optional examples and context). Use majority vote for label outputs and average for numeric outputs.</>,
+    a: <>Each variable has a <strong>label</strong>, <strong>type</strong>, <strong>level</strong>, and <strong>definition</strong>. Non-text variables also have an aggregation method. If a numeric mode has no unique winner, CAT uses the median (the average of the two middle values when the count is even). For Binary/Categorical variables, define every allowed <strong>value</strong> with its own definition (plus optional examples and context). In aggregated results, categorical values become separate binary columns. Text is not aggregated; every text response is exported separately.</>,
   },
   {
     q: "What do the variable types mean?",
@@ -50,7 +50,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What do the result downloads contain?",
-    a: <>The primary <strong>Coded dataset</strong> CSV preserves every original row and column and appends the final aggregate coding columns. If several message rows form one episode, that episode&apos;s codes are repeated on each corresponding original row. The optional <strong>Episode-level results</strong> CSV is a compact version with one row per preprocessed episode. When several model calls were used, their individual and aggregate records are available separately as detailed CSV outputs. After a selective re-run, the replacement calls take the place of the earlier records for those episodes while all unaffected records remain available.</>,
+    a: <>Use the single results button to download the complete output. With one model call, CAT returns the coded source-row CSV with every variable unchanged. With repeated or multi-model coding, CAT returns one ZIP containing up to two overall files (non-text aggregates and unaggregated text responses), the corresponding files for each LLM, and every unchanged individual model/run result. After a selective re-run, the replacement calls take the place of the earlier records for those episodes while all unaffected records remain available.</>,
   },
   {
     q: "Why is my run showing errors for some episodes?",

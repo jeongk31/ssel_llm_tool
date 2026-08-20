@@ -20,7 +20,13 @@ from app.config import settings
 from app.ratelimit import limiter
 from app.streaming import with_keepalive
 from app.services.script_generator import generate_coding_script
-from app.services.coding_runner import DETAIL_EPISODE_INDEX_COLUMN, run_coding
+from app.services.coding_runner import (
+    DETAIL_EPISODE_INDEX_COLUMN,
+    aggregate_output_labels,
+    aggregate_results,
+    expanded_codebook_specs,
+    run_coding,
+)
 from app.services.result_exporter import (
     build_result_frames,
     dataframe_to_csv,
@@ -826,6 +832,8 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
 
     try:
         expanded_codebook_labels(codebook, participants)
+        if len(model_slots) * runs_per_model > 1:
+            aggregate_output_labels(codebook, participants)
     except ValueError as exc:
         # Reject ambiguous JSON/output keys before making any paid model calls.
         yield {"type": "error", "message": str(exc)}
@@ -1004,6 +1012,67 @@ class ExportResultsRequest(BaseModel):
     participants: list[str] = []
     coded_rows: list[ExportCodedRow]
     kind: Literal["primary", "episodes"] = "primary"
+    result_path: str | None = None
+    model_call_count: int = 1
+
+
+def _safe_result_component(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._") or "model"
+
+
+def _model_name(coder: str) -> str:
+    return coder.rsplit("__run", 1)[0] if "__run" in coder else coder
+
+
+def _run_sort_key(coder: str) -> tuple[int, str]:
+    if "__run" in coder:
+        suffix = coder.rsplit("__run", 1)[1]
+        if suffix.isdigit():
+            return int(suffix), coder
+    return 1, coder
+
+
+def _aggregate_detail_rows(
+    raw_rows: pd.DataFrame,
+    *,
+    codebook: list[dict[str, Any]],
+    participants: list[str],
+) -> pd.DataFrame:
+    """Build one aggregate row per episode from raw call-level records."""
+    aggregate_labels = aggregate_output_labels(codebook, participants)
+    raw_labels = [spec["key"] for spec in expanded_codebook_specs(codebook, participants)]
+    excluded = {DETAIL_EPISODE_INDEX_COLUMN, "coder", "_error", *raw_labels, *aggregate_labels}
+    metadata_columns = [column for column in raw_rows.columns if column not in excluded]
+    records: list[dict[str, Any]] = []
+    if DETAIL_EPISODE_INDEX_COLUMN not in raw_rows.columns:
+        return pd.DataFrame(columns=[*metadata_columns, *aggregate_labels])
+    for _, episode_rows in raw_rows.groupby(DETAIL_EPISODE_INDEX_COLUMN, sort=False, dropna=False):
+        original = {
+            column: episode_rows.iloc[0][column]
+            for column in metadata_columns
+        }
+        calls = episode_rows.loc[:, [column for column in raw_labels if column in episode_rows.columns]].to_dict("records")
+        records.append({**original, **aggregate_results(calls, codebook, participants)})
+    return pd.DataFrame(records, columns=[*metadata_columns, *aggregate_labels])
+
+
+def _text_detail_rows(
+    raw_rows: pd.DataFrame,
+    *,
+    codebook: list[dict[str, Any]],
+    participants: list[str],
+) -> pd.DataFrame | None:
+    """Return raw text outcomes with their model/run and episode context."""
+    specs = expanded_codebook_specs(codebook, participants)
+    raw_labels = [spec["key"] for spec in specs]
+    text_labels = [spec["key"] for spec in specs if spec["type"] == "text"]
+    if not text_labels:
+        return None
+    aggregate_labels = aggregate_output_labels(codebook, participants)
+    excluded = {"_error", *raw_labels, *aggregate_labels}
+    metadata_columns = [column for column in raw_rows.columns if column not in excluded]
+    columns = [*metadata_columns, *[label for label in text_labels if label in raw_rows.columns]]
+    return raw_rows.loc[:, columns].drop(columns=[DETAIL_EPISODE_INDEX_COLUMN], errors="ignore")
 
 
 @router.post("/coding/export-results")
@@ -1020,6 +1089,8 @@ async def export_results(request: Request, req: ExportResultsRequest):
         raise HTTPException(400, "Message column is required.")
     if not req.codebook:
         raise HTTPException(400, "Codebook must have at least one entry.")
+    if req.model_call_count < 1:
+        raise HTTPException(400, "Model call count must be at least one.")
 
     try:
         file_info = resolve_uploaded_file(req.file_id)
@@ -1070,6 +1141,8 @@ async def export_results(request: Request, req: ExportResultsRequest):
             identity_column=req.identity_column,
             order_column=req.order_column,
         )
+        if req.model_call_count > 1:
+            aggregate_output_labels(codebook_dicts, req.participants)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
@@ -1079,6 +1152,114 @@ async def export_results(request: Request, req: ExportResultsRequest):
         re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(original_stem)).strip("._")
         or "dataset"
     )
+
+    if req.model_call_count > 1:
+        if not req.result_path:
+            raise HTTPException(400, "Detailed model and run results are required for an aggregated download.")
+        detail_path = _resolve_coding_result_path(req.result_path)
+        try:
+            detail_df = pd.read_csv(detail_path)
+        except Exception as exc:
+            raise HTTPException(400, "Could not read the detailed model and run results.") from exc
+        if "coder" not in detail_df.columns or DETAIL_EPISODE_INDEX_COLUMN not in detail_df.columns:
+            raise HTTPException(400, "Detailed results do not contain the required model/run identifiers.")
+
+        raw_detail = detail_df[~detail_df["coder"].astype(str).str.startswith("__")].copy()
+        aggregate_labels = aggregate_output_labels(codebook_dicts, req.participants)
+        text_specs = [
+            spec for spec in expanded_codebook_specs(codebook_dicts, req.participants)
+            if spec["type"] == "text"
+        ]
+
+        aggregate_schema = [
+            {"label": label, "level": "episode"}
+            for label in aggregate_labels
+        ]
+        if aggregate_schema:
+            overall_source, _, _ = build_result_frames(
+                source_df=source_df,
+                prepared=prepared,
+                coded_rows=[row.model_dump() for row in req.coded_rows],
+                codebook=aggregate_schema,
+                participants=[],
+                message_column=req.message_column,
+                identifier_columns=req.identifier_columns,
+                context_columns=[item.column for item in req.context],
+                identity_column=req.identity_column,
+                order_column=req.order_column,
+            )
+        else:
+            overall_source = source_df.reset_index(drop=True).copy()
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+            if aggregate_labels:
+                archive.writestr(
+                    "overall/aggregated_results.csv",
+                    dataframe_to_csv(overall_source),
+                )
+            if text_specs:
+                overall_text = _text_detail_rows(
+                    raw_detail,
+                    codebook=codebook_dicts,
+                    participants=req.participants,
+                )
+                if overall_text is not None:
+                    archive.writestr("overall/text_results.csv", dataframe_to_csv(overall_text))
+
+            raw_detail["__cat_model"] = raw_detail["coder"].astype(str).map(_model_name)
+            used_folders: set[str] = set()
+            for model_name, model_rows in raw_detail.groupby("__cat_model", sort=False):
+                model_rows = model_rows.drop(columns=["__cat_model"])
+                base_folder = _safe_result_component(str(model_name))
+                folder_name = base_folder
+                suffix = 2
+                while folder_name in used_folders:
+                    folder_name = f"{base_folder}_{suffix}"
+                    suffix += 1
+                used_folders.add(folder_name)
+                folder = f"models/{folder_name}"
+                if aggregate_labels:
+                    model_aggregate = _aggregate_detail_rows(
+                        model_rows,
+                        codebook=codebook_dicts,
+                        participants=req.participants,
+                    )
+                    archive.writestr(
+                        f"{folder}/aggregated_results.csv",
+                        dataframe_to_csv(model_aggregate),
+                    )
+                if text_specs:
+                    model_text = _text_detail_rows(
+                        model_rows,
+                        codebook=codebook_dicts,
+                        participants=req.participants,
+                    )
+                    if model_text is not None:
+                        archive.writestr(
+                            f"{folder}/text_results.csv",
+                            dataframe_to_csv(model_text),
+                        )
+                coders = sorted(model_rows["coder"].dropna().astype(str).unique(), key=_run_sort_key)
+                for run_number, coder in enumerate(coders, start=1):
+                    run_frame = model_rows[model_rows["coder"].astype(str) == coder].drop(
+                        columns=["coder", DETAIL_EPISODE_INDEX_COLUMN], errors="ignore"
+                    )
+                    archive.writestr(
+                        f"{folder}/runs/run{run_number}.csv",
+                        dataframe_to_csv(run_frame),
+                    )
+
+        buf.seek(0)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_stem}_coded_results.zip"',
+                "Cache-Control": "no-store",
+            },
+        )
+
     if req.kind == "episodes":
         content = dataframe_to_csv(episode_result)
         filename = f"{safe_stem}_coded_episodes.csv"

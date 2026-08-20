@@ -30,12 +30,36 @@ data.
    does not contain an API key. Browser runs can use multiple models and repeated calls,
    with aggregation selected separately for each coding variable.
 8. Monitor episode-level progress, inspect validation issues, selectively rerun affected
-   episodes, and download the source-row CSV, optional episode-level CSV, and detailed
-   aggregate and call-level results.
+   episodes, and use one button to download the complete results.
 
-The primary coded CSV preserves the order and columns of the uploaded source data and
-appends the final coding variables. If several source rows form one communication
-episode, CAT assigns the episode-level codes to each of those rows.
+With one model call, the download is a CSV that preserves the order and columns of the
+uploaded source data and appends every coding variable. If several source rows form one
+communication episode, CAT assigns the episode-level codes to each of those rows.
+
+With repeated calls or multiple models, the download is one ZIP archive. It contains
+up to two overall CSV files: a source-row file with the final non-text aggregates and,
+when the codebook contains text variables, a separate call-level file containing every
+text response. Each LLM also has up to two corresponding CSV files containing its own
+non-text aggregates and text responses. Finally, the archive contains one unchanged
+call-level CSV for every individual run of every LLM. Categorical values are represented
+in aggregate files as separate binary columns (for example, `option_a`, `option_b`, and
+`option_c`), while their original labels remain unchanged in the individual-run files.
+When a numeric mode has no unique winner, CAT uses the median; with an even number of
+responses, this is the average of the two middle values.
+
+```text
+dataset_coded_results.zip
+├── overall/
+│   ├── aggregated_results.csv     # present when non-text variables exist
+│   └── text_results.csv           # present when text variables exist
+└── models/
+    └── provider_model/
+        ├── aggregated_results.csv # present when non-text variables exist
+        ├── text_results.csv       # present when text variables exist
+        └── runs/
+            ├── run1.csv
+            └── run2.csv
+```
 
 ## Technology
 

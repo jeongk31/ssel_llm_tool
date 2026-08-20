@@ -106,5 +106,80 @@ class CodingRunnerParameterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(params, {"temperature": 0.1, "top_p": 1.0, "max_tokens": 2048})
 
 
+class CodingRunnerAggregationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_repeated_calls_stream_wide_nontext_aggregates_without_text(self):
+        provider = SimpleNamespace(complete=AsyncMock(side_effect=[
+            {"response": '{"option": "a", "score": 1, "note": "first"}'},
+            {"response": '{"option": "b", "score": 2, "note": "second"}'},
+        ]))
+        codebook = [
+            {
+                "label": "option",
+                "type": "categorical",
+                "aggregation": "mode",
+                "values": [{"value": "a"}, {"value": "b"}],
+            },
+            {"label": "score", "type": "numeric", "aggregation": "mode"},
+            {"label": "note", "type": "text", "aggregation": "mode"},
+        ]
+
+        with patch("app.services.coding_runner._get_provider_instance", return_value=provider):
+            updates = [
+                update
+                async for update in run_coding(
+                    df=pd.DataFrame([{"message": "hello"}]),
+                    message_column="message",
+                    experiment_instructions="",
+                    coding_instructions="",
+                    codebook=codebook,
+                    model_slots=[{"provider": "openai", "model": "test-model", "api_key": "test-key"}],
+                    runs_per_model=2,
+                    max_retries=1,
+                )
+            ]
+
+        row = next(update for update in updates if update.get("type") == "row")
+        self.assertEqual(row["coded"]["option_a"], 0.5)
+        self.assertEqual(row["coded"]["option_b"], 0.5)
+        self.assertEqual(row["coded"]["score"], 1.5)
+        self.assertNotIn("note", row["coded"])
+
+    async def test_single_call_streams_original_values_including_text(self):
+        provider = SimpleNamespace(complete=AsyncMock(return_value={
+            "response": '{"option": "a", "score": 1, "note": "unchanged"}'
+        }))
+        codebook = [
+            {
+                "label": "option",
+                "type": "categorical",
+                "aggregation": "mode",
+                "values": [{"value": "a"}, {"value": "b"}],
+            },
+            {"label": "score", "type": "numeric", "aggregation": "mode"},
+            {"label": "note", "type": "text", "aggregation": "mode"},
+        ]
+
+        with patch("app.services.coding_runner._get_provider_instance", return_value=provider):
+            updates = [
+                update
+                async for update in run_coding(
+                    df=pd.DataFrame([{"message": "hello"}]),
+                    message_column="message",
+                    experiment_instructions="",
+                    coding_instructions="",
+                    codebook=codebook,
+                    model_slots=[{"provider": "openai", "model": "test-model", "api_key": "test-key"}],
+                    runs_per_model=1,
+                    max_retries=1,
+                )
+            ]
+
+        row = next(update for update in updates if update.get("type") == "row")
+        self.assertEqual(
+            row["coded"],
+            {"option": "a", "score": 1, "note": "unchanged"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">CAT results validation and downloads</title>
-  <desc id="desc">A completed coding run showing output validation, coded episode rows, and separate primary, episode-level, and detailed downloads.</desc>
+  <desc id="desc">A completed coding run showing output validation, coded episode rows, and one complete-results download.</desc>
   <defs>
     <style>
       .h1{font:700 28px Arial,sans-serif;fill:#1b1f27}.h2{font:700 19px Arial,sans-serif;fill:#1b1f27}
@@ -33,16 +33,10 @@
   <rect x="824" y="397" width="72" height="26" rx="13" fill="#e7f6f7"/><text x="860" y="415" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#0d8f9c">no</text>
 
   <text x="58" y="466" class="label">DOWNLOAD RESULTS</text>
-  <rect x="58" y="482" width="1084" height="178" rx="8" fill="#fff" stroke="#d9dce3"/>
-  <text x="82" y="517" class="h2">Coded Dataset</text>
-  <text x="82" y="544" class="small">Primary CSV: every original row and column, with final episode codes mapped back to each source row.</text>
-  <rect x="895" y="500" width="220" height="42" rx="6" fill="#5b3a8e"/>
-  <text x="1005" y="527" text-anchor="middle" class="btn" fill="#fff">Download Coded Dataset</text>
-  <line x1="82" y1="566" x2="1118" y2="566" stroke="#e8eaef"/>
-  <text x="82" y="599" class="h2">Additional Outputs</text>
-  <text x="82" y="626" class="small">Download the episode-level CSV or detailed model/run archive separately when needed.</text>
-  <rect x="716" y="583" width="194" height="42" rx="6" fill="#fff" stroke="#d9dce3"/>
-  <text x="813" y="610" text-anchor="middle" class="btn" fill="#5f6577">Episode-level CSV</text>
-  <rect x="924" y="583" width="191" height="42" rx="6" fill="#fff" stroke="#d9dce3"/>
-  <text x="1019.5" y="610" text-anchor="middle" class="btn" fill="#5f6577">Detailed Outputs ZIP</text>
+  <rect x="58" y="482" width="1084" height="132" rx="8" fill="#fff" stroke="#d9dce3"/>
+  <text x="82" y="521" class="h2">Complete Results</text>
+  <text x="82" y="550" class="small">One ZIP contains overall results, per-LLM results, and every original individual run.</text>
+  <text x="82" y="577" class="small">Text responses are separate from the aggregated non-text results.</text>
+  <rect x="895" y="521" width="220" height="42" rx="6" fill="#5b3a8e"/>
+  <text x="1005" y="548" text-anchor="middle" class="btn" fill="#fff">Download All Results</text>
 </svg>

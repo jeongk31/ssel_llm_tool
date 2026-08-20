@@ -23,6 +23,7 @@ from app.services.result_exporter import (
     prepare_coding_dataset,
     validate_sender_configuration,
 )
+from app.services.coding_runner import aggregate_output_labels, aggregate_results
 
 
 class ResultFrameTests(unittest.TestCase):
@@ -400,6 +401,91 @@ class ResultFrameTests(unittest.TestCase):
         self.assertIn("U+000B", message)
 
 
+class AggregationTests(unittest.TestCase):
+    def test_numeric_mode_uses_median_when_there_is_no_unique_mode(self):
+        codebook = [
+            {"label": "score", "type": "numeric", "level": "episode", "aggregation": "mode"}
+        ]
+
+        result = aggregate_results(
+            [{"score": 1}, {"score": 2}, {"score": 3}, {"score": 4}],
+            codebook,
+            [],
+        )
+
+        self.assertEqual(result, {"score": 2.5})
+
+    def test_numeric_mode_retains_a_unique_mode(self):
+        codebook = [
+            {"label": "score", "type": "numeric", "level": "episode", "aggregation": "mode"}
+        ]
+
+        result = aggregate_results(
+            [{"score": 2}, {"score": 2}, {"score": 9}, {"score": 10}],
+            codebook,
+            [],
+        )
+
+        self.assertEqual(result, {"score": 2.0})
+
+    def test_categorical_values_expand_to_independently_aggregated_binary_columns(self):
+        codebook = [{
+            "label": "option",
+            "type": "categorical",
+            "level": "episode",
+            "aggregation": "mean",
+            "values": [{"value": "a"}, {"value": "b"}, {"value": "c"}],
+        }]
+
+        result = aggregate_results(
+            [{"option": "a"}, {"option": "a"}, {"option": "b"}, {"option": "c"}],
+            codebook,
+            [],
+        )
+
+        self.assertEqual(result, {"option_a": 0.5, "option_b": 0.25, "option_c": 0.25})
+
+    def test_categorical_mode_tie_uses_binary_column_medians(self):
+        codebook = [{
+            "label": "option",
+            "type": "categorical",
+            "level": "episode",
+            "aggregation": "mode",
+            "values": [{"value": "a"}, {"value": "b"}],
+        }]
+
+        result = aggregate_results(
+            [{"option": "a"}, {"option": "b"}],
+            codebook,
+            [],
+        )
+
+        self.assertEqual(result, {"option_a": 0.5, "option_b": 0.5})
+
+    def test_text_is_excluded_from_aggregate_output(self):
+        codebook = [
+            {"label": "explanation", "type": "text", "level": "episode", "aggregation": "mode"},
+            {"label": "score", "type": "numeric", "level": "episode", "aggregation": "mean"},
+        ]
+
+        self.assertEqual(aggregate_output_labels(codebook, []), ["score"])
+        self.assertEqual(
+            aggregate_results([{"explanation": "one", "score": 2}], codebook, []),
+            {"score": 2.0},
+        )
+
+    def test_sanitized_categorical_values_must_create_unique_columns(self):
+        codebook = [{
+            "label": "option",
+            "type": "categorical",
+            "level": "episode",
+            "values": [{"value": "a b"}, {"value": "a/b"}],
+        }]
+
+        with self.assertRaisesRegex(ValueError, "option_a_b"):
+            aggregate_output_labels(codebook, [])
+
+
 class ResultExportEndpointTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -501,6 +587,175 @@ class ResultExportEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"x" * 32_768, response.content)
+
+    def test_aggregated_download_contains_overall_model_and_original_run_files(self):
+        payload = self._payload("primary")
+        payload["codebook"] = [
+            {"label": "cooperation", "type": "binary", "level": "episode", "aggregation": "mode"},
+            {
+                "label": "option",
+                "type": "categorical",
+                "level": "episode",
+                "aggregation": "mean",
+                "values": [{"value": "a"}, {"value": "b"}],
+            },
+            {"label": "score", "type": "numeric", "level": "episode", "aggregation": "mode"},
+            {"label": "note", "type": "text", "level": "episode", "aggregation": "mode"},
+        ]
+        payload["model_call_count"] = 4
+        payload["coded_rows"] = [
+            {
+                "index": 0,
+                "coded": {
+                    "cooperation": 1,
+                    "option_a": 0.75,
+                    "option_b": 0.25,
+                    "score": 4,
+                },
+            },
+            {
+                "index": 1,
+                "coded": {
+                    "cooperation": 0.5,
+                    "option_a": 0.5,
+                    "option_b": 0.5,
+                    "score": 2.5,
+                },
+            },
+        ]
+
+        detail_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        detail_path = os.path.join(detail_dir, "coded_results.csv")
+        records = []
+        episode_data = {
+            0: {"session": "A", "turn": "1\n2", "sender": "P1\nP2", "message": "[P1] first\n[P2] second", "condition": "treatment"},
+            1: {"session": "B", "turn": "1", "sender": "P1", "message": "[P1] only", "condition": "control"},
+        }
+        calls = {
+            0: [
+                ("openai/model__run1", 1, "a", 1, "oa1"),
+                ("openai/model__run2", 1, "b", 3, "oa2"),
+                ("gemini/model__run1", 0, "a", 5, "ga1"),
+                ("gemini/model__run2", 1, "a", 7, "ga2"),
+            ],
+            1: [
+                ("openai/model__run1", 0, "a", 1, "ob1"),
+                ("openai/model__run2", 1, "b", 4, "ob2"),
+                ("gemini/model__run1", 0, "a", 2, "gb1"),
+                ("gemini/model__run2", 1, "b", 3, "gb2"),
+            ],
+        }
+        for episode_index, episode_calls in calls.items():
+            for coder, cooperation, option, score, note in episode_calls:
+                records.append({
+                    **episode_data[episode_index],
+                    "__chat_episode_index": episode_index,
+                    "coder": coder,
+                    "cooperation": cooperation,
+                    "option": option,
+                    "score": score,
+                    "note": note,
+                })
+        pd.DataFrame(records).to_csv(detail_path, index=False)
+        payload["result_path"] = detail_path
+
+        response = self.client.post("/api/coding/export-results", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("application/zip"))
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertEqual(
+                sorted(archive.namelist()),
+                sorted([
+                    "overall/aggregated_results.csv",
+                    "overall/text_results.csv",
+                    "models/openai_model/aggregated_results.csv",
+                    "models/openai_model/text_results.csv",
+                    "models/openai_model/runs/run1.csv",
+                    "models/openai_model/runs/run2.csv",
+                    "models/gemini_model/aggregated_results.csv",
+                    "models/gemini_model/text_results.csv",
+                    "models/gemini_model/runs/run1.csv",
+                    "models/gemini_model/runs/run2.csv",
+                ]),
+            )
+
+            overall = pd.read_csv(io.BytesIO(archive.read("overall/aggregated_results.csv")))
+            overall_text = pd.read_csv(io.BytesIO(archive.read("overall/text_results.csv")))
+            openai_aggregate = pd.read_csv(
+                io.BytesIO(archive.read("models/openai_model/aggregated_results.csv"))
+            )
+            openai_run_one = pd.read_csv(
+                io.BytesIO(archive.read("models/openai_model/runs/run1.csv"))
+            )
+
+        self.assertEqual(len(overall), 3)
+        self.assertEqual(
+            list(overall.columns[-4:]),
+            ["cooperation", "option_a", "option_b", "score"],
+        )
+        self.assertEqual(overall["score"].tolist(), [4.0, 4.0, 2.5])
+        self.assertNotIn("note", overall.columns)
+        self.assertEqual(len(overall_text), 8)
+        self.assertEqual(set(overall_text["note"]), {"oa1", "oa2", "ga1", "ga2", "ob1", "ob2", "gb1", "gb2"})
+        self.assertEqual(openai_aggregate["score"].tolist(), [2.0, 2.5])
+        self.assertEqual(openai_aggregate["option_a"].tolist(), [0.5, 0.5])
+        self.assertEqual(openai_run_one["option"].tolist(), ["a", "a"])
+        self.assertEqual(openai_run_one["note"].tolist(), ["oa1", "ob1"])
+
+    def test_text_only_aggregated_download_omits_aggregate_csv_files(self):
+        payload = self._payload("primary")
+        payload["codebook"] = [
+            {"label": "note", "type": "text", "level": "episode", "aggregation": "mode"}
+        ]
+        payload["model_call_count"] = 2
+        payload["coded_rows"] = [{"index": 0, "coded": {}}, {"index": 1, "coded": {}}]
+        detail_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        detail_path = os.path.join(detail_dir, "coded_results.csv")
+        pd.DataFrame([
+            {"__chat_episode_index": 0, "message": "first", "coder": "openai/model__run1", "note": "one"},
+            {"__chat_episode_index": 0, "message": "first", "coder": "openai/model__run2", "note": "two"},
+        ]).to_csv(detail_path, index=False)
+        payload["result_path"] = detail_path
+
+        response = self.client.post("/api/coding/export-results", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertEqual(
+                sorted(archive.namelist()),
+                sorted([
+                    "overall/text_results.csv",
+                    "models/openai_model/text_results.csv",
+                    "models/openai_model/runs/run1.csv",
+                    "models/openai_model/runs/run2.csv",
+                ]),
+            )
+
+    def test_nontext_only_aggregated_download_omits_text_csv_files(self):
+        payload = self._payload("primary")
+        payload["model_call_count"] = 2
+        detail_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        detail_path = os.path.join(detail_dir, "coded_results.csv")
+        pd.DataFrame([
+            {"__chat_episode_index": 0, "message": "first", "coder": "openai/model__run1", "cooperation": 1},
+            {"__chat_episode_index": 0, "message": "first", "coder": "openai/model__run2", "cooperation": 0},
+        ]).to_csv(detail_path, index=False)
+        payload["result_path"] = detail_path
+
+        response = self.client.post("/api/coding/export-results", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertEqual(
+                sorted(archive.namelist()),
+                sorted([
+                    "overall/aggregated_results.csv",
+                    "models/openai_model/aggregated_results.csv",
+                    "models/openai_model/runs/run1.csv",
+                    "models/openai_model/runs/run2.csv",
+                ]),
+            )
 
     def test_detailed_download_is_restricted_to_coding_result_artifacts(self):
         unrelated = os.path.join(self.temp_dir.name, "unrelated.csv")

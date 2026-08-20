@@ -1,8 +1,9 @@
 """Runs LLM-based coding row by row with multi-model voting support."""
 
 import json
+import re
 from collections import Counter
-from statistics import mean as stat_mean
+from statistics import mean as stat_mean, median as stat_median
 from typing import Any, AsyncGenerator
 
 import pandas as pd
@@ -63,6 +64,64 @@ def _expanded_keys(codebook: list[dict[str, Any]], participants: list[str] | Non
     if len(keys) != len(set(keys)):
         raise ValueError("Codebook output labels must be unique.")
     return keys
+
+
+def expanded_codebook_specs(
+    codebook: list[dict[str, Any]], participants: list[str] | None
+) -> list[dict[str, Any]]:
+    """Expand sender-level variables while retaining aggregation metadata."""
+    participants = participants or []
+    specs: list[dict[str, Any]] = []
+    for variable in codebook:
+        label = str(variable.get("label") or "").strip()
+        if not label:
+            continue
+        keys = (
+            [f"{label}_{participant}" for participant in participants]
+            if variable.get("level") == "sender" and participants
+            else [label]
+        )
+        values = [
+            str(item.get("value") or "").strip()
+            for item in (variable.get("values") or [])
+            if str(item.get("value") or "").strip()
+        ]
+        for key in keys:
+            specs.append(
+                {
+                    "key": key,
+                    "type": str(variable.get("type") or "text").lower(),
+                    "aggregation": str(variable.get("aggregation") or "mode").lower(),
+                    "values": values,
+                }
+            )
+    return specs
+
+
+def categorical_output_key(label: str, value: str) -> str:
+    """Return a stable, readable one-hot column name for a categorical value."""
+    suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value).strip()).strip("._-") or "blank"
+    return f"{label}_{suffix}"
+
+
+def aggregate_output_labels(
+    codebook: list[dict[str, Any]], participants: list[str] | None
+) -> list[str]:
+    """Columns produced by aggregation; text is intentionally call-level only."""
+    labels: list[str] = []
+    for spec in expanded_codebook_specs(codebook, participants):
+        if spec["type"] == "text":
+            continue
+        if spec["type"] == "categorical":
+            labels.extend(categorical_output_key(spec["key"], value) for value in spec["values"])
+        else:
+            labels.append(spec["key"])
+    if len(labels) != len(set(labels)):
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        raise ValueError(
+            "Categorical values create duplicate aggregate columns: " + ", ".join(duplicates)
+        )
+    return labels
 
 
 def _codebook_block(codebook: list[dict[str, Any]], participants: list[str]) -> str:
@@ -164,46 +223,87 @@ def _first_not_none(*values: Any) -> Any:
     return next((value for value in values if value is not None), None)
 
 
+def _aggregate_numeric(values: list[float], aggregation: str) -> float | None:
+    """Aggregate numeric values, using the median whenever a mode is not unique."""
+    if not values:
+        return None
+    if aggregation == "mean":
+        return stat_mean(values)
+    counts = Counter(values)
+    highest = max(counts.values())
+    winners = [value for value, count in counts.items() if count == highest]
+    return winners[0] if len(winners) == 1 else stat_median(values)
+
+
+def aggregate_results(
+    all_coded: list[dict[str, Any]],
+    codebook: list[dict[str, Any]],
+    participants: list[str] | None,
+    fallback: str = "mode",
+) -> dict[str, Any]:
+    """Aggregate non-text variables and one-hot encode categorical outputs."""
+    result: dict[str, Any] = {}
+    for spec in expanded_codebook_specs(codebook, participants):
+        label = spec["key"]
+        variable_type = spec["type"]
+        aggregation = spec["aggregation"] if spec["aggregation"] in {"mode", "mean"} else fallback
+        values: list[Any] = []
+        for item in all_coded:
+            if "_error" in item:
+                continue
+            value = item.get(label)
+            if value is None:
+                continue
+            try:
+                if pd.isna(value):
+                    continue
+            except (TypeError, ValueError):
+                pass
+            values.append(value)
+
+        if variable_type == "text":
+            continue
+
+        if variable_type == "categorical":
+            permitted = spec["values"]
+            valid = [str(value) for value in values if str(value) in permitted]
+            for permitted_value in permitted:
+                output_key = categorical_output_key(label, permitted_value)
+                indicators = [1.0 if value == permitted_value else 0.0 for value in valid]
+                result[output_key] = _aggregate_numeric(indicators, aggregation)
+            continue
+
+        try:
+            numeric_values = [float(value) for value in values]
+        except (TypeError, ValueError):
+            numeric_values = []
+        result[label] = _aggregate_numeric(numeric_values, aggregation)
+
+    return result
+
+
 def _aggregate_results(
     all_coded: list[dict[str, Any]],
     labels: list[str],
     aggregations: dict[str, str],
     fallback: str = "mode",
 ) -> dict[str, Any]:
-    """Aggregate each coded variable using its own configured method."""
-    result = {}
-
+    """Backward-compatible primitive used by older generated scripts."""
+    result: dict[str, Any] = {}
     for label in labels:
-        aggregation = aggregations.get(label, fallback)
-        values = [e.get(label) for e in all_coded if e.get(label) is not None and "_error" not in e]
-
-        if not values:
-            result[label] = None
+        values = [item.get(label) for item in all_coded if item.get(label) is not None and "_error" not in item]
+        try:
+            numeric_values = [float(value) for value in values]
+        except (TypeError, ValueError):
+            numeric_values = []
+        if numeric_values and len(numeric_values) == len(values):
+            result[label] = _aggregate_numeric(
+                numeric_values,
+                aggregations.get(label, fallback),
+            )
             continue
-
-        if aggregation == "mean":
-            # Try numeric mean
-            try:
-                nums = [float(v) for v in values]
-                result[label] = round(stat_mean(nums), 4)
-            except (ValueError, TypeError):
-                # Fall back to mode for non-numeric
-                counter = Counter(str(v) for v in values)
-                winner, count = counter.most_common(1)[0]
-                result[label] = winner
-        else:
-            # Mode (majority vote)
-            counter = Counter(str(v) for v in values)
-            most_common = counter.most_common()
-            winner, count = most_common[0]
-
-            # Check for ties
-            if len(most_common) > 1 and most_common[0][1] == most_common[1][1]:
-                result[label] = winner  # Take first in tie
-                result[f"_{label}_tie"] = True
-            else:
-                result[label] = winner
-
+        counts = Counter(str(value) for value in values)
+        result[label] = counts.most_common(1)[0][0] if counts else None
     return result
 
 
@@ -260,15 +360,6 @@ async def run_coding(
         providers = [{"instance": _get_provider_instance(provider_name, model_id, api_key), "label": f"{provider_name}/{model_id}"}]
 
     labels = _expanded_keys(codebook, participants)
-    aggregations: dict[str, str] = {}
-    for var in codebook:
-        label = str(var.get("label") or "").strip()
-        method = var.get("aggregation") or aggregation
-        if var.get("level") == "sender" and participants:
-            for participant in participants:
-                aggregations[f"{label}_{participant}"] = method
-        else:
-            aggregations[label] = method
     null_result = {label: None for label in labels}
     total = len(df)
     if episode_indices is None:
@@ -362,7 +453,7 @@ async def run_coding(
         # Aggregate for the streamed row (what the UI shows)
         if call_results:
             if use_voting:
-                coded = _aggregate_results(call_results, labels, aggregations, aggregation)
+                coded = aggregate_results(call_results, codebook, participants, aggregation)
                 coded["_votes"] = len(call_results)
                 coded["_total_calls"] = total_calls
             else:
