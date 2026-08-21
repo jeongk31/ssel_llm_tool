@@ -221,6 +221,19 @@ If CAT is used in research, please cite the accompanying paper, *CAT: An LLM-bas
 for Content Analysis in Experimental Economics*, by Andrzej Baranski, David J. Cooper,
 and Jeong Kyu Lee. The DOI will be added when one is assigned.
 
+## Contributing
+
+Do not commit directly to `main`. Create a branch from the latest `main`, make one
+focused change, and open a pull request describing what changed and how it was tested.
+Before opening the pull request, run the backend tests and the frontend audit, lint, and
+production build commands shown above. Pull requests can be merged only after the
+required Backend and Frontend CI checks pass and all review conversations are resolved.
+
+Do not include API keys, participant data, server credentials, local environment files,
+or generated build artifacts in a branch or pull request. Report suspected security
+problems privately using the procedure in [SECURITY.md](SECURITY.md), rather than in a
+public issue.
+
 ## Policies
 
 - [Security reporting](SECURITY.md)
