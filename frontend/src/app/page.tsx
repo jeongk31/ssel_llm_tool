@@ -679,40 +679,39 @@ function validateCodedRows(rows: CodedRow[], vars: ExpandedVar[]): ValidationRep
 const PROVIDERS: { value: string; label: string; models: { value: string; label: string; noTemperature?: boolean; noTopP?: boolean; temperatureMax?: number }[] }[] = [
   {
     value: "openai", label: "OpenAI", models: [
+      { value: "gpt-5.6-sol", label: "GPT-5.6 Sol", noTemperature: true, noTopP: true },
+      { value: "gpt-5.6-terra", label: "GPT-5.6 Terra", noTemperature: true, noTopP: true },
+      { value: "gpt-5.6-luna", label: "GPT-5.6 Luna", noTemperature: true, noTopP: true },
       { value: "gpt-4.1", label: "GPT-4.1" },
       { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
       { value: "gpt-4.1-nano", label: "GPT-4.1 Nano" },
-      { value: "gpt-4o", label: "GPT-4o" },
-      { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-      { value: "o3", label: "o3" },
-      { value: "o3-mini", label: "o3 Mini" },
-      { value: "o4-mini", label: "o4 Mini" },
-      { value: "o1", label: "o1" },
-      { value: "o1-mini", label: "o1 Mini" },
-      { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-      { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
     ],
   },
   {
     value: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
+      { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
+      { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+      { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
+      { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
       { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
       { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (Preview)" },
-      { value: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite (Preview)" },
       { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
       { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-      { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
+      { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
     ],
   },
   {
     value: "deepseek", label: "DeepSeek", models: [
-      { value: "deepseek-chat", label: "DeepSeek V3" },
-      { value: "deepseek-reasoner", label: "DeepSeek R1", noTemperature: true },
+      { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro", noTemperature: true, noTopP: true },
+      { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash", noTemperature: true, noTopP: true },
     ],
   },
   {
     value: "anthropic", label: "Anthropic (Claude)", models: [
-      { value: "claude-opus-4-8", label: "Claude Opus 4.8", noTemperature: true, noTopP: true },
-      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", noTopP: true, temperatureMax: 1 },
+      { value: "claude-fable-5", label: "Claude Fable 5", noTemperature: true, noTopP: true },
+      { value: "claude-opus-5", label: "Claude Opus 5", noTemperature: true, noTopP: true },
+      { value: "claude-sonnet-5", label: "Claude Sonnet 5", noTemperature: true, noTopP: true },
       { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", noTopP: true, temperatureMax: 1 },
     ],
   },
@@ -726,25 +725,35 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
 
 // Curated list of providers/models that support native PDF (document + vision)
 // processing, used only by the "Import from PDF" converter for Experiment Instructions.
-// Keep in sync with PDF_CAPABLE_PROVIDERS in backend/app/routes/instructions.py.
+// Keep in sync with PDF_CAPABLE_MODELS in backend/app/routes/instructions.py.
 const PDF_MODELS: { provider: string; label: string; models: { value: string; label: string }[] }[] = [
   {
     provider: "openai", label: "OpenAI", models: [
+      { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+      { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+      { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
       { value: "gpt-4.1", label: "GPT-4.1" },
-      { value: "gpt-4o", label: "GPT-4o" },
     ],
   },
   {
     provider: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
+      { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
+      { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+      { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
+      { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
+      { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
+      { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (Preview)" },
       { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
       { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-      { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
+      { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
     ],
   },
   {
     provider: "anthropic", label: "Anthropic (Claude)", models: [
-      { value: "claude-opus-4-8", label: "Claude Opus 4.8" },
-      { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+      { value: "claude-fable-5", label: "Claude Fable 5" },
+      { value: "claude-opus-5", label: "Claude Opus 5" },
+      { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
       { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
     ],
   },
@@ -869,6 +878,29 @@ const EMPTY_SLOT: ModelSlot = {
   topP: 1.0,
   maxTokens: 1024,
 };
+
+const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  openai: "gpt-4.1-mini",
+  gemini: "gemini-3.7-flash",
+  deepseek: "deepseek-v4-flash",
+  anthropic: "claude-sonnet-5",
+  xai: "grok-4.5",
+};
+
+function normalizeModelSlot(slot: ModelSlot): ModelSlot {
+  const providerInfo = PROVIDERS.find((provider) => provider.value === slot.provider);
+  if (!providerInfo) return { ...EMPTY_SLOT };
+
+  const modelExists = providerInfo.models.some((model) => model.value === slot.model);
+  return {
+    ...EMPTY_SLOT,
+    ...slot,
+    model: modelExists
+      ? slot.model
+      : (PROVIDER_DEFAULT_MODELS[slot.provider] ?? providerInfo.models[0]?.value ?? ""),
+    apiKey: "",
+  };
+}
 
 function modelIgnoresTemperature(provider: string, model: string): boolean {
   const provInfo = PROVIDERS.find((p) => p.value === provider);
@@ -1093,7 +1125,7 @@ export default function Home() {
 
   // Legacy aliases
   const provider = modelSlots[0]?.provider ?? "openai";
-  const model = modelSlots[0]?.model ?? "gpt-4o";
+  const model = modelSlots[0]?.model ?? "gpt-4.1-mini";
 
   // Generate state
   const [generating, setGenerating] = useState(false);
@@ -1284,7 +1316,9 @@ export default function Home() {
           setSenderVerificationSignature(s.senderVerificationSignature);
         }
         // Never restore a saved API key (and discard any key left by an older build).
-        if (Array.isArray(s.modelSlots) && s.modelSlots.length) setModelSlots(s.modelSlots.map((slot: ModelSlot) => ({ ...slot, apiKey: "" })));
+        if (Array.isArray(s.modelSlots) && s.modelSlots.length) {
+          setModelSlots(s.modelSlots.map((slot: ModelSlot) => normalizeModelSlot(slot)));
+        }
         if (typeof s.runsPerModel === "number") setRunsPerModel(s.runsPerModel);
       }
     } catch {}

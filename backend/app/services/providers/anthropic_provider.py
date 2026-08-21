@@ -9,7 +9,11 @@ from app.services.providers.base import LLMProvider
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude API provider."""
 
-    _PROVIDER_CONTROLLED_SAMPLING_MODELS = {"claude-opus-4-8"}
+    _PROVIDER_CONTROLLED_SAMPLING_MODELS = {
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+    }
 
     async def complete(self, prompt: str, system_prompt: str = "", params: dict | None = None) -> dict:
         params = params or {}
@@ -64,8 +68,12 @@ class AnthropicProvider(LLMProvider):
             }],
         )
 
+        response_text = "".join(
+            block.text for block in response.content if getattr(block, "type", None) == "text"
+        )
+
         return {
-            "response": response.content[0].text if response.content else "",
+            "response": response_text,
             "tokens_used": (response.usage.input_tokens + response.usage.output_tokens) if response.usage else 0,
             "latency_ms": self._timed(start),
         }

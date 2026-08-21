@@ -7,7 +7,16 @@ from app.services.providers.base import LLMProvider
 
 
 class OpenAICompatibleProvider(LLMProvider):
-    """Works with OpenAI, xAI, Together, DeepSeek, Mistral — any OpenAI-compatible API."""
+    """Works with OpenAI, xAI, and DeepSeek through OpenAI-compatible APIs."""
+
+    _PROVIDER_CONTROLLED_SAMPLING_MODELS = {
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+    }
+    _MAX_COMPLETION_TOKEN_MODELS = {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
 
     async def complete(self, prompt: str, system_prompt: str = "", params: dict | None = None) -> dict:
         params = params or {}
@@ -18,14 +27,18 @@ class OpenAICompatibleProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        start = time.time()
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=params.get("temperature", 0.7),
-            top_p=params.get("top_p", 1.0),
-            max_tokens=params.get("max_tokens", 2048),
+        request_params = {"model": self.model, "messages": messages}
+        if self.model not in self._PROVIDER_CONTROLLED_SAMPLING_MODELS:
+            request_params["temperature"] = params.get("temperature", 0.7)
+            request_params["top_p"] = params.get("top_p", 1.0)
+
+        token_parameter = (
+            "max_completion_tokens" if self.model in self._MAX_COMPLETION_TOKEN_MODELS else "max_tokens"
         )
+        request_params[token_parameter] = params.get("max_tokens", 2048)
+
+        start = time.time()
+        response = await client.chat.completions.create(**request_params)
 
         return {
             "response": response.choices[0].message.content or "",
@@ -54,12 +67,14 @@ class OpenAICompatibleProvider(LLMProvider):
             ],
         })
 
-        start = time.time()
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=params.get("max_tokens", 8192),
+        request_params = {"model": self.model, "messages": messages}
+        token_parameter = (
+            "max_completion_tokens" if self.model in self._MAX_COMPLETION_TOKEN_MODELS else "max_tokens"
         )
+        request_params[token_parameter] = params.get("max_tokens", 8192)
+
+        start = time.time()
+        response = await client.chat.completions.create(**request_params)
 
         return {
             "response": response.choices[0].message.content or "",
