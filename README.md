@@ -219,13 +219,9 @@ themselves establish that a classification is correct.
 
 If CAT is used in research, please cite the accompanying paper, *CAT: An LLM-based Tool
 for Content Analysis in Experimental Economics*, by Andrzej Baranski, David J. Cooper,
-and Jeong Kyu Lee. The repository's [`CITATION.cff`](CITATION.cff) provides machine-
-readable citation metadata; the DOI will be added when one is assigned.
+and Jeong Kyu Lee. The DOI will be added when one is assigned.
 
-## Project policies
+## Policies
 
-- [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)
 - [Privacy](PRIVACY.md)
-- [Changelog](CHANGELOG.md)
-- [Deferred features](DEFERRED_FEATURES.md)
