@@ -229,7 +229,3 @@ readable citation metadata; the DOI will be added when one is assigned.
 - [Privacy](PRIVACY.md)
 - [Changelog](CHANGELOG.md)
 - [Deferred features](DEFERRED_FEATURES.md)
-
-CAT is released under the [BSD 3-Clause License](LICENSE). If CAT is used in research,
-the authors also request citation of the accompanying methodological paper as described
-above.

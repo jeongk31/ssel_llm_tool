@@ -12,7 +12,6 @@ first archival release version.
   separately, and categorical aggregates use one binary column per permitted value.
 - Changed tied numeric modes to use the median and documented the even-count rule.
 - Added consent-gated usage analytics with an anonymous count-only rejection path.
-- Added the BSD 3-Clause project license and machine-readable license metadata.
 - Removed category-generation and legacy upload endpoints from the publication scope.
 - Deferred Results Analysis until its agreement statistics are validated and documented.
 - Added locked Python dependencies, automated dependency-vulnerability checks, publication

@@ -28,9 +28,3 @@ npm run build
 
 Pull requests should explain the user-facing change, include focused tests, update the
 relevant documentation, and avoid unrelated formatting or dependency changes.
-
-## Licensing
-
-CAT is distributed under the [BSD 3-Clause License](LICENSE). By submitting a
-contribution, contributors agree that their contribution may be distributed under that
-license and confirm that they have the right to provide it.
