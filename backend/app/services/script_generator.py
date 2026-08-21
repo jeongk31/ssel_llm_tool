@@ -621,7 +621,9 @@ def _get_provider_code(provider: str) -> tuple[str, str, str]:
                 system="You are a precise data coder. Return only valid JSON.",
                 messages=[{{"role": "user", "content": prompt}}],
             )
-            response_text = response.content[0].text''',
+            response_text = "".join(
+                block.text for block in response.content if getattr(block, "type", None) == "text"
+            )''',
         )
     elif provider == "gemini":
         return (
@@ -635,12 +637,10 @@ def _get_provider_code(provider: str) -> tuple[str, str, str]:
             response_text = response.text''',
         )
     else:
-        # OpenAI-compatible: openai, deepseek, xAI, mistral, together
+        # OpenAI-compatible: openai, deepseek, and xAI
         base_urls = {
             "deepseek": "https://api.deepseek.com",
             "xai": "https://api.x.ai/v1",
-            "mistral": "https://api.mistral.ai/v1",
-            "together": "https://api.together.xyz/v1",
         }
         base_url = base_urls.get(provider)
         if base_url:
@@ -659,8 +659,7 @@ def _get_provider_code(provider: str) -> tuple[str, str, str]:
                 messages=[
                     {{"role": "system", "content": "You are a precise data coder. Return only valid JSON."}},
                     {{"role": "user", "content": prompt}},
-                ],
-                temperature=0.1,{rf_line}
+                ],{rf_line}
             )
             response_text = response.choices[0].message.content''',
         )

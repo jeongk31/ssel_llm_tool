@@ -141,6 +141,7 @@ class GeneratedScriptSafetyTests(unittest.TestCase):
         self.assertEqual(imports, "from openai import OpenAI")
         self.assertIn('base_url="https://api.x.ai/v1"', setup)
         self.assertIn("client.chat.completions.create", call)
+        self.assertNotIn("temperature=", call)
 
     def test_anthropic_package_uses_the_anthropic_sdk(self):
         imports, setup, call = _get_provider_code("anthropic")

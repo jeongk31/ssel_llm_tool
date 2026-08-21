@@ -7,7 +7,7 @@ import pandas as pd
 from app.services.coding_runner import _get_provider_instance, run_coding
 from app.services.providers.anthropic_provider import AnthropicProvider
 from app.services.providers.openai_provider import OpenAICompatibleProvider
-from app.services.providers import get_provider
+from app.services.providers import PROVIDER_REGISTRY, get_provider
 
 
 class ProviderSelectionTests(unittest.TestCase):
@@ -19,13 +19,26 @@ class ProviderSelectionTests(unittest.TestCase):
         self.assertEqual(provider.base_url, "https://api.x.ai/v1")
 
     def test_anthropic_uses_native_provider(self):
-        provider = _get_provider_instance("anthropic", "claude-sonnet-4-6", "test-key")
+        provider = _get_provider_instance("anthropic", "claude-sonnet-5", "test-key")
 
         self.assertIsInstance(provider, AnthropicProvider)
-        self.assertEqual(provider.model, "claude-sonnet-4-6")
+        self.assertEqual(provider.model, "claude-sonnet-5")
 
-    def test_auxiliary_provider_registry_contains_new_models(self):
-        claude = get_provider("claude-sonnet-4-6", "test-key")
+    def test_auxiliary_provider_registry_matches_public_catalog(self):
+        expected_models = {
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+            "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash",
+            "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+            "gemini-3.1-pro-preview", "gemini-3-flash-preview",
+            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+            "deepseek-v4-pro", "deepseek-v4-flash",
+            "claude-fable-5", "claude-opus-5", "claude-sonnet-5",
+            "claude-haiku-4-5-20251001", "grok-4.5", "grok-4.3",
+        }
+        self.assertEqual(set(PROVIDER_REGISTRY), expected_models)
+
+        claude = get_provider("claude-sonnet-5", "test-key")
         grok = get_provider("grok-4.3", "test-key")
 
         self.assertIsInstance(claude, AnthropicProvider)
@@ -34,7 +47,7 @@ class ProviderSelectionTests(unittest.TestCase):
 
 
 class AnthropicParameterTests(unittest.IsolatedAsyncioTestCase):
-    async def test_opus_48_omits_unsupported_sampling_parameters(self):
+    async def test_claude_5_models_omit_provider_controlled_sampling_parameters(self):
         create = AsyncMock(return_value=SimpleNamespace(
             content=[SimpleNamespace(type="text", text='{"ok": true}')],
             usage=SimpleNamespace(input_tokens=1, output_tokens=2),
@@ -42,15 +55,20 @@ class AnthropicParameterTests(unittest.IsolatedAsyncioTestCase):
         fake_client = SimpleNamespace(messages=SimpleNamespace(create=create))
 
         with patch("app.services.providers.anthropic_provider.anthropic.AsyncAnthropic", return_value=fake_client):
-            provider = AnthropicProvider("test-key", "claude-opus-4-8")
-            await provider.complete("prompt", params={"temperature": 0.2, "top_p": 0.8, "max_tokens": 50})
+            for model in ("claude-fable-5", "claude-opus-5", "claude-sonnet-5"):
+                with self.subTest(model=model):
+                    create.reset_mock()
+                    provider = AnthropicProvider("test-key", model)
+                    await provider.complete(
+                        "prompt", params={"temperature": 0.2, "top_p": 0.8, "max_tokens": 50}
+                    )
 
-        request = create.await_args.kwargs
-        self.assertNotIn("temperature", request)
-        self.assertNotIn("top_p", request)
-        self.assertEqual(request["max_tokens"], 50)
+                    request = create.await_args.kwargs
+                    self.assertNotIn("temperature", request)
+                    self.assertNotIn("top_p", request)
+                    self.assertEqual(request["max_tokens"], 50)
 
-    async def test_sonnet_46_sends_only_one_sampling_parameter(self):
+    async def test_haiku_45_sends_only_one_sampling_parameter(self):
         create = AsyncMock(return_value=SimpleNamespace(
             content=[SimpleNamespace(type="text", text='{"ok": true}')],
             usage=SimpleNamespace(input_tokens=1, output_tokens=2),
@@ -58,12 +76,92 @@ class AnthropicParameterTests(unittest.IsolatedAsyncioTestCase):
         fake_client = SimpleNamespace(messages=SimpleNamespace(create=create))
 
         with patch("app.services.providers.anthropic_provider.anthropic.AsyncAnthropic", return_value=fake_client):
-            provider = AnthropicProvider("test-key", "claude-sonnet-4-6")
+            provider = AnthropicProvider("test-key", "claude-haiku-4-5-20251001")
             await provider.complete("prompt", params={"temperature": 0.2, "top_p": 0.8})
 
         request = create.await_args.kwargs
         self.assertEqual(request["temperature"], 0.2)
         self.assertNotIn("top_p", request)
+
+    async def test_pdf_response_uses_text_block_when_thinking_block_comes_first(self):
+        create = AsyncMock(return_value=SimpleNamespace(
+            content=[
+                SimpleNamespace(type="thinking", thinking="internal"),
+                SimpleNamespace(type="text", text="converted instructions"),
+            ],
+            usage=SimpleNamespace(input_tokens=1, output_tokens=2),
+        ))
+        fake_client = SimpleNamespace(messages=SimpleNamespace(create=create))
+
+        with patch("app.services.providers.anthropic_provider.anthropic.AsyncAnthropic", return_value=fake_client):
+            provider = AnthropicProvider("test-key", "claude-sonnet-5")
+            result = await provider.complete_with_pdf("prompt", b"%PDF")
+
+        self.assertEqual(result["response"], "converted instructions")
+
+
+class OpenAICompatibleParameterTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _fake_client(create):
+        return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    @staticmethod
+    def _response():
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))],
+            usage=SimpleNamespace(total_tokens=3),
+        )
+
+    async def test_gpt_41_preserves_explicit_zero_sampling_values(self):
+        create = AsyncMock(return_value=self._response())
+        with patch(
+            "app.services.providers.openai_provider.AsyncOpenAI",
+            return_value=self._fake_client(create),
+        ):
+            provider = OpenAICompatibleProvider("test-key", "gpt-4.1")
+            await provider.complete(
+                "prompt", params={"temperature": 0, "top_p": 0, "max_tokens": 50}
+            )
+
+        request = create.await_args.kwargs
+        self.assertEqual(request["temperature"], 0)
+        self.assertEqual(request["top_p"], 0)
+        self.assertEqual(request["max_tokens"], 50)
+
+    async def test_gpt_56_omits_sampling_and_uses_completion_token_parameter(self):
+        create = AsyncMock(return_value=self._response())
+        with patch(
+            "app.services.providers.openai_provider.AsyncOpenAI",
+            return_value=self._fake_client(create),
+        ):
+            provider = OpenAICompatibleProvider("test-key", "gpt-5.6-sol")
+            await provider.complete(
+                "prompt", params={"temperature": 0.2, "top_p": 0.8, "max_tokens": 50}
+            )
+
+        request = create.await_args.kwargs
+        self.assertNotIn("temperature", request)
+        self.assertNotIn("top_p", request)
+        self.assertNotIn("max_tokens", request)
+        self.assertEqual(request["max_completion_tokens"], 50)
+
+    async def test_deepseek_v4_omits_sampling_and_uses_max_tokens(self):
+        create = AsyncMock(return_value=self._response())
+        with patch(
+            "app.services.providers.openai_provider.AsyncOpenAI",
+            return_value=self._fake_client(create),
+        ):
+            provider = OpenAICompatibleProvider(
+                "test-key", "deepseek-v4-flash", base_url="https://api.deepseek.com"
+            )
+            await provider.complete(
+                "prompt", params={"temperature": 0.2, "top_p": 0.8, "max_tokens": 50}
+            )
+
+        request = create.await_args.kwargs
+        self.assertNotIn("temperature", request)
+        self.assertNotIn("top_p", request)
+        self.assertEqual(request["max_tokens"], 50)
 
 
 class CodingRunnerParameterTests(unittest.IsolatedAsyncioTestCase):
