@@ -6,7 +6,22 @@ router = APIRouter()
 
 # Providers/models that support native PDF (document + vision) processing.
 # Keep in sync with the PDF_MODELS list in the frontend.
-PDF_CAPABLE_PROVIDERS = {"openai", "gemini", "anthropic"}
+PDF_CAPABLE_MODELS = {
+    "openai": {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-4.1"},
+    "gemini": {
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    },
+    "anthropic": {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"},
+}
 
 MAX_PDF_BYTES = 25 * 1024 * 1024  # 25 MB
 
@@ -39,8 +54,10 @@ async def convert_pdf(
         raise HTTPException(400, "No file provided")
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are supported")
-    if provider not in PDF_CAPABLE_PROVIDERS:
+    if provider not in PDF_CAPABLE_MODELS:
         raise HTTPException(400, f"Provider '{provider}' does not support PDF conversion.")
+    if model not in PDF_CAPABLE_MODELS[provider]:
+        raise HTTPException(400, f"Model '{model}' is not available for PDF conversion with {provider}.")
     if not api_key.strip():
         raise HTTPException(400, "An API key is required to convert the PDF.")
 

@@ -24,8 +24,6 @@ PROVIDER_BASE_URLS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "deepseek": "https://api.deepseek.com",
     "xai": "https://api.x.ai/v1",
-    "mistral": "https://api.mistral.ai/v1",
-    "together": "https://api.together.xyz/v1",
 }
 
 
@@ -42,7 +40,7 @@ def _get_provider_instance(provider_name: str, model_id: str, api_key: str) -> L
         from app.services.providers.gemini_provider import GeminiProvider
         return GeminiProvider(api_key=api_key, model=model_id)
 
-    # OpenAI-compatible: openai, deepseek, xAI, mistral, together
+    # OpenAI-compatible: openai, deepseek, and xAI
     base_url = PROVIDER_BASE_URLS.get(provider_name)
     from app.services.providers.openai_provider import OpenAICompatibleProvider
     return OpenAICompatibleProvider(api_key=api_key, model=model_id, base_url=base_url)
