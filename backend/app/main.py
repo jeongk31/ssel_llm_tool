@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
+from app import __version__
 from app.config import settings
 from app.ratelimit import limiter
 from app.routes import coding, analytics, contact, instructions
@@ -33,7 +34,11 @@ async def lifespan(app: FastAPI):
         sweeper.cancel()
 
 
-app = FastAPI(title="CAT — Communication Annotation Tool", lifespan=lifespan)
+app = FastAPI(
+    title="CAT — Communication Annotation Tool",
+    version=__version__,
+    lifespan=lifespan,
+)
 
 # Rate limiting (public endpoints are decorated in their routers).
 app.state.limiter = limiter
@@ -56,4 +61,8 @@ app.include_router(analytics.admin_router)  # /admin (password protected)
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "CAT — Communication Annotation Tool API"}
+    return {
+        "status": "ok",
+        "service": "CAT — Communication Annotation Tool API",
+        "version": __version__,
+    }
