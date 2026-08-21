@@ -5,6 +5,8 @@ NYU Abu Dhabi for coding free-form communication with large language models (LLM
 It is designed primarily for communication data from economic experiments, although
 the workflow can support other structured content-analysis tasks.
 
+The paper-aligned release is **CAT v1.0.0**.
+
 Researchers can upload a dataset, define communication episodes, create a coding
 manual, provide experimental context, run one or more LLMs, review validation results,
 and download coded data without writing application code.

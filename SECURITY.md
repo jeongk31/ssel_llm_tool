@@ -2,8 +2,9 @@
 
 ## Supported version
 
-Security fixes are applied to the current `main` branch and the production service.
-Older commits and generated packages are not maintained as separate supported versions.
+Security fixes are applied to CAT v1.0.x, the current `main` branch, and the production
+service. Older releases, commits, and generated packages are not maintained as separate
+supported versions.
 
 ## Reporting a vulnerability
 
