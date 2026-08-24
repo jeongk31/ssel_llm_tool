@@ -304,6 +304,37 @@ body{
 .contact-sent{color:var(--good,#16a34a);font-size:13.5px;font-weight:600;margin-top:12px}
 @media(max-width:560px){.contact-row{grid-template-columns:1fr}}
 
+/* Documentation papers */
+.documentation-body{max-width:1080px;margin:0 auto}
+.documentation-list{display:flex;flex-direction:column;gap:18px}
+.documentation-paper{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:24px 26px;box-shadow:0 2px 10px rgba(0,0,0,.04);
+}
+.documentation-paper-type{
+  display:inline-flex;align-items:center;margin-bottom:10px;padding:3px 8px;
+  border-radius:999px;background:var(--purple-bg);color:var(--purple);
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+}
+.documentation-paper h2{
+  max-width:900px;font-size:19px;line-height:1.35;letter-spacing:-.015em;color:var(--text);
+}
+.documentation-paper h3{
+  margin-top:18px;margin-bottom:7px;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--text-3);
+}
+.documentation-paper p{font-size:13.5px;line-height:1.75;color:var(--text-2)}
+.documentation-paper-actions{display:flex;align-items:center;margin-top:18px}
+.documentation-link-pending{
+  display:inline-flex;padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg);font-size:12px;font-weight:600;color:var(--text-3);
+}
+@media(max-width:640px){
+  .documentation-body{padding:16px}
+  .documentation-paper{padding:18px}
+  .documentation-paper h2{font-size:17px}
+}
+
 /* demo placeholder (shown until the video file exists) */
 .demo-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
   padding:48px 20px;background:var(--surface-2,#f4f5f7);border:1px dashed var(--border);border-radius:10px;color:var(--text-3)}
