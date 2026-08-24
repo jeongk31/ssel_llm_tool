@@ -3822,10 +3822,6 @@ ${PDF_WATERMARK_HTML}
                 </div>
               </div>
               <div className="tool-body documentation-body">
-                <div className="documentation-masthead">
-                  <span>CAT Research Library</span>
-                  <span>Communication Annotation Tool</span>
-                </div>
                 <div className="documentation-list">
                   <article className="documentation-paper">
                     <div className="documentation-paper-kicker">Methodology paper · NYUAD Working Paper No. 0115</div>
