@@ -965,7 +965,7 @@ function buildSlotPayload(slot: ModelSlot) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<"coding" | "instructions" | "contact">("coding");
+  const [activeTool, setActiveTool] = useState<"coding" | "instructions" | "documentation" | "contact">("coding");
   const [analyticsConsent, setAnalyticsConsent] = useState<"loading" | "undecided" | "accepted" | "rejected">("loading");
   const [tourOpen, setTourOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1946,7 +1946,11 @@ export default function Home() {
       setRunComplete(s.runComplete as { total_rows: number; coded_rows: number; file_path: string } | null);
       setValidationReport(s.validationReport as ValidationReport | null);
       const restoredTool = s.activeTool;
-      setActiveTool(restoredTool === "instructions" || restoredTool === "contact" ? restoredTool : "coding");
+      setActiveTool(
+        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "contact"
+          ? restoredTool
+          : "coding",
+      );
       setUploadAvailability(s.uploadAvailability as UploadAvailability);
       setUploadMeta(s.uploadMeta as StoredUploadMetadata | null);
       setUploadError(s.uploadError as string);
@@ -3059,6 +3063,7 @@ ${PDF_WATERMARK_HTML}
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn CAT</button>
+            <button className={`topbar-tab ${activeTool === "documentation" ? "active" : ""}`} onClick={() => setActiveTool("documentation")}>Documentation</button>
             <button className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`} onClick={() => setActiveTool("contact")}>Contact Us</button>
             <button className="topbar-tab" onClick={() => { setShowWelcome(false); setAnalyticsConsent("undecided"); }}>Privacy</button>
           </div>
@@ -3807,6 +3812,44 @@ ${PDF_WATERMARK_HTML}
           </div>
 
           {activeTool === "instructions" && <Instructions />}
+
+          {activeTool === "documentation" && (
+            <div className="tool-page active">
+              <div className="tool-header">
+                <div>
+                  <h1>Documentation</h1>
+                  <p className="tool-desc">Research papers describing CAT and the methodology behind LLM-based coding of experimental communication.</p>
+                </div>
+              </div>
+              <div className="tool-body documentation-body">
+                <div className="documentation-list">
+                  <article className="documentation-paper">
+                    <div className="documentation-paper-type">Methodology paper</div>
+                    <h2>Are LLMs reliable coders of communication content in economic experiments?</h2>
+                    <h3>Abstract</h3>
+                    <p>
+                      Analysis of free-form communication from experiments has largely relied on manual coding by research assistants (RAs), a costly and time-consuming process. We outline an easily implemented method for coding communication data using large language models (LLMs) and propose a novel standard for evaluating the performance of LLM-based coding (“reliability”). Using data from three published articles, we find that LLM-based coding meets our two reliability conditions: (1) differences between LLM-based and RA-based coding are no larger than differences between the RA-based and original coding and (2) the LLM-based coding largely replicates qualitative conclusions from the original papers. That said, there are cases where the LLM-based coding agrees poorly with the RA-based coding or fails to replicate statistical results from the original papers. We demonstrate that these problems can be ameliorated with better prompt design. We conclude that use of LLMs can reduce research costs and time without sacrificing reliability, making content analysis a more accessible tool for experimental economists. However, only with a combination of test coding by RAs and prompt design by researchers can we avoid significant problems with LLM-based coding, highlighting the continued importance of human input.
+                    </p>
+                    <div className="documentation-paper-actions">
+                      <a className="btn btn-primary btn-sm" href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
+                    </div>
+                  </article>
+
+                  <article className="documentation-paper">
+                    <div className="documentation-paper-type">CAT paper</div>
+                    <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
+                    <h3>Abstract</h3>
+                    <p>
+                      We introduce the Communication Annotation Tool (CAT), an LLM-based tool for content analysis. CAT is intended to analyze free-form communication from economic experiments, accommodating a wide variety of communication structures. We describe CAT’s features including a broad array of customization options and a template for developing a coding manual. A detailed guide for using CAT is provided, including a step-by-step demonstration showing how CAT is used to quantify the content of communication from an experimental dataset. CAT is designed for easy monitoring of the coding process which ensures replicability of the communication coding method and simplifies identification and resolution of problems. We conclude by discussing CAT’s limitations and issues that users should keep in mind.
+                    </p>
+                    <div className="documentation-paper-actions">
+                      <span className="documentation-link-pending">Paper link forthcoming</span>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </div>
+          )}
 
           {activeTool === "contact" && (
             <div className="tool-page active">
