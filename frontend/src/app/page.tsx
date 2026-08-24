@@ -3822,26 +3822,42 @@ ${PDF_WATERMARK_HTML}
                 </div>
               </div>
               <div className="tool-body documentation-body">
+                <div className="documentation-masthead">
+                  <span>CAT Research Library</span>
+                  <span>Communication Annotation Tool</span>
+                </div>
                 <div className="documentation-list">
                   <article className="documentation-paper">
-                    <div className="documentation-paper-type">Methodology paper</div>
+                    <div className="documentation-paper-kicker">Methodology paper · NYUAD Working Paper No. 0115</div>
                     <h2>Are LLMs reliable coders of communication content in economic experiments?</h2>
+                    <p className="documentation-authors">Andrzej Baranski, David J. Cooper, and Jeong Kyu Lee</p>
+                    <div className="documentation-rule" aria-hidden="true" />
                     <h3>Abstract</h3>
                     <p>
                       Analysis of free-form communication from experiments has largely relied on manual coding by research assistants (RAs), a costly and time-consuming process. We outline an easily implemented method for coding communication data using large language models (LLMs) and propose a novel standard for evaluating the performance of LLM-based coding (“reliability”). Using data from three published articles, we find that LLM-based coding meets our two reliability conditions: (1) differences between LLM-based and RA-based coding are no larger than differences between the RA-based and original coding and (2) the LLM-based coding largely replicates qualitative conclusions from the original papers. That said, there are cases where the LLM-based coding agrees poorly with the RA-based coding or fails to replicate statistical results from the original papers. We demonstrate that these problems can be ameliorated with better prompt design. We conclude that use of LLMs can reduce research costs and time without sacrificing reliability, making content analysis a more accessible tool for experimental economists. However, only with a combination of test coding by RAs and prompt design by researchers can we avoid significant problems with LLM-based coding, highlighting the continued importance of human input.
                     </p>
+                    <div className="documentation-citation">
+                      <h3>Suggested citation</h3>
+                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115.</p>
+                    </div>
                     <div className="documentation-paper-actions">
                       <a className="btn btn-primary btn-sm" href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
                     </div>
                   </article>
 
                   <article className="documentation-paper">
-                    <div className="documentation-paper-type">CAT paper</div>
+                    <div className="documentation-paper-kicker">CAT paper · Forthcoming</div>
                     <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
+                    <p className="documentation-authors">Andrzej Baranski, David J. Cooper, and Jeong Kyu Lee</p>
+                    <div className="documentation-rule" aria-hidden="true" />
                     <h3>Abstract</h3>
                     <p>
                       We introduce the Communication Annotation Tool (CAT), an LLM-based tool for content analysis. CAT is intended to analyze free-form communication from economic experiments, accommodating a wide variety of communication structures. We describe CAT’s features including a broad array of customization options and a template for developing a coding manual. A detailed guide for using CAT is provided, including a step-by-step demonstration showing how CAT is used to quantify the content of communication from an experimental dataset. CAT is designed for easy monitoring of the coding process which ensures replicability of the communication coding method and simplifies identification and resolution of problems. We conclude by discussing CAT’s limitations and issues that users should keep in mind.
                     </p>
+                    <div className="documentation-citation">
+                      <h3>Provisional citation</h3>
+                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (forthcoming). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
+                    </div>
                     <div className="documentation-paper-actions">
                       <span className="documentation-link-pending">Paper link forthcoming</span>
                     </div>
