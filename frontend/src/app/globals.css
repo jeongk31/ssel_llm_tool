@@ -1402,9 +1402,9 @@ input[type="range"]::-webkit-slider-thumb{
   background:var(--surface);overflow:hidden
 }
 .agreement-pair:last-of-type{margin-bottom:0}
-.agreement-pair>summary{
+.agreement-pair-header{
   display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:9px 11px;cursor:pointer;font-size:11.5px;font-weight:650;
+  padding:9px 11px;font-size:11.5px;font-weight:650;
   color:var(--text);background:var(--bg)
 }
 .agreement-summary-metrics{
@@ -1416,7 +1416,7 @@ input[type="range"]::-webkit-slider-thumb{
 .agreement-note{margin:10px 2px 1px;color:var(--text-3);font-size:10.5px;line-height:1.4}
 
 @media(max-width:768px){
-  .agreement-pair>summary{align-items:flex-start;flex-direction:column;gap:4px}
+  .agreement-pair-header{align-items:flex-start;flex-direction:column;gap:4px}
   .agreement-summary-metrics{text-align:left}
 }
 

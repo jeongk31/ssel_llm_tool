@@ -3844,11 +3844,11 @@ ${agreementSection}
                         {!agreementLoading && agreementReport?.eligible && agreementReport.numeric_variables.length > 0 && agreementReport.pairs.length > 0 && (
                           <div className="agreement-pairs">
                             {agreementReport.pairs.map((pair) => (
-                              <details className="agreement-pair" key={`${pair.model_a}-${pair.model_b}`}>
-                                <summary>
+                              <section className="agreement-pair" key={`${pair.model_a}-${pair.model_b}`}>
+                                <div className="agreement-pair-header">
                                   <span>{pair.model_a} vs {pair.model_b}</span>
                                   <span className="agreement-summary-metrics">{pair.variables.length} variable{pair.variables.length === 1 ? "" : "s"}</span>
-                                </summary>
+                                </div>
                                 <div className="table-wrap agreement-table-wrap">
                                   <table className="tbl tbl-compact agreement-table">
                                     <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen&apos;s κ</th><th>N</th></tr></thead>
@@ -3864,7 +3864,7 @@ ${agreementSection}
                                     </tbody>
                                   </table>
                                 </div>
-                              </details>
+                              </section>
                             ))}
                             <p className="agreement-note">Runs are aggregated within each model before pairwise comparison. Agreement is the exact-match rate. Cohen&apos;s κ is unweighted and treats each distinct numeric result as a nominal coded value. N is the number of episodes with nonmissing values from both models. κ is N/A when expected agreement is 100%.</p>
                           </div>
