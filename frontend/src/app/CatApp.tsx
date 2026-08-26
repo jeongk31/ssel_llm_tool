@@ -3197,7 +3197,8 @@ ${agreementSection}
                 <div className="tool-citation-note">
                   <strong>Please remember to cite our methodological paper if you use this tool:</strong>
                   <p>
-                    Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
+                    <span className="citation-balanced-line">Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication</span>
+                    <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a></span>
                   </p>
                 </div>
               </div>
@@ -4006,7 +4007,10 @@ ${agreementSection}
                     </p>
                     <div className="documentation-citation">
                       <h3>Suggested Citation</h3>
-                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115.</p>
+                      <p>
+                        <span className="citation-balanced-line">Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication</span>
+                        <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115.</span>
+                      </p>
                     </div>
                     <div className="documentation-paper-actions">
                       <a className="btn btn-primary btn-sm" href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
