@@ -3823,7 +3823,7 @@ ${PDF_WATERMARK_HTML}
               <div className="tool-header">
                 <div>
                   <h1>Documentation</h1>
-                  <p className="tool-desc">Research paper describing the methodology behind LLM-based coding of experimental communication.</p>
+                  <p className="tool-desc">Research papers describing CAT and the methodology behind LLM-based coding of experimental communication.</p>
                 </div>
               </div>
               <div className="tool-body documentation-body">
@@ -3846,9 +3846,8 @@ ${PDF_WATERMARK_HTML}
                     </div>
                   </article>
 
-                  {/* CAT documentation paper hidden until it is ready for publication.
                   <article className="documentation-paper">
-                    <div className="documentation-paper-kicker">CAT Documentation Paper</div>
+                    <div className="documentation-paper-kicker">CAT Documentation</div>
                     <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
                     <p className="documentation-authors">Andrzej Baranski, David J. Cooper, and Jeong Kyu Lee</p>
                     <div className="documentation-rule" aria-hidden="true" />
@@ -3861,10 +3860,9 @@ ${PDF_WATERMARK_HTML}
                       <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
                     </div>
                     <div className="documentation-paper-actions">
-                      <a className="btn btn-primary btn-sm" href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download paper</a>
+                      <a className="btn btn-primary btn-sm" href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download PDF</a>
                     </div>
                   </article>
-                  */}
                 </div>
               </div>
             </div>
