@@ -3817,7 +3817,6 @@ ${PDF_WATERMARK_HTML}
               <div className="tool-header">
                 <div>
                   <h1>Documentation</h1>
-                  <p className="tool-desc">Research papers describing CAT and the methodology behind LLM-based coding of experimental communication.</p>
                 </div>
               </div>
               <div className="tool-body documentation-body">
