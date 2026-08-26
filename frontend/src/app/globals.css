@@ -89,7 +89,7 @@ body{
 .topbar-logo-nyuad{height:24px}
 .topbar-sep{width:1px;height:20px;background:var(--border)}
 .topbar-title{font-weight:600;font-size:13px;color:var(--text);letter-spacing:-0.01em}
-.topbar-title-link{cursor:pointer;outline:none}
+.topbar-title-link{cursor:pointer;outline:none;text-decoration:none}
 .topbar-title-link:hover{color:var(--purple)}
 .topbar-right{display:flex;align-items:center;gap:12px}
 .topbar-reset-btn{
@@ -126,7 +126,7 @@ body{
   font-family:var(--sans);font-size:12px;font-weight:500;color:var(--text-2);
   padding:6px 12px;border-radius:4px;
   transition:all .12s;white-space:nowrap;
-  display:flex;align-items:center;gap:4px;
+  display:flex;align-items:center;gap:4px;text-decoration:none;
 }
 .topbar-tab:hover{background:var(--bg);color:var(--text)}
 .topbar-tab.active{color:var(--purple);font-weight:600}
@@ -370,16 +370,15 @@ body{
 .documentation-footnote{display:grid;grid-template-columns:22px 1fr;gap:8px;margin:18px 0;padding:12px 14px;background:#faf8f3;border-top:1px solid rgba(86,71,54,.16)}
 .documentation-footnote>span{color:#75675a;font-family:Georgia,"Times New Roman",serif;font-size:11px;font-weight:700}
 .documentation-footnote p{margin:0;font-size:11.5px;line-height:1.6;text-align:left}
-.documentation-text-figure{margin:30px 0 8px}
-.documentation-pipeline-text{display:flex;flex-direction:column;gap:10px;padding:20px;border:1px solid rgba(86,71,54,.2);background:#f7f3eb;text-align:center}
-.documentation-pipeline-text strong{color:#312b25;font-size:15px}
-.documentation-pipeline-text span{color:#4d443b;font-size:12px;line-height:1.6}
-.documentation-pipeline-text small{color:#75675a;font-size:10.5px;line-height:1.5}
-.documentation-text-figure figcaption,.documentation-figure-caption{
+.documentation-paper-figure{margin:30px 0 22px}
+.documentation-paper-figure-image{
+  display:block;width:100%;height:auto;background:#fff;
+  border:1px solid rgba(86,71,54,.2);box-shadow:0 3px 12px rgba(49,43,37,.08);
+}
+.documentation-paper-figure figcaption{
   margin:8px 0 15px!important;color:#75675a!important;font-size:11.5px!important;
   font-style:italic;line-height:1.5!important;text-align:center!important;
 }
-.documentation-figure-caption{margin-top:28px!important;padding-top:14px;border-top:1px dashed rgba(86,71,54,.18)}
 .documentation-references p{padding-left:22px;text-indent:-22px;font-size:12.5px;line-height:1.65;text-align:left}
 .documentation-paper-actions{display:flex;align-items:center;margin-top:18px}
 @media(max-width:640px){

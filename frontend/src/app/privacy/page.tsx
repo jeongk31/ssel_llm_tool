@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PrivacyChoiceButton from "./PrivacyChoiceButton";
 
 export const metadata = {
   title: "Privacy Notice — CAT",
@@ -33,9 +34,10 @@ export default function PrivacyPage() {
         proxy access logs may process connection information for security and operations.
       </p>
       <p>
-        Your choice is stored in this browser as <code>cat_analytics_consent</code>. Select
-        <strong> Privacy</strong> in CAT&apos;s navigation to change the choice for future events.
+        Your choice is stored in this browser as <code>cat_analytics_consent</code>. Use the button
+        below to make a new choice for future events.
       </p>
+      <p><PrivacyChoiceButton /></p>
 
       <h2>Demonstration video</h2>
       <p>
@@ -75,7 +77,7 @@ export default function PrivacyPage() {
         LLM provider.
       </p>
 
-      <p><Link href="/">Return to CAT</Link></p>
+      <p><Link href="/coding">Return to CAT</Link></p>
     </main>
   );
 }
