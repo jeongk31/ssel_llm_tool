@@ -3058,7 +3058,6 @@ ${PDF_WATERMARK_HTML}
           >
             CAT — Communication Annotation Tool
           </span>
-          <span className="topbar-badge">beta</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
@@ -3842,7 +3841,7 @@ ${PDF_WATERMARK_HTML}
                   </article>
 
                   <article className="documentation-paper">
-                    <div className="documentation-paper-kicker">CAT paper · Forthcoming</div>
+                    <div className="documentation-paper-kicker">CAT Documentation Paper</div>
                     <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
                     <p className="documentation-authors">Andrzej Baranski, David J. Cooper, and Jeong Kyu Lee</p>
                     <div className="documentation-rule" aria-hidden="true" />
@@ -3851,11 +3850,11 @@ ${PDF_WATERMARK_HTML}
                       We introduce the Communication Annotation Tool (CAT), an LLM-based tool for content analysis. CAT is intended to analyze free-form communication from economic experiments, accommodating a wide variety of communication structures. We describe CAT’s features including a broad array of customization options and a template for developing a coding manual. A detailed guide for using CAT is provided, including a step-by-step demonstration showing how CAT is used to quantify the content of communication from an experimental dataset. CAT is designed for easy monitoring of the coding process which ensures replicability of the communication coding method and simplifies identification and resolution of problems. We conclude by discussing CAT’s limitations and issues that users should keep in mind.
                     </p>
                     <div className="documentation-citation">
-                      <h3>Provisional citation</h3>
-                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (forthcoming). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
+                      <h3>Suggested citation</h3>
+                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
                     </div>
                     <div className="documentation-paper-actions">
-                      <span className="documentation-link-pending">Paper link forthcoming</span>
+                      <a className="btn btn-primary btn-sm" href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download paper</a>
                     </div>
                   </article>
                 </div>
