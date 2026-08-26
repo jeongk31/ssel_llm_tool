@@ -1,3 +1,30 @@
+import Image from "next/image";
+
+type PaperFigureProps = {
+  number: number;
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  caption: string;
+};
+
+function PaperFigure({ number, src, alt, width, height, caption }: PaperFigureProps) {
+  return (
+    <figure className="documentation-paper-figure">
+      <Image
+        className="documentation-paper-figure-image"
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        sizes="(max-width: 640px) calc(100vw - 68px), 716px"
+      />
+      <figcaption>Figure {number}: {caption}</figcaption>
+    </figure>
+  );
+}
+
 export default function CatDocumentationPaper() {
   return (
     <div className="documentation-full-text">
@@ -29,14 +56,7 @@ export default function CatDocumentationPaper() {
         <p>The remainder of this paper is organized as follows. Section 2 describes how CAT is used to code communication data from an economic experiment. Section 3 provides a step-by-step demonstration designed to train researchers on how to use CAT. Section 4 covers the technical aspects of data handling and procedures. Section 5 discusses our tool limitations and concludes.</p>
         <aside className="documentation-footnote" id="cat-note-1"><span>1</span><p>For an LLM-based method of developing categories, see Cooper et al. (2026).</p></aside>
 
-        <figure className="documentation-text-figure">
-          <div className="documentation-pipeline-text">
-            <strong>CAT Coding Pipeline</strong>
-            <span>Source dataset → Map columns → Construct communication episodes → Configure codebook, instructions, models, and runs → Execute coding → Parse and aggregate responses → Check outputs → Map episode-level codes back to source rows → Coded CSV dataset</span>
-            <small>The generated package provides an alternative local route using the first configured model and one call per episode.</small>
-          </div>
-          <figcaption>Figure 1: CAT pipeline diagram</figcaption>
-        </figure>
+        <PaperFigure number={1} src="/documentation/figures/figure-1-cat-coding-pipeline.png" alt="CAT coding pipeline from source data and configuration through coding, validation, and downloadable results" width={1261} height={736} caption="CAT pipeline diagram" />
       </section>
 
       <section aria-labelledby="cat-paper-using-cat">
@@ -90,41 +110,41 @@ export default function CatDocumentationPaper() {
         <h3 id="cat-paper-guided-example" className="documentation-section-title"><span>3</span> A Guided Example</h3>
         <p>This section illustrates the CAT workflow using the constructed example provided in the guided tour on the website. The example contains six messages exchanged by three different participants across two sessions and two rounds. The example is intentionally small so that the relationship between source rows, communication episodes, and coded results can be followed directly. The classification results are illustrative and are not intended to establish model validity.</p>
 
-        <p className="documentation-figure-caption">Figure 2: Upload your dataset</p>
+        <PaperFigure number={2} src="/documentation/figures/figure-2.png" alt="CAT interface for uploading a communication dataset" width={2700} height={977} caption="Upload your dataset" />
         <p>The workflow begins with uploading the source dataset as shown in Figure 2. When uploaded, CAT displays a preview and opens the <em>Map Columns</em> window. Figure 2 shows the uploaded file name and confirms that the example contains six source rows and six columns. The researchers then specify how the source columns should be used to construct the communication episodes submitted to the LLM.</p>
 
-        <p className="documentation-figure-caption">Figure 3: Map your columns - Message</p>
+        <PaperFigure number={3} src="/documentation/figures/figure-3.png" alt="Map Columns window with the Message column selected" width={2700} height={941} caption="Map your columns - Message" />
         <p>The example first selects the <em>Message</em> column as the column containing the text to be coded. As shown in Figure 3, the <em>Message</em> column is highlighted in blue and marked with the <em>MSG</em> tag. This mapping is required.</p>
 
-        <p className="documentation-figure-caption">Figure 4: Map your columns - Episode identifier</p>
+        <PaperFigure number={4} src="/documentation/figures/figure-4.png" alt="Map Columns window with Session and Round selected as episode identifiers" width={2700} height={1058} caption="Map your columns - Episode identifier" />
         <p>The example then selects <em>Session</em> and <em>Round</em> columns jointly as the communication episode identifiers. Figure 4 shows both columns highlighted in green and marked with <em>ID</em> tags, indicating that CAT will use their values together to identify the communication episodes. CAT therefore combines rows that share the same values in both columns into communication episodes. The six source rows form three communication episodes in this case: the first contains three messages, the second contains two, and the last contains one. This step is required and important as it determines the unit of communication presented to the model.</p>
 
-        <p className="documentation-figure-caption">Figure 5: Map your columns - Sender</p>
+        <PaperFigure number={5} src="/documentation/figures/figure-5.png" alt="Map Columns window with Speaker selected as Sender" width={2700} height={941} caption="Map your columns - Sender" />
         <p>The <em>Speaker</em> column is selected as <em>Sender</em>. As shown in Figure 5, the column is highlighted in orange and marked with the <em>WHO</em> tag. CAT detects the three participant identifiers from this column: <em>P</em>, <em>V1</em>, and <em>V2</em>. Sender information allows the model to distinguish messages sent by different subjects and is required only when a category is coded separately for each sender.</p>
 
-        <p className="documentation-figure-caption">Figure 6: Map your columns - Order</p>
+        <PaperFigure number={6} src="/documentation/figures/figure-6.png" alt="Map Columns window with Order selected for ascending message order" width={2700} height={998} caption="Map your columns - Order" />
         <p>The <em>Order</em> column is selected to arrange messages in <em>Ascending</em> order within each communication episode. Figure 6 shows the <em>Order</em> column highlighted in purple and marked with the <em>ORD</em> tag; it can also be seen that <em>Ascending</em> order is selected for the ordering method. Preserving this sequence is necessary when the interpretation of a message depends on preceding proposals, responses, refusals, etc. If multiple rows have the same order value, CAT retains their relative order in the uploaded dataset.</p>
 
-        <p className="documentation-figure-caption">Figure 7: Map your columns - Context</p>
+        <PaperFigure number={7} src="/documentation/figures/figure-7.png" alt="Map Columns window with Treatment selected as contextual information" width={2700} height={1124} caption="Map your columns - Context" />
         <p>The <em>Treatment</em> column is selected as <em>Context</em>. As shown in Figure 7, the column is highlighted in pink and marked with the <em>CTX</em> tag. The text box below the table describes <em>Treatment</em> as the experimental condition assigned to the communication episode. CAT supplies this information to the model alongside the communication episode text. Because a single <em>Context</em> value is attached to each communication episode, CAT requires the selected field to have exactly the same value across all source rows grouped into that communication episode. Any inconsistency must be corrected in the source dataset or the variable must be unselected as <em>Context</em> before proceeding.</p>
 
-        <p className="documentation-figure-caption">Figure 8: Empty messages</p>
+        <PaperFigure number={8} src="/documentation/figures/figure-8.png" alt="CAT setting for handling communication episodes with empty messages" width={2700} height={584} caption="Empty messages" />
         <p>After the column mappings are saved, CAT constructs and displays the three communication episode-level coding units. The example then specifies how communication episodes with an empty <em>Message</em> column (i.e., no messages were sent) should be handled. As seen in Figure 8, the example uses <em>Ignore</em>, under which CAT skips the model call for such empty communication episodes but retains the corresponding source rows in the primary output with blank coding fields (i.e., missing observations). Directly below it, the Codebook summary lists the variables to be coded and provides access to the full editor.</p>
 
-        <p className="documentation-figure-caption">Figure 9: Variable card</p>
+        <PaperFigure number={9} src="/documentation/figures/figure-9.png" alt="CAT codebook variable card with categorical values and aggregation settings" width={2700} height={1029} caption="Variable card" />
         <p>The coding manual for the example contains one categorical variable labeled <em>cooperation</em>. It is coded once per communication episode and asks whether the participants reach a cooperative agreement during the communication episode. The permitted values are <em>yes</em>, <em>no</em>, and <em>mixed</em>. Each value is defined separately, with examples and additional context to clarify how particular statements or ambiguous cases should be classified. Figure 9 shows these definitions in the <em>Coded Values</em> area of the variable card, while the <em>Aggregate Repeated Calls</em> menu shows that <em>Majority Vote (mode)</em> has been selected. The example uses majority vote to aggregate repeated responses for this variable. Aggregation is specified separately for each codebook variable.</p>
 
-        <p className="documentation-figure-caption">Figure 10: Download codebook</p>
+        <PaperFigure number={10} src="/documentation/figures/figure-10.png" alt="CAT controls for downloading a completed codebook in multiple formats" width={2700} height={705} caption="Download codebook" />
         <p>Once the coding manual has been saved, researchers can download it for review, reuse, or inclusion in the project&apos;s documentation. As can be seen in Figure 10 CAT supports the following file types: JSON, CSV, TXT, PDF, XLSX, and LaTeX.</p>
 
-        <p className="documentation-figure-caption">Figure 11: Experimental instructions</p>
+        <PaperFigure number={11} src="/documentation/figures/figure-11.png" alt="CAT experimental instructions editor and PDF import control" width={2700} height={630} caption="Experimental instructions" />
         <p>The experimental instructions explain the overall structure of the experiment and the role of communication in the experiment. This information helps the model interpret statements whose meaning depends on the rules or setup of the experiment. The instructions are supplied to the LLM as background information and are not themselves treated as messages to be coded. CAT also allows a PDF import. Figure 11 shows the instructions entered in the text box and the <em>Import from PDF</em> control immediately above it. The example instructions explain when participants communicate, what choices they make, and that their payoffs depend on both participants&apos; choices.</p>
 
-        <p className="documentation-figure-caption">Figure 12: Models &amp; API keys</p>
+        <PaperFigure number={12} src="/documentation/figures/figure-12.png" alt="CAT model and API key configuration controls" width={2700} height={822} caption="Models & API keys" />
         <p>As shown in Figure 12, the example configures OPENAI&apos;s GPT-4.1 Mini with a temperature of 0.2, a top-p value of 1, and a maximum output length of 1,024 tokens. <em>Temperature</em> controls response variability, with lower values generally producing more consistent responses and higher values allowing greater variation; the example uses 0.2 for relatively consistent responses. <em>Top-p</em> controls the range of responses the model may consider: a value near 0 restricts it to only the most likely options, while 1 allows the full range. We set the value to 1 so that the variation is controlled through temperature alone. The 1,024 token limit provides sufficient space for the coding responses without allowing unnecessarily long outputs. The number of calls is set to three, so the selected model does the coding exercise three times. CAT retains the individual responses and applies the majority-vote rule specified for the <em>cooperation</em> variable.</p>
         <p>Researchers can run the configured task in the browser or generate a package for local execution. The <em>Run Coding</em> and <em>Generate Package</em> buttons are shown at the bottom of Figure 12. Browser execution supports the configured models and repeated calls. The generated package contains all files required to fully run the coding task, but is currently limited to one LLM and call. No API key is included in the downloaded package.</p>
 
-        <p className="documentation-figure-caption">Figure 13: Review and download results</p>
+        <PaperFigure number={13} src="/documentation/figures/figure-13.png" alt="CAT results review table, validation status, and download controls" width={2700} height={1493} caption="Review and download results" />
         <p>The example returns three communication episode-level classifications. Figure 13 shows one result row for each communication episode and reports that all three outputs passed CAT&apos;s basic checks. If a communication episode instead contained a failed call or an invalid value, the researchers can inspect the reported issue and selectively rerun just that communication episode.</p>
         <p>The primary download is a CSV file with the same six rows and original columns as the uploaded dataset. CAT maps each final communication episode-level classification back to every source row belonging to that communication episode. The three rows in the first communication episode therefore receive the same code, as do the two rows in the second communication episode. Researchers may optionally download a communication episode-level CSV containing one row for each preprocessed communication episode and a detailed archive containing both the aggregate and individual model-run records. These three corresponding download options appear beneath the results table in Figure 13.</p>
       </section>
