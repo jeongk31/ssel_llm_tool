@@ -2228,13 +2228,8 @@ textarea.ta-fit{
   font-size: 11px;
 }
 
-.tool-citation-note ol {
+.tool-citation-note p {
   margin: 5px 0 0;
-  padding-left: 20px;
-}
-
-.tool-citation-note li + li {
-  margin-top: 3px;
 }
 
 .tool-citation-note a {
