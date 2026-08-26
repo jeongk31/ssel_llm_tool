@@ -667,6 +667,7 @@ class ResultExportEndpointTests(unittest.TestCase):
             self.assertEqual(
                 sorted(archive.namelist()),
                 sorted([
+                    "inter_coder_agreement.csv",
                     "overall/aggregated_results.csv",
                     "overall/text_results.csv",
                     "models/openai_model/aggregated_results.csv",
@@ -688,6 +689,9 @@ class ResultExportEndpointTests(unittest.TestCase):
             openai_run_one = pd.read_csv(
                 io.BytesIO(archive.read("models/openai_model/runs/run1.csv"))
             )
+            agreement = pd.read_csv(
+                io.BytesIO(archive.read("inter_coder_agreement.csv"))
+            )
 
         self.assertEqual(len(overall), 3)
         self.assertEqual(
@@ -702,6 +706,63 @@ class ResultExportEndpointTests(unittest.TestCase):
         self.assertEqual(openai_aggregate["option_a"].tolist(), [0.5, 0.5])
         self.assertEqual(openai_run_one["option"].tolist(), ["a", "a"])
         self.assertEqual(openai_run_one["note"].tolist(), ["oa1", "ob1"])
+        self.assertEqual(
+            list(agreement.columns),
+            ["model_a", "model_b", "variable", "agreement_rate", "cohens_kappa", "paired_n"],
+        )
+        self.assertEqual(set(agreement["model_a"]), {"openai/model"})
+        self.assertEqual(set(agreement["model_b"]), {"gemini/model"})
+        self.assertIn("cooperation", set(agreement["variable"]))
+        self.assertNotIn("AVERAGE", set(agreement["variable"]))
+
+    def test_inter_coder_endpoint_aggregates_runs_within_models(self):
+        detail_dir = tempfile.mkdtemp(prefix="llm_coding_", dir=self.temp_dir.name)
+        detail_path = os.path.join(detail_dir, "coded_results.csv")
+        pd.DataFrame([
+            {"__chat_episode_index": 0, "coder": "openai/model__run1", "cooperation": 1},
+            {"__chat_episode_index": 0, "coder": "openai/model__run2", "cooperation": 1},
+            {"__chat_episode_index": 0, "coder": "gemini/model__run1", "cooperation": 1},
+            {"__chat_episode_index": 0, "coder": "gemini/model__run2", "cooperation": 0},
+            {"__chat_episode_index": 1, "coder": "openai/model__run1", "cooperation": 0},
+            {"__chat_episode_index": 1, "coder": "openai/model__run2", "cooperation": 0},
+            {"__chat_episode_index": 1, "coder": "gemini/model__run1", "cooperation": 1},
+            {"__chat_episode_index": 1, "coder": "gemini/model__run2", "cooperation": 1},
+        ]).to_csv(detail_path, index=False)
+
+        response = self.client.post(
+            "/api/coding/inter-coder-agreement",
+            json={
+                "result_path": detail_path,
+                "codebook": [{
+                    "label": "cooperation",
+                    "type": "binary",
+                    "level": "episode",
+                    "aggregation": "mode",
+                }],
+                "participants": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = response.json()
+        self.assertTrue(report["eligible"])
+        self.assertEqual(report["models"], ["openai/model", "gemini/model"])
+        self.assertEqual(report["pairs"][0]["variables"][0]["n"], 2)
+
+    def test_inter_coder_endpoint_rejects_unrelated_paths(self):
+        unrelated = os.path.join(self.temp_dir.name, "unrelated.csv")
+        pd.DataFrame([{"coder": "model", "value": 1}]).to_csv(unrelated, index=False)
+
+        response = self.client.post(
+            "/api/coding/inter-coder-agreement",
+            json={
+                "result_path": unrelated,
+                "codebook": [{"label": "value", "type": "numeric"}],
+                "participants": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_text_only_aggregated_download_omits_aggregate_csv_files(self):
         payload = self._payload("primary")

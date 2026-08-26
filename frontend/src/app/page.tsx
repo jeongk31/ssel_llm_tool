@@ -130,7 +130,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-results-panel", targetId: "tour-result-downloads", section: "Results",
     title: "Review and Download Results",
-    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. A single download contains the complete results. With one model call, CAT returns the coded source-row CSV as before. With repeated or multi-model coding, CAT returns a ZIP containing up to two overall files (aggregated non-text results and unaggregated text responses), the corresponding files for each LLM, and every original model/run result.</p>),
+    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. With two or more models, CAT also aggregates repeated runs within each model and reports pairwise agreement rates and Cohen&apos;s kappa for non-text numeric results. A single download contains the complete results. With one model call, CAT returns the coded source-row CSV as before. With repeated or multi-model coding, CAT returns a ZIP containing overall results, per-LLM results, every original model/run result, and the inter-coder agreement CSV when applicable.</p>),
   },
 ];
 
@@ -599,6 +599,27 @@ interface CodingStreamMessage {
   total_rows?: number;
   coded_rows?: number;
   file_path?: string;
+}
+
+interface InterCoderAgreementVariable {
+  variable: string;
+  agreement_rate: number | null;
+  cohens_kappa: number | null;
+  n: number;
+}
+
+interface InterCoderAgreementPair {
+  model_a: string;
+  model_b: string;
+  variables: InterCoderAgreementVariable[];
+}
+
+interface InterCoderAgreementReport {
+  eligible: boolean;
+  model_count: number;
+  models: string[];
+  numeric_variables: string[];
+  pairs: InterCoderAgreementPair[];
 }
 
 interface ValidationIssue {
@@ -1148,6 +1169,10 @@ export default function Home() {
   const [resultDownloadKind, setResultDownloadKind] = useState<ResultDownloadKind | null>(null);
   const [resultDownloadError, setResultDownloadError] = useState("");
   const [resultExportConfig, setResultExportConfig] = useState<ResultExportConfig | null>(null);
+  const [agreementReport, setAgreementReport] = useState<InterCoderAgreementReport | null>(null);
+  const [agreementLoading, setAgreementLoading] = useState(false);
+  const [agreementError, setAgreementError] = useState("");
+  const [agreementRequestVersion, setAgreementRequestVersion] = useState(0);
   const aggregationActive = (resultExportConfig?.modelCallCount ?? modelSlots.length * runsPerModel) > 1;
   const resultVars = useMemo(() => {
     const resultCodebook = resultExportConfig?.codebook ?? codebook;
@@ -1444,6 +1469,45 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runComplete]);
 
+  useEffect(() => {
+    if (!runComplete || !resultExportConfig || resultExportConfig.models.length < 2) {
+      setAgreementReport(null);
+      setAgreementLoading(false);
+      setAgreementError("");
+      return;
+    }
+    const controller = new AbortController();
+    setAgreementLoading(true);
+    setAgreementError("");
+    fetch("/api/coding/inter-coder-agreement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        result_path: runComplete.file_path,
+        codebook: resultExportConfig.codebook,
+        participants: resultExportConfig.participants,
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({ detail: response.statusText }));
+          throw new Error(body.detail || response.statusText);
+        }
+        return response.json() as Promise<InterCoderAgreementReport>;
+      })
+      .then((report) => setAgreementReport(report))
+      .catch((error: unknown) => {
+        if (isAbortError(error)) return;
+        setAgreementReport(null);
+        setAgreementError(error instanceof Error ? error.message : "Could not calculate inter-coder agreement.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAgreementLoading(false);
+      });
+    return () => controller.abort();
+  }, [runComplete, resultExportConfig, agreementRequestVersion]);
+
   // ── File upload ───────────────────────────────────────────────────────────
 
   // Delete the server's temp working files (uploaded dataset + results) for an
@@ -1476,6 +1540,7 @@ export default function Home() {
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError("");
     setValidationReport(null);
+    setAgreementReport(null); setAgreementLoading(false); setAgreementError("");
     setResultDownloadKind(null); setResultDownloadError("");
     setResultExportConfig(null);
     setConsoleLogs([]); setRightView("script");
@@ -2298,6 +2363,7 @@ export default function Home() {
     setRunComplete(null);
     setRunError("");
     setValidationReport(null);
+    setAgreementReport(null); setAgreementLoading(false); setAgreementError("");
     setResultDownloadError("");
     setResultExportConfig(buildResultExportConfig());
     setGenerateError("");
@@ -2774,6 +2840,26 @@ ${blocks}
       const vals = TYPE_HAS_VALUES(e.type) ? e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") : "—";
       return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${e.type === "text" ? "Not aggregated" : e.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)"}</td><td>${htmlEsc(vals)}</td></tr>`;
     });
+    const agreementSection = agreementReport?.eligible
+      ? `<h2>Inter-Coder Agreement</h2>
+        ${agreementReport.pairs.length === 0 || agreementReport.numeric_variables.length === 0
+          ? `<p class="muted">No non-text numeric result columns are available for agreement analysis.</p>`
+          : agreementReport.pairs.map((pair) => `<div class="agreement-report-pair">
+              <h3>${htmlEsc(pair.model_a)} vs ${htmlEsc(pair.model_b)}</h3>
+              <table>
+                <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen's κ</th><th>N</th></tr></thead>
+                <tbody>
+                  ${pair.variables.map((metric) => `<tr>
+                    <td>${htmlEsc(metric.variable)}</td>
+                    <td>${metric.agreement_rate == null ? "—" : `${metric.agreement_rate.toFixed(1)}%`}</td>
+                    <td>${metric.cohens_kappa == null ? "N/A" : metric.cohens_kappa.toFixed(3)}</td>
+                    <td>${metric.n}</td>
+                  </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+        <p class="note">Runs are aggregated within each model before pairwise comparison. Agreement is the exact-match rate. Cohen's κ is unweighted and treats each distinct numeric result as a nominal coded value. N is the number of episodes with nonmissing values from both models. κ is reported as N/A when expected agreement is 100%.</p>`
+      : "";
 
     const kv = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`;
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Summary</title>
@@ -2782,10 +2868,13 @@ ${blocks}
   h1{font-size:19px;font-weight:700;margin-bottom:2px}
   .sub{color:#71717a;font-size:11px;margin-bottom:20px}
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#7c4dab;margin:18px 0 6px;border-bottom:1px solid #e4e4e7;padding-bottom:3px}
+  h3{font-size:11px;margin:10px 0 4px}
   table{width:100%;border-collapse:collapse;margin-bottom:6px}
   td,th{padding:4px 8px;border-bottom:1px solid #f1f1f4;text-align:left;vertical-align:top}
   th{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#a1a1aa}
   td.k{color:#71717a;width:180px}
+  .agreement-report-pair{break-inside:avoid;page-break-inside:avoid;margin-bottom:10px}
+  .note,.muted{color:#71717a;font-size:10.5px;line-height:1.4}
   .pill{display:inline-block;padding:1px 7px;border-radius:10px;background:#f3eef8;color:#5b2d8e;font-weight:600;font-size:11px}
   @media print{body{padding:24px}}
   ${PDF_WATERMARK_CSS}
@@ -2833,6 +2922,7 @@ ${PDF_WATERMARK_HTML}
   <thead><tr><th>Label</th><th>Type</th><th>Level</th><th>Aggregation</th><th>Values</th></tr></thead>
   <tbody>${rowsHtml(cbRows)}</tbody>
 </table>
+${agreementSection}
 </body></html>`;
 
     const win = window.open("", "_blank");
@@ -2867,6 +2957,7 @@ ${PDF_WATERMARK_HTML}
     setRunErrors([]);
     if (!indices) setRunComplete(null);
     setValidationReport(null);
+    setAgreementReport(null); setAgreementLoading(false); setAgreementError("");
     setRunError("");
     setResultDownloadError("");
     setConsoleLogs([]);
@@ -3008,6 +3099,7 @@ ${PDF_WATERMARK_HTML}
     setGenerating(false); setGenerateError(""); setResult(null);
     setRunning(false); setRunProgress(null); setCodedRows([]); setRunErrors([]);
     setRunComplete(null); setRunStartedAt(null); setRunFinishedAt(null); setRunError(""); setValidationReport(null);
+    setAgreementReport(null); setAgreementLoading(false); setAgreementError("");
     setResultExportConfig(null);
     setResultDownloadKind(null); setResultDownloadError("");
     setConsoleLogs([]); setRightView("script"); setExpandedTable(null);
@@ -3708,6 +3800,55 @@ ${PDF_WATERMARK_HTML}
                     )}
                     {runComplete && !validationReport && <div className="enc-complete-bar"><div>Validating results...</div></div>}
 
+                    {runComplete && !running && resultExportConfig && resultExportConfig.models.length >= 2 && (
+                      <div className="res-section mt-12 agreement-card">
+                        <div className="res-section-h">Inter-Coder Agreement</div>
+                        {agreementLoading && (
+                          <div className="agreement-status"><span className="spinner" /> Aggregating runs within each model and calculating pairwise agreement...</div>
+                        )}
+                        {!agreementLoading && agreementError && (
+                          <div className="agreement-status agreement-error">
+                            <span>{agreementError}</span>
+                            <button className="btn btn-outline btn-xs" onClick={() => setAgreementRequestVersion((value) => value + 1)}>Retry</button>
+                          </div>
+                        )}
+                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length === 0 && (
+                          <div className="agreement-status">No non-text numeric result columns are available for agreement analysis.</div>
+                        )}
+                        {!agreementLoading && agreementReport && !agreementReport.eligible && (
+                          <div className="agreement-status">At least two distinct models are required for inter-coder agreement.</div>
+                        )}
+                        {!agreementLoading && agreementReport?.eligible && agreementReport.numeric_variables.length > 0 && agreementReport.pairs.length > 0 && (
+                          <div className="agreement-pairs">
+                            {agreementReport.pairs.map((pair) => (
+                              <details className="agreement-pair" key={`${pair.model_a}-${pair.model_b}`}>
+                                <summary>
+                                  <span>{pair.model_a} vs {pair.model_b}</span>
+                                  <span className="agreement-summary-metrics">{pair.variables.length} variable{pair.variables.length === 1 ? "" : "s"}</span>
+                                </summary>
+                                <div className="table-wrap agreement-table-wrap">
+                                  <table className="tbl tbl-compact agreement-table">
+                                    <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen&apos;s κ</th><th>N</th></tr></thead>
+                                    <tbody>
+                                      {pair.variables.map((metric) => (
+                                        <tr key={metric.variable}>
+                                          <td>{metric.variable}</td>
+                                          <td>{metric.agreement_rate == null ? "—" : `${metric.agreement_rate.toFixed(1)}%`}</td>
+                                          <td>{metric.cohens_kappa == null ? "N/A" : metric.cohens_kappa.toFixed(3)}</td>
+                                          <td>{metric.n}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </details>
+                            ))}
+                            <p className="agreement-note">Runs are aggregated within each model before pairwise comparison. Agreement is the exact-match rate. Cohen&apos;s κ is unweighted and treats each distinct numeric result as a nominal coded value. N is the number of episodes with nonmissing values from both models. κ is N/A when expected agreement is 100%.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {runComplete && validationReport && (
                       <div className="res-section mt-12 results-download-card" id="tour-result-downloads">
                         <div className="res-section-h">Download Results</div>
@@ -3721,7 +3862,7 @@ ${PDF_WATERMARK_HTML}
                             <div className="results-download-title">Complete Results</div>
                             <p className="results-download-helper">
                               {aggregationActive
-                                ? "Downloads one ZIP containing overall aggregates, text responses when present, per-LLM aggregates, and every original LLM/run result."
+                                ? "Downloads one ZIP containing overall aggregates, text responses when present, per-LLM aggregates, every original LLM/run result, and inter-coder agreement when two or more models were used."
                                 : "Downloads the coded dataset with every original row and column, including all coded variable types."}
                             </p>
                           </div>
@@ -3744,9 +3885,13 @@ ${PDF_WATERMARK_HTML}
                       <div className="res-section mt-12 run-summary-cta">
                         <div>
                           <div className="run-summary-title">Run Summary</div>
-                          <div className="run-summary-sub">Dataset, models, configuration, timing &amp; results — save as PDF.</div>
+                          <div className="run-summary-sub">Dataset, models, configuration, timing, results, and inter-coder agreement when applicable — save as PDF.</div>
                         </div>
-                        <button className="btn btn-outline btn-sm" onClick={handleRunSummary}>↓ Download Summary (PDF)</button>
+                        <button
+                          className="btn btn-outline btn-sm"
+                          disabled={Boolean(resultExportConfig && resultExportConfig.models.length >= 2 && !agreementReport)}
+                          onClick={handleRunSummary}
+                        >↓ Download Summary (PDF)</button>
                       </div>
                     )}
 

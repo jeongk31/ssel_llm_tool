@@ -32,7 +32,8 @@ data.
    does not contain an API key. Browser runs can use multiple models and repeated calls,
    with aggregation selected separately for each coding variable.
 8. Monitor episode-level progress, inspect validation issues, selectively rerun affected
-   episodes, and use one button to download the complete results.
+   episodes, review model-level inter-coder agreement when two or more models are used,
+   and use one button to download the complete results.
 
 With one model call, the download is a CSV that preserves the order and columns of the
 uploaded source data and appends every coding variable. If several source rows form one
@@ -46,11 +47,20 @@ non-text aggregates and text responses. Finally, the archive contains one unchan
 call-level CSV for every individual run of every LLM. Categorical values are represented
 in aggregate files as separate binary columns (for example, `option_a`, `option_b`, and
 `option_c`), while their original labels remain unchanged in the individual-run files.
+When two or more models are used, CAT first aggregates repeated runs within each model,
+then calculates pairwise exact agreement rates and Cohen's kappa for every non-text
+numeric result column. The tables appear in the Results panel and run-summary report,
+and the ZIP contains the same statistics in `inter_coder_agreement.csv`. Cohen's kappa
+is unweighted and treats each distinct numeric result as a nominal coded value. Statistics
+use observations for which both models have a value; kappa is undefined when expected
+agreement is 100%. CAT reports each variable separately and does not average coefficients
+across variables.
 When a numeric mode has no unique winner, CAT uses the median; with an even number of
 responses, this is the average of the two middle values.
 
 ```text
 dataset_coded_results.zip
+├── inter_coder_agreement.csv      # present with 2+ models and non-text outputs
 ├── overall/
 │   ├── aggregated_results.csv     # present when non-text variables exist
 │   └── text_results.csv           # present when text variables exist
