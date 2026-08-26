@@ -341,21 +341,56 @@ body{
   color:#4c4552;font-family:Georgia,"Times New Roman",serif;font-size:12.5px;
   line-height:1.65;
 }
-.documentation-pdf{
-  display:block;width:100%;height:min(82vh,940px);min-height:680px;
-  border:1px solid rgba(86,71,54,.25);background:#f5f2ec;
+.documentation-full-text{color:#3d3731;font-family:Georgia,"Times New Roman",serif}
+.documentation-full-text section{scroll-margin-top:90px}
+.documentation-full-text section+section{margin-top:40px;padding-top:32px;border-top:1px solid rgba(86,71,54,.16)}
+.documentation-full-text .documentation-paper-date{margin:-4px 0 24px;color:#75675a;text-align:center;font-size:12.5px}
+.documentation-full-text .documentation-section-title{
+  margin:0 0 18px;color:#2d2823;font-family:Georgia,"Times New Roman",serif;
+  font-size:20px;font-weight:600;line-height:1.35;text-transform:none;letter-spacing:0;
 }
-.documentation-pdf-fallback{
-  margin:0;padding:24px;color:#3d3731;font-family:Georgia,"Times New Roman",serif;
-  font-size:14px;line-height:1.7;
+.documentation-full-text .documentation-section-title span{display:inline-block;min-width:27px;color:#75675a}
+.documentation-full-text h4{
+  margin:30px 0 10px;color:#39322c;font-family:Georgia,"Times New Roman",serif;
+  font-size:16px;font-weight:600;line-height:1.4;
 }
+.documentation-full-text p,.documentation-full-text li{
+  color:#3d3731;font-family:Georgia,"Times New Roman",serif;font-size:14px;
+  line-height:1.8;text-align:justify;hyphens:auto;
+}
+.documentation-full-text p{margin:0 0 15px}
+.documentation-full-text ol{margin:4px 0 20px;padding-left:28px}
+.documentation-full-text li{margin-bottom:10px;padding-left:5px}
+.documentation-full-text a{color:#5f477c;text-decoration:underline;text-underline-offset:2px}
+.documentation-full-text sup{font-size:9px;line-height:0}
+.documentation-keywords{margin-top:18px!important;text-align:left!important}
+.documentation-author-notes{margin-top:22px;padding:16px 18px;background:#f6f3ed;border-left:3px solid #a89784}
+.documentation-author-notes p{margin-bottom:7px;font-size:12px;line-height:1.55;text-align:left}
+.documentation-author-notes p:last-child{margin-bottom:0}
+.documentation-footnote{display:grid;grid-template-columns:22px 1fr;gap:8px;margin:18px 0;padding:12px 14px;background:#faf8f3;border-top:1px solid rgba(86,71,54,.16)}
+.documentation-footnote>span{color:#75675a;font-family:Georgia,"Times New Roman",serif;font-size:11px;font-weight:700}
+.documentation-footnote p{margin:0;font-size:11.5px;line-height:1.6;text-align:left}
+.documentation-text-figure{margin:30px 0 8px}
+.documentation-pipeline-text{display:flex;flex-direction:column;gap:10px;padding:20px;border:1px solid rgba(86,71,54,.2);background:#f7f3eb;text-align:center}
+.documentation-pipeline-text strong{color:#312b25;font-size:15px}
+.documentation-pipeline-text span{color:#4d443b;font-size:12px;line-height:1.6}
+.documentation-pipeline-text small{color:#75675a;font-size:10.5px;line-height:1.5}
+.documentation-text-figure figcaption,.documentation-figure-caption{
+  margin:8px 0 15px!important;color:#75675a!important;font-size:11.5px!important;
+  font-style:italic;line-height:1.5!important;text-align:center!important;
+}
+.documentation-figure-caption{margin-top:28px!important;padding-top:14px;border-top:1px dashed rgba(86,71,54,.18)}
+.documentation-references p{padding-left:22px;text-indent:-22px;font-size:12.5px;line-height:1.65;text-align:left}
 .documentation-paper-actions{display:flex;align-items:center;margin-top:18px}
 @media(max-width:640px){
   .documentation-body{padding:16px 12px}
   .documentation-paper{padding:28px 22px}
   .documentation-paper h2{font-size:21px}
   .documentation-paper>p:not(.documentation-authors){text-align:left}
-  .documentation-pdf{height:72vh;min-height:520px}
+  .documentation-full-text p,.documentation-full-text li{text-align:left;hyphens:none}
+  .documentation-full-text .documentation-section-title{font-size:18px}
+  .documentation-full-text h4{font-size:15px}
+  .documentation-full-text ol{padding-left:22px}
 }
 
 /* demo placeholder (shown until the video file exists) */
