@@ -3081,13 +3081,10 @@ ${PDF_WATERMARK_HTML}
                 <h1>LLM Coding</h1>
                 <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
                 <div className="tool-citation-note">
-                  <strong>Please cite us if you use this tool:</strong>
+                  <strong>Please remember to cite our methodological paper if you use this tool:</strong>
                   <ol>
                     <li>
                       Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
-                    </li>
-                    <li>
-                      Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics. <a href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download paper</a>
                     </li>
                   </ol>
                 </div>
@@ -3828,7 +3825,7 @@ ${PDF_WATERMARK_HTML}
               <div className="tool-header">
                 <div>
                   <h1>Documentation</h1>
-                  <p className="tool-desc">Research papers describing CAT and the methodology behind LLM-based coding of experimental communication.</p>
+                  <p className="tool-desc">Research paper describing the methodology behind LLM-based coding of experimental communication.</p>
                 </div>
               </div>
               <div className="tool-body documentation-body">
@@ -3851,6 +3848,7 @@ ${PDF_WATERMARK_HTML}
                     </div>
                   </article>
 
+                  {/* CAT documentation paper hidden until it is ready for publication.
                   <article className="documentation-paper">
                     <div className="documentation-paper-kicker">CAT Documentation Paper</div>
                     <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
@@ -3868,6 +3866,7 @@ ${PDF_WATERMARK_HTML}
                       <a className="btn btn-primary btn-sm" href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download paper</a>
                     </div>
                   </article>
+                  */}
                 </div>
               </div>
             </div>
