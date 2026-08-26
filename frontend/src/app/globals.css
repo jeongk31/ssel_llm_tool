@@ -2320,6 +2320,10 @@ textarea.ta-fit{
   margin: 5px 0 0;
 }
 
+.citation-balanced-line {
+  display: block;
+}
+
 .tool-citation-note a {
   color: var(--purple);
   font-weight: 650;
