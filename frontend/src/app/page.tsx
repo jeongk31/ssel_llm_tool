@@ -3082,11 +3082,9 @@ ${PDF_WATERMARK_HTML}
                 <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
                 <div className="tool-citation-note">
                   <strong>Please remember to cite our methodological paper if you use this tool:</strong>
-                  <ol>
-                    <li>
-                      Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
-                    </li>
-                  </ol>
+                  <p>
+                    Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
+                  </p>
                 </div>
               </div>
             </div>
