@@ -3080,9 +3080,16 @@ ${PDF_WATERMARK_HTML}
               <div>
                 <h1>LLM Coding</h1>
                 <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
-                <div className="episode-def">
-                  <span className="episode-def-term">Communication episode:</span>
-                  <span className="episode-def-text"> the unit of analysis — a combination of messages exchanged through the same channel, or a collection of messages sent by one sender. Rows that share your chosen identifier(s) are merged into one episode.</span>
+                <div className="tool-citation-note">
+                  <strong>Please cite us if you use this tool:</strong>
+                  <ol>
+                    <li>
+                      Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
+                    </li>
+                    <li>
+                      Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics. <a href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download paper</a>
+                    </li>
+                  </ol>
                 </div>
               </div>
             </div>
@@ -3140,6 +3147,10 @@ ${PDF_WATERMARK_HTML}
                               ? <><span className="spinner" /> Uploading...</>
                               : "Drop a CSV or Excel file here, or click to browse"}
                         </p>
+                      </div>
+                      <div className="episode-def">
+                        <span className="episode-def-term">Communication episode:</span>
+                        <span className="episode-def-text"> the unit of analysis — a combination of messages exchanged through the same channel, or a collection of messages sent by one sender. Rows that share your chosen identifier(s) are merged into one episode.</span>
                       </div>
                       <input
                         ref={fileRef}

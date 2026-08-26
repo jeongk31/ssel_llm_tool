@@ -2211,6 +2211,42 @@ textarea.ta-fit{
   font-style: italic;
 }
 
+.tool-citation-note {
+  max-width: 980px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--purple);
+  border-radius: 0 6px 6px 0;
+  background: var(--purple-bg);
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tool-citation-note strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.tool-citation-note ol {
+  margin: 5px 0 0;
+  padding-left: 20px;
+}
+
+.tool-citation-note li + li {
+  margin-top: 3px;
+}
+
+.tool-citation-note a {
+  color: var(--purple);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.tool-citation-note a:hover {
+  text-decoration: underline;
+}
+
 .privacy-consent {
   position: fixed;
   z-index: 3000;
