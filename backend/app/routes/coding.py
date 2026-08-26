@@ -14,7 +14,7 @@ from typing import Any, Literal
 import pandas as pd
 from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import StreamingResponse, Response, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.ratelimit import limiter
@@ -33,6 +33,10 @@ from app.services.result_exporter import (
     expanded_codebook_labels,
     prepare_coding_dataset,
     validate_sender_configuration,
+)
+from app.services.agreement import (
+    agreement_report_frame,
+    build_inter_coder_agreement,
 )
 
 router = APIRouter()
@@ -1016,6 +1020,31 @@ class ExportResultsRequest(BaseModel):
     model_call_count: int = 1
 
 
+class InterCoderAgreementRequest(BaseModel):
+    result_path: str
+    codebook: list[CodebookEntry]
+    participants: list[str] = Field(default_factory=list)
+
+
+@router.post("/coding/inter-coder-agreement")
+@limiter.limit("30/minute")
+async def inter_coder_agreement(request: Request, req: InterCoderAgreementRequest):
+    """Return pairwise agreement for model-level aggregates."""
+    detail_path = _resolve_coding_result_path(req.result_path)
+    try:
+        detail_df = pd.read_csv(detail_path)
+        report = build_inter_coder_agreement(
+            detail_df,
+            codebook=[entry.model_dump() for entry in req.codebook],
+            participants=req.participants,
+        )
+    except (OSError, pd.errors.ParserError) as exc:
+        raise HTTPException(400, "Could not read the detailed model and run results.") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return report
+
+
 def _safe_result_component(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._") or "model"
 
@@ -1166,6 +1195,11 @@ async def export_results(request: Request, req: ExportResultsRequest):
 
         raw_detail = detail_df[~detail_df["coder"].astype(str).str.startswith("__")].copy()
         aggregate_labels = aggregate_output_labels(codebook_dicts, req.participants)
+        agreement_report = build_inter_coder_agreement(
+            detail_df,
+            codebook=codebook_dicts,
+            participants=req.participants,
+        )
         text_specs = [
             spec for spec in expanded_codebook_specs(codebook_dicts, req.participants)
             if spec["type"] == "text"
@@ -1193,6 +1227,11 @@ async def export_results(request: Request, req: ExportResultsRequest):
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+            if agreement_report["eligible"] and agreement_report["numeric_variables"]:
+                archive.writestr(
+                    "inter_coder_agreement.csv",
+                    dataframe_to_csv(agreement_report_frame(agreement_report)),
+                )
             if aggregate_labels:
                 archive.writestr(
                     "overall/aggregated_results.csv",
