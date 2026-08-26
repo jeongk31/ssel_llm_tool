@@ -8,6 +8,7 @@ import Instructions, { EXAMPLE_INSTRUCTIONS, ContactForm } from "@/app/tools/How
 import CatDocumentationPaper from "@/app/tools/CatDocumentationPaper";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
+import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
 import {
   clearStoredUpload,
@@ -988,19 +989,21 @@ function buildSlotPayload(slot: ModelSlot) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type ActiveTool = "coding" | "instructions" | "documentation" | "contact";
+type ActiveTool = "coding" | "instructions" | "documentation" | "contact" | "privacy";
 
 const TOOL_PATHS: Record<ActiveTool, string> = {
   coding: "/coding",
   instructions: "/learn-cat",
   documentation: "/documentation",
   contact: "/contact",
+  privacy: "/privacy",
 };
 
 function toolForPath(pathname: string): ActiveTool {
   if (pathname.startsWith("/learn-cat")) return "instructions";
   if (pathname.startsWith("/documentation")) return "documentation";
   if (pathname.startsWith("/contact")) return "contact";
+  if (pathname.startsWith("/privacy")) return "privacy";
   return "coding";
 }
 
@@ -2036,7 +2039,7 @@ export default function CatApp() {
       setValidationReport(s.validationReport as ValidationReport | null);
       const restoredTool = s.activeTool;
       navigateToTool(
-        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "contact"
+        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "contact" || restoredTool === "privacy"
           ? restoredTool
           : "coding",
       );
@@ -3175,7 +3178,7 @@ ${agreementSection}
             <Link href="/learn-cat" className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`}>Learn CAT</Link>
             <Link href="/documentation" className={`topbar-tab ${activeTool === "documentation" ? "active" : ""}`}>Documentation</Link>
             <Link href="/contact" className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`}>Contact Us</Link>
-            <Link href="/privacy" className="topbar-tab">Privacy</Link>
+            <Link href="/privacy" className={`topbar-tab ${activeTool === "privacy" ? "active" : ""}`}>Privacy</Link>
           </div>
         </div>
         <div className="topbar-right">
@@ -4044,6 +4047,17 @@ ${agreementSection}
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTool === "privacy" && (
+            <PrivacyNotice
+              onChangeAnalyticsChoice={() => {
+                try { localStorage.removeItem("cat_analytics_consent"); } catch {}
+                setShowWelcome(false);
+                setAnalyticsConsent("undecided");
+                navigateToTool("coding");
+              }}
+            />
           )}
         </main>
       </div>
