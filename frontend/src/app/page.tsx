@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import Image from "next/image";
 import Instructions, { EXAMPLE_INSTRUCTIONS, ContactForm } from "@/app/tools/HowToPage";
+import CatDocumentationPaper from "@/app/tools/CatDocumentationPaper";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -3996,17 +3997,7 @@ ${agreementSection}
                     <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
                     <p className="documentation-authors">Andrzej Baranski, David J. Cooper, and Jeong Kyu Lee</p>
                     <div className="documentation-rule" aria-hidden="true" />
-                    <h3>Full paper</h3>
-                    <object
-                      className="documentation-pdf"
-                      data="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf#view=FitH"
-                      type="application/pdf"
-                      title="CAT: An LLM-based Tool for Content Analysis in Experimental Economics — full paper"
-                    >
-                      <p className="documentation-pdf-fallback">
-                        This browser cannot display the paper inline. Use the download button below to read the complete PDF.
-                      </p>
-                    </object>
+                    <CatDocumentationPaper />
                     <div className="documentation-citation">
                       <h3>Suggested citation</h3>
                       <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
