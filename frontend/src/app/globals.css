@@ -91,11 +91,6 @@ body{
 .topbar-title{font-weight:600;font-size:13px;color:var(--text);letter-spacing:-0.01em}
 .topbar-title-link{cursor:pointer;outline:none}
 .topbar-title-link:hover{color:var(--purple)}
-.topbar-badge{
-  font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--teal);background:var(--teal-bg);
-  padding:2px 6px;border-radius:4px;
-}
 .topbar-right{display:flex;align-items:center;gap:12px}
 .topbar-reset-btn{
   font-weight:600;
@@ -347,10 +342,6 @@ body{
   line-height:1.65;
 }
 .documentation-paper-actions{display:flex;align-items:center;margin-top:18px}
-.documentation-link-pending{
-  display:inline-flex;padding:6px 10px;border:1px solid var(--border);border-radius:6px;
-  background:var(--bg);font-size:12px;font-weight:600;color:var(--text-3);
-}
 @media(max-width:640px){
   .documentation-body{padding:16px 12px}
   .documentation-paper{padding:28px 22px}
