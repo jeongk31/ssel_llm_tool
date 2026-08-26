@@ -56,6 +56,7 @@ jobs:
           # retain included routers as nested objects in app.routes.
           paths = set(app.openapi()["paths"])
           required = {
+              "/api/coding/inter-coder-agreement",
               "/api/coding/run-stream",
               "/api/coding/upload-status/{file_id}",
           }
