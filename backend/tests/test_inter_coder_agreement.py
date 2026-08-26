@@ -171,6 +171,37 @@ class InterCoderAgreementTests(unittest.TestCase):
             },
         )
 
+    def test_sender_level_categorical_values_use_expanded_binary_columns(self):
+        detail = pd.DataFrame(
+            [
+                {"__chat_episode_index": 0, "coder": "openai/model", "choice_P1": "yes"},
+                {"__chat_episode_index": 0, "coder": "gemini/model", "choice_P1": "yes"},
+                {"__chat_episode_index": 1, "coder": "openai/model", "choice_P1": "no"},
+                {"__chat_episode_index": 1, "coder": "gemini/model", "choice_P1": "yes"},
+            ]
+        )
+        codebook = [
+            {
+                "label": "choice",
+                "type": "categorical",
+                "level": "sender",
+                "aggregation": "mean",
+                "values": [{"value": "yes"}, {"value": "no"}],
+            }
+        ]
+
+        report = build_inter_coder_agreement(
+            detail,
+            codebook=codebook,
+            participants=["P1"],
+        )
+
+        self.assertEqual(report["numeric_variables"], ["choice_P1_yes", "choice_P1_no"])
+        metrics = {row["variable"]: row for row in report["pairs"][0]["variables"]}
+        self.assertEqual(metrics["choice_P1_yes"]["agreement_rate"], 50.0)
+        self.assertEqual(metrics["choice_P1_no"]["agreement_rate"], 50.0)
+        self.assertEqual(metrics["choice_P1_yes"]["n"], 2)
+
     def test_text_only_codebook_has_no_numeric_agreement_rows(self):
         detail = pd.DataFrame(
             [

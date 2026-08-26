@@ -49,7 +49,7 @@ in aggregate files as separate binary columns (for example, `option_a`, `option_
 `option_c`), while their original labels remain unchanged in the individual-run files.
 When two or more models are used, CAT first aggregates repeated runs within each model,
 then calculates pairwise exact agreement rates and Cohen's kappa for every non-text
-numeric result column. The tables appear in the Results panel and run-summary report,
+aggregate output column. The tables appear in the Results panel and run-summary report,
 and the ZIP contains the same statistics in `inter_coder_agreement.csv`. Cohen's kappa
 is unweighted and treats each distinct numeric result as a nominal coded value. Statistics
 use observations for which both models have a value; kappa is undefined when expected

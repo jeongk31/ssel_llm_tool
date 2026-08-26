@@ -341,12 +341,21 @@ body{
   color:#4c4552;font-family:Georgia,"Times New Roman",serif;font-size:12.5px;
   line-height:1.65;
 }
+.documentation-pdf{
+  display:block;width:100%;height:min(82vh,940px);min-height:680px;
+  border:1px solid rgba(86,71,54,.25);background:#f5f2ec;
+}
+.documentation-pdf-fallback{
+  margin:0;padding:24px;color:#3d3731;font-family:Georgia,"Times New Roman",serif;
+  font-size:14px;line-height:1.7;
+}
 .documentation-paper-actions{display:flex;align-items:center;margin-top:18px}
 @media(max-width:640px){
   .documentation-body{padding:16px 12px}
   .documentation-paper{padding:28px 22px}
   .documentation-paper h2{font-size:21px}
   .documentation-paper>p:not(.documentation-authors){text-align:left}
+  .documentation-pdf{height:72vh;min-height:520px}
 }
 
 /* demo placeholder (shown until the video file exists) */

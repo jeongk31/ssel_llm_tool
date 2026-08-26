@@ -130,7 +130,7 @@ const CODING_TOUR_STEPS: TourStep[] = [
   {
     sectionId: "tour-results-panel", targetId: "tour-result-downloads", section: "Results",
     title: "Review and Download Results",
-    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. With two or more models, CAT also aggregates repeated runs within each model and reports pairwise agreement rates and Cohen&apos;s kappa for non-text numeric results. A single download contains the complete results. With one model call, CAT returns the coded source-row CSV as before. With repeated or multi-model coding, CAT returns a ZIP containing overall results, per-LLM results, every original model/run result, and the inter-coder agreement CSV when applicable.</p>),
+    body: (<p>After browser coding, CAT validates the coded episodes and lets you re-run any that need attention. With two or more models, CAT also aggregates repeated runs within each model and reports pairwise agreement rates and Cohen&apos;s kappa for non-text aggregate outputs. A single download contains the complete results. With one model call, CAT returns the coded source-row CSV as before. With repeated or multi-model coding, CAT returns a ZIP containing overall results, per-LLM results, every original model/run result, and the inter-coder agreement CSV when applicable.</p>),
   },
 ];
 
@@ -2843,7 +2843,7 @@ ${blocks}
     const agreementSection = agreementReport?.eligible
       ? `<h2>Inter-Coder Agreement</h2>
         ${agreementReport.pairs.length === 0 || agreementReport.numeric_variables.length === 0
-          ? `<p class="muted">No non-text numeric result columns are available for agreement analysis.</p>`
+          ? `<p class="muted">No non-text aggregate output columns are available for agreement analysis.</p>`
           : agreementReport.pairs.map((pair) => `<div class="agreement-report-pair">
               <h3>${htmlEsc(pair.model_a)} vs ${htmlEsc(pair.model_b)}</h3>
               <table>
@@ -3813,7 +3813,7 @@ ${agreementSection}
                           </div>
                         )}
                         {!agreementLoading && agreementReport && agreementReport.numeric_variables.length === 0 && (
-                          <div className="agreement-status">No non-text numeric result columns are available for agreement analysis.</div>
+                          <div className="agreement-status">No non-text aggregate output columns are available for agreement analysis.</div>
                         )}
                         {!agreementLoading && agreementReport && !agreementReport.eligible && (
                           <div className="agreement-status">At least two distinct models are required for inter-coder agreement.</div>
@@ -3889,7 +3889,7 @@ ${agreementSection}
                         </div>
                         <button
                           className="btn btn-outline btn-sm"
-                          disabled={Boolean(resultExportConfig && resultExportConfig.models.length >= 2 && !agreementReport)}
+                          disabled={agreementLoading}
                           onClick={handleRunSummary}
                         >↓ Download Summary (PDF)</button>
                       </div>
@@ -3996,10 +3996,17 @@ ${agreementSection}
                     <h2>CAT: An LLM-based Tool for Content Analysis in Experimental Economics</h2>
                     <p className="documentation-authors">Andrzej Baranski, David J. Cooper, and Jeong Kyu Lee</p>
                     <div className="documentation-rule" aria-hidden="true" />
-                    <h3>Abstract</h3>
-                    <p>
-                      We introduce the Communication Annotation Tool (CAT), an LLM-based tool for content analysis. CAT is intended to analyze free-form communication from economic experiments, accommodating a wide variety of communication structures. We describe CAT’s features including a broad array of customization options and a template for developing a coding manual. A detailed guide for using CAT is provided, including a step-by-step demonstration showing how CAT is used to quantify the content of communication from an experimental dataset. CAT is designed for easy monitoring of the coding process which ensures replicability of the communication coding method and simplifies identification and resolution of problems. We conclude by discussing CAT’s limitations and issues that users should keep in mind.
-                    </p>
+                    <h3>Full paper</h3>
+                    <object
+                      className="documentation-pdf"
+                      data="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf#view=FitH"
+                      type="application/pdf"
+                      title="CAT: An LLM-based Tool for Content Analysis in Experimental Economics — full paper"
+                    >
+                      <p className="documentation-pdf-fallback">
+                        This browser cannot display the paper inline. Use the download button below to read the complete PDF.
+                      </p>
+                    </object>
                     <div className="documentation-citation">
                       <h3>Suggested citation</h3>
                       <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
