@@ -3198,7 +3198,7 @@ ${agreementSection}
                   <strong>Please remember to cite our methodological paper if you use this tool:</strong>
                   <p>
                     <span className="citation-balanced-line">Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication</span>
-                    <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a></span>
+                    <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a></span>
                   </p>
                 </div>
               </div>
@@ -4009,11 +4009,11 @@ ${agreementSection}
                       <h3>Suggested Citation</h3>
                       <p>
                         <span className="citation-balanced-line">Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication</span>
-                        <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115.</span>
+                        <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">Available at SSRN</a>.</span>
                       </p>
                     </div>
                     <div className="documentation-paper-actions">
-                      <a className="btn btn-primary btn-sm" href="https://archive.nyu.edu/handle/2451/75820" target="_blank" rel="noopener noreferrer">View paper</a>
+                      <a className="btn btn-primary btn-sm" href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a>
                     </div>
                   </article>
 
@@ -4025,7 +4025,7 @@ ${agreementSection}
                     <CatDocumentationPaper />
                     <div className="documentation-citation">
                       <h3>Suggested Citation</h3>
-                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics.</p>
+                      <p>Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). CAT: An LLM-based Tool for Content Analysis in Experimental Economics. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7370379" target="_blank" rel="noopener noreferrer">Available at SSRN</a>.</p>
                     </div>
                     <div className="documentation-paper-actions">
                       <a className="btn btn-primary btn-sm" href="/documentation/CAT_An_LLM-based_Tool_for_Content_Analysis_in_Experimental_Economics.pdf" download>Download PDF</a>
