@@ -394,6 +394,49 @@ body{
 .pipeline-layout.split .results-col{
   display:block;
 }
+
+/* Keep the coding workspace inside the viewport. The settings and results
+   panes own their scroll; the page shell and action bar never move. */
+.layout.coding-layout{
+  height:calc(100dvh - var(--topbar-h));
+  min-height:0;
+  overflow:hidden;
+}
+.coding-layout .main{
+  height:100%;
+  min-height:0;
+  overflow:hidden;
+}
+.tool-page.coding-workspace{
+  height:100%;
+  min-height:0;
+  overflow:hidden;
+  flex-direction:column;
+}
+.tool-page.coding-workspace.active{display:flex}
+.coding-workspace>.tool-header{flex:0 0 auto}
+.coding-workspace>.pipeline-layout{
+  flex:1 1 0;
+  height:auto;
+  min-height:0;
+  overflow:hidden;
+}
+.coding-workspace .config-col{
+  height:100%;
+  max-height:none;
+  overflow:hidden;
+}
+.coding-workspace .config-scroll{
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+}
+.coding-workspace .results-col{
+  height:100%;
+  max-height:none;
+  overscroll-behavior:contain;
+}
+.coding-workspace .layout-rail{height:100%}
 .results-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   min-height:300px;color:var(--text-3);gap:8px;text-align:center;
@@ -413,6 +456,12 @@ body{
 }
 .panel-head:hover{background:var(--bg)}
 .panel-head-left{display:flex;align-items:center;gap:9px}
+.panel.setup-invalid>.panel-head{box-shadow:inset 3px 0 0 var(--bad);background:#fffafa}
+.setup-error-tag{
+  font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  padding:2px 6px;border-radius:4px;color:var(--bad);background:var(--bad-bg);
+  border:1px solid #fca5a5;
+}
 .step-badge{
   width:19px;height:19px;border-radius:5px;
   background:var(--ink);color:white;
@@ -587,6 +636,25 @@ input[type="range"]::-webkit-slider-thumb{
   padding:10px 16px;
   display:flex;justify-content:flex-end;gap:8px;
 }
+.setup-error-summary{
+  align-self:center;margin-right:auto;color:var(--bad);font-size:11.5px;font-weight:600;
+}
+
+/* Submit-time setup validation */
+.field-invalid{
+  border-color:var(--bad)!important;
+  box-shadow:0 0 0 2px rgba(220,38,38,.10)!important;
+}
+.field-group-invalid input,.field-group-invalid select{
+  border-color:var(--bad)!important;
+  box-shadow:0 0 0 2px rgba(220,38,38,.10)!important;
+}
+.field-error{
+  color:var(--bad);font-size:11px;line-height:1.4;margin-top:4px;
+}
+.colmap-recap>.field-error{margin-top:-4px}
+.cb-summary.field-invalid:hover{border-color:var(--bad)}
+.model-slot.field-invalid{overflow:visible}
 
 /* ═══════════════════════════════════════════════════ */
 /* TABLES                                              */
@@ -2075,6 +2143,7 @@ textarea.ta-fit{
   display:flex;align-items:center;justify-content:space-between;
   padding:14px 22px;border-top:1px solid var(--border);flex-shrink:0;
 }
+.colmap-foot-status{display:flex;flex-direction:column;gap:2px;min-width:0;padding-right:16px}
 
 /* panel-4 summary */
 .colmap-summary{display:flex;flex-direction:column;gap:10px}

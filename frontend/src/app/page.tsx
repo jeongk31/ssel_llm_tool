@@ -889,6 +889,17 @@ interface ModelSlot {
   maxTokens?: number;
 }
 
+type SetupAction = "package" | "run";
+
+interface SetupIssue {
+  key: string;
+  panel: 1 | 2 | 3 | 4;
+  message: string;
+  codebookIndex?: number;
+  modelIndex?: number;
+  field?: "label" | "type" | "provider" | "model" | "apiKey";
+}
+
 const EMPTY_SLOT: ModelSlot = {
   provider: "openai",
   model: "gpt-4.1-mini",
@@ -1049,6 +1060,8 @@ export default function Home() {
   const [rowsAsUnits, setRowsAsUnits] = useState(false); // identifier = each row is its own unit
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [colMapError, setColMapError] = useState("");
+  const [mapValidationAttempted, setMapValidationAttempted] = useState(false);
+  const [codebookSaveAttempted, setCodebookSaveAttempted] = useState(false);
   const [exportFormat, setExportFormat] = useState<"json" | "csv" | "txt" | "pdf" | "xlsx" | "latex">("csv");
   const [activeRole, setActiveRole] = useState<ColRole>("message");
   // Snapshots for save/discard on the two popups, and a flag guarding first hydration.
@@ -1068,6 +1081,7 @@ export default function Home() {
   const [pdfError, setPdfError] = useState("");
   const [pdfResultText, setPdfResultText] = useState<string | null>(null);
   const [pdfDragOver, setPdfDragOver] = useState(false);
+  const [pdfValidationAttempted, setPdfValidationAttempted] = useState(false);
   const pdfFileRef = useRef<HTMLInputElement>(null);
 
   const choosePdfFile = (file: File | null) => {
@@ -1079,13 +1093,14 @@ export default function Home() {
 
   const openPdfModal = () => {
     setPdfFile(null); setPdfError(""); setPdfResultText(null); setPdfConverting(false);
+    setPdfValidationAttempted(false);
     setPdfModalOpen(true);
   };
   const closePdfModal = () => { if (!pdfConverting) setPdfModalOpen(false); };
 
   const convertPdf = async () => {
-    if (!pdfFile) { setPdfError("Choose a PDF file first."); return; }
-    if (!pdfApiKey.trim()) { setPdfError("Enter an API key for the selected model."); return; }
+    setPdfValidationAttempted(true);
+    if (!pdfFile || !pdfApiKey.trim()) return;
     setPdfConverting(true); setPdfError(""); setPdfResultText(null);
     try {
       const fd = new FormData();
@@ -1152,6 +1167,8 @@ export default function Home() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [setupIssues, setSetupIssues] = useState<SetupIssue[]>([]);
+  const setupValidationSnapshotsRef = useRef<Record<SetupIssue["panel"], string> | null>(null);
 
   // Run state
   const [running, setRunning] = useState(false);
@@ -1373,11 +1390,11 @@ export default function Home() {
   });
   // Snapshot each popup's state when it opens.
   useEffect(() => {
-    if (columnModalOpen) { mapSnapshotRef.current = mapStateJSON(); setColMapError(""); }
+    if (columnModalOpen) { mapSnapshotRef.current = mapStateJSON(); setColMapError(""); setMapValidationAttempted(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnModalOpen]);
   useEffect(() => {
-    if (expandedTable === "codebook") codebookSnapshotRef.current = JSON.stringify(codebook);
+    if (expandedTable === "codebook") { codebookSnapshotRef.current = JSON.stringify(codebook); setCodebookSaveAttempted(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedTable]);
 
@@ -1387,6 +1404,7 @@ export default function Home() {
     : "";
 
   const saveAndProceed = () => {
+    setMapValidationAttempted(true);
     if (!mappingComplete) { setColMapError(mapRequirementMsg() || "Select all required columns first."); return; }
     const conflicts = currentContextConflicts;
     if (conflicts.length > 0) {
@@ -1425,23 +1443,6 @@ export default function Home() {
     setColumnModalOpen(false);
   };
 
-  const saveCodebookEditor = () => {
-    if (duplicateCodeLabels.length > 0) {
-      showToast("Every output label must be unique");
-      return;
-    }
-    if (duplicateAggregateLabels.length > 0) {
-      showToast("Categorical values must create unique aggregate labels");
-      return;
-    }
-    if (hasSenderVar && !sendersOk) {
-      showToast(senderConfigurationMessage);
-      return;
-    }
-    codebookSnapshotRef.current = JSON.stringify(codebook);
-    setExpandedTable(null);
-    showToast("Codebook saved");
-  };
   const closeCodebookEditor = () => {
     if (codebookSnapshotRef.current !== null && JSON.stringify(codebook) !== codebookSnapshotRef.current) {
       if (!window.confirm("Leave without saving? Your codebook changes will be discarded.")) return;
@@ -2100,11 +2101,13 @@ export default function Home() {
   // ── Codebook management ───────────────────────────────────────────────────
 
   const updateCodebook = (idx: number, field: keyof CodebookEntry, value: string) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry)));
   };
 
   // Changing the type adjusts the coded values: binary → fixed 0/1; numeric/text → none.
   const changeType = (idx: number, newType: string) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => {
       if (i !== idx) return e;
       let values = e.values;
@@ -2123,22 +2126,32 @@ export default function Home() {
     }));
   };
 
-  const addCodebookRow = () => setCodebook((prev) => [...prev, newEntry()]);
+  const addCodebookRow = () => {
+    setCodebookSaveAttempted(false);
+    setCodebook((prev) => [...prev, newEntry()]);
+  };
 
   const removeCodebookRow = (idx: number) => {
     if (codebook.length <= 1) return;
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.filter((_, i) => i !== idx));
   };
 
   // Per-value (coded value) helpers
-  const addValueRow = (idx: number) =>
+  const addValueRow = (idx: number) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => (i === idx ? { ...e, values: [...e.values, { ...EMPTY_VALUE }] } : e)));
-  const removeValueRow = (idx: number, vIdx: number) =>
+  };
+  const removeValueRow = (idx: number, vIdx: number) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => (i === idx ? { ...e, values: e.values.filter((_, j) => j !== vIdx) } : e)));
-  const updateValue = (idx: number, vIdx: number, field: keyof CodedValue, value: string) =>
+  };
+  const updateValue = (idx: number, vIdx: number, field: keyof CodedValue, value: string) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => (i === idx
       ? { ...e, values: e.values.map((v, j) => (j === vIdx ? { ...v, [field]: value } : v)) }
       : e)));
+  };
 
   // ── Model slot helpers ────────────────────────────────────────────────────
 
@@ -2159,38 +2172,190 @@ export default function Home() {
           : "";
   const sendersOk = !hasSenderVar || senderConfigurationMessage === "";
 
+  const collectCodebookIssues = (entries: CodebookEntry[] = codebook): SetupIssue[] => {
+    const issues: SetupIssue[] = [];
+    if (entries.length === 0) {
+      issues.push({ key: "codebook.empty", panel: 2, message: "Add at least one codebook variable." });
+      return issues;
+    }
+    entries.forEach((entry, index) => {
+      if (!entry.label.trim()) {
+        issues.push({
+          key: `codebook.${index}.label`, panel: 2, codebookIndex: index, field: "label",
+          message: `Codebook variable ${index + 1} needs a label.`,
+        });
+      }
+      if (!entry.type) {
+        issues.push({
+          key: `codebook.${index}.type`, panel: 2, codebookIndex: index, field: "type",
+          message: `Codebook variable ${index + 1} needs a type.`,
+        });
+      }
+    });
+    const entryExpandedVars = expandCodebook(entries, participants);
+    const entryAggregateVars = expandAggregateResults(entries, participants);
+    const entryDuplicateLabels = duplicateExpandedKeys(entryExpandedVars);
+    const entryDuplicateAggregateLabels = duplicateExpandedKeys(entryAggregateVars);
+    if (entryDuplicateLabels.length > 0) {
+      issues.push({ key: "codebook.duplicates", panel: 2, message: `Output labels must be unique: ${entryDuplicateLabels.join(", ")}.` });
+    }
+    if (entryDuplicateAggregateLabels.length > 0) {
+      issues.push({ key: "codebook.aggregate-duplicates", panel: 2, message: `Categorical values create duplicate aggregate columns: ${entryDuplicateAggregateLabels.join(", ")}.` });
+    }
+    if (entries.some((entry) => entry.level === "sender") && senderConfigurationMessage) {
+      issues.push({ key: "codebook.senders", panel: 2, message: senderConfigurationMessage });
+    }
+    return issues;
+  };
+
   // Sender verification belongs to the codebook because it is required only
   // when at least one variable is coded per sender.
   const mappingComplete =
     !!messageColumn &&
     (rowsAsUnits || identifierColumns.length > 0);
 
-  const codingSetupReady = Boolean(
-    uploadAvailability === "ready" &&
-    uploadResult &&
-    liveUploadIdRef.current === uploadResult.file_id &&
-    !uploading &&
-    mappingComplete &&
-    experimentInstructions.trim() &&
-    codebook.every((e) => e.label.trim() && e.type) &&
-    duplicateCodeLabels.length === 0 &&
-    duplicateAggregateLabels.length === 0 &&
-    sendersOk &&
-    currentContextConflicts.length === 0 &&
-    modelSlots.length > 0
-  );
-  const canGeneratePackage = Boolean(
-    codingSetupReady &&
-    modelSlots[0]?.provider &&
-    modelSlots[0]?.model
-  );
-  const canRunCoding = Boolean(
-    codingSetupReady &&
-    modelSlots.every((slot) => slot.provider && slot.model && slot.apiKey.trim())
-  );
+  const collectSetupIssues = (action: SetupAction): SetupIssue[] => {
+    const issues: SetupIssue[] = [];
+
+    if (!uploadResult) {
+      issues.push({ key: "upload", panel: 1, message: "Upload a CSV or Excel dataset." });
+    } else if (uploading || uploadAvailability === "restoring") {
+      issues.push({ key: "upload", panel: 1, message: "Wait for the dataset upload to finish." });
+    } else if (uploadAvailability !== "ready" || liveUploadIdRef.current !== uploadResult.file_id) {
+      issues.push({ key: "upload", panel: 1, message: "Restore or re-upload the dataset before continuing." });
+    }
+
+    if (uploadResult) {
+      if (!messageColumn) {
+        issues.push({ key: "mapping.message", panel: 1, message: "Map the column that contains the message text." });
+      }
+      if (!rowsAsUnits && identifierColumns.length === 0) {
+        issues.push({ key: "mapping.identifier", panel: 1, message: "Map at least one episode identifier, or select “each row is an episode.”" });
+      }
+      if (currentContextConflicts.length > 0) {
+        issues.push({
+          key: "mapping.context",
+          panel: 1,
+          message: `${currentContextConflicts.length} context field${currentContextConflicts.length === 1 ? " has" : "s have"} conflicting values within episodes.`,
+        });
+      }
+    }
+
+    issues.push(...collectCodebookIssues());
+
+    if (!experimentInstructions.trim()) {
+      issues.push({ key: "instructions", panel: 3, message: "Describe the experiment context and research task." });
+    }
+
+    if (modelSlots.length === 0) {
+      issues.push({ key: "models", panel: 4, message: "Add at least one model." });
+    } else {
+      const slotsToValidate = action === "package" ? modelSlots.slice(0, 1) : modelSlots;
+      slotsToValidate.forEach((slot, index) => {
+        if (!slot.provider) {
+          issues.push({ key: `model.${index}.provider`, panel: 4, modelIndex: index, field: "provider", message: `Model ${index + 1} needs a provider.` });
+        }
+        if (!slot.model) {
+          issues.push({ key: `model.${index}.model`, panel: 4, modelIndex: index, field: "model", message: `Model ${index + 1} needs a model selection.` });
+        }
+        if (action === "run" && !slot.apiKey.trim()) {
+          issues.push({ key: `model.${index}.apiKey`, panel: 4, modelIndex: index, field: "apiKey", message: `Enter an API key for model ${index + 1}.` });
+        }
+      });
+    }
+
+    return issues;
+  };
+
+  const visibleCodebookIssues = [
+    ...setupIssues.filter((issue) => issue.panel === 2),
+    ...(codebookSaveAttempted ? collectCodebookIssues() : []),
+  ].filter((issue, index, all) => all.findIndex((candidate) => candidate.key === issue.key) === index);
+  const panelHasSetupIssue = (panel: SetupIssue["panel"]) => setupIssues.some((issue) => issue.panel === panel);
+  const setupIssueByKey = (key: string) => setupIssues.find((issue) => issue.key === key);
+  const codebookEditorIssueByKey = (key: string) => visibleCodebookIssues.find((issue) => issue.key === key);
+  const codebookEntryIssues = (index: number) => visibleCodebookIssues.filter((issue) => issue.codebookIndex === index);
+  const modelFieldIssue = (index: number, field: SetupIssue["field"]) =>
+    setupIssues.find((issue) => issue.modelIndex === index && issue.field === field);
+
+  const revealSetupIssues = (issues: SetupIssue[]) => {
+    if (issues.length === 0) return;
+    setOpenPanels((previous) => {
+      const next = new Set(previous);
+      issues.forEach((issue) => next.add(issue.panel));
+      return next;
+    });
+    setLayoutMode((mode) => mode === "hidden" ? "side" : mode);
+    window.setTimeout(() => document.getElementById(`coding-panel-${issues[0].panel}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+
+  const panel1SetupFingerprint = JSON.stringify({
+      uploadId: uploadResult?.file_id ?? null, uploadAvailability, uploading,
+      messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+      contextColumns, contextDescriptions, rowsAsUnits,
+    });
+  const panel2SetupFingerprint = JSON.stringify({ codebook, senderVerificationSignature });
+  const panel3SetupFingerprint = experimentInstructions;
+  const panel4SetupFingerprint = JSON.stringify({ modelSlots, runsPerModel });
+  const setupPanelSnapshots = (): Record<SetupIssue["panel"], string> => ({
+    1: panel1SetupFingerprint,
+    2: panel2SetupFingerprint,
+    3: panel3SetupFingerprint,
+    4: panel4SetupFingerprint,
+  });
+
+  const showSetupValidation = (action: SetupAction): SetupIssue[] => {
+    const issues = collectSetupIssues(action);
+    setupValidationSnapshotsRef.current = setupPanelSnapshots();
+    setSetupIssues(issues);
+    revealSetupIssues(issues);
+    return issues;
+  };
+
+  useEffect(() => {
+    const snapshots = setupValidationSnapshotsRef.current;
+    if (!snapshots || setupIssues.length === 0) return;
+    const current: Record<SetupIssue["panel"], string> = {
+      1: panel1SetupFingerprint,
+      2: panel2SetupFingerprint,
+      3: panel3SetupFingerprint,
+      4: panel4SetupFingerprint,
+    };
+    const changedPanels = new Set<SetupIssue["panel"]>();
+    setupIssues.forEach((issue) => {
+      if (current[issue.panel] !== snapshots[issue.panel]) changedPanels.add(issue.panel);
+    });
+    if (changedPanels.size === 0) return;
+    setSetupIssues((previous) => previous.filter((issue) => !changedPanels.has(issue.panel)));
+    changedPanels.forEach((panel) => { snapshots[panel] = current[panel]; });
+  }, [panel1SetupFingerprint, panel2SetupFingerprint, panel3SetupFingerprint, panel4SetupFingerprint, setupIssues]);
+
+  const saveCodebookEditor = () => {
+    const cleanedCodebook = codebook.filter((entry) => {
+      const hasValueContent = entry.values.some((value) =>
+        (entry.type !== "binary" && value.value.trim())
+        || value.definition.trim()
+        || value.examples.trim()
+        || value.context.trim()
+      );
+      return Boolean(entry.label.trim() || entry.definition.trim() || hasValueContent);
+    });
+    setCodebook(cleanedCodebook);
+    setCodebookSaveAttempted(true);
+    const issues = collectCodebookIssues(cleanedCodebook);
+    if (issues.length > 0) return;
+    setCodebookSaveAttempted(false);
+    codebookSnapshotRef.current = JSON.stringify(cleanedCodebook);
+    setExpandedTable(null);
+    const removed = codebook.length - cleanedCodebook.length;
+    showToast(removed > 0 ? `Codebook saved · removed ${removed} empty variable${removed === 1 ? "" : "s"}` : "Codebook saved");
+  };
 
   const handleDownloadPackage = async () => {
-    if (!canGeneratePackage || !uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
+    const issues = showSetupValidation("package");
+    if (issues.length > 0) return;
+    if (!uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
+    setSetupIssues([]);
     codingActionBusyRef.current = true;
     setGenerating(true);
     setGenerateError("");
@@ -2351,7 +2516,10 @@ export default function Home() {
   // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
-    if (!canRunCoding || !uploadResult || resultDownloadKind) return;
+    const issues = showSetupValidation("run");
+    if (issues.length > 0) return;
+    if (!uploadResult || resultDownloadKind) return;
+    setSetupIssues([]);
     const action = beginRunAction();
     if (!action) return;
     const signal = action.controller.signal;
@@ -3166,9 +3334,9 @@ ${agreementSection}
         </div>
       </nav>
 
-      <div className="layout">
+      <div className={`layout${activeTool === "coding" ? " coding-layout" : ""}`}>
         <main className="main">
-          <div className={`tool-page ${activeTool === "coding" ? "active" : ""}`}>
+          <div className={`tool-page coding-workspace ${activeTool === "coding" ? "active" : ""}`}>
             <div className="tool-header">
               <div>
                 <h1>LLM Coding</h1>
@@ -3193,7 +3361,7 @@ ${agreementSection}
                 <div className="config-scroll">
 
                   {/* Panel 1: Upload Dataset */}
-                  <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(1) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(1)}>
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
@@ -3202,12 +3370,13 @@ ${agreementSection}
                         {uploadAvailability === "ready" && uploadResult && <span className="tag">uploaded</span>}
                         {uploadAvailability === "restoring" && <span className="tag">restoring…</span>}
                         {uploadAvailability === "reupload-required" && <span className="tag">re-upload required</span>}
+                        {panelHasSetupIssue(1) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div
-                        className={`dropzone${dragOver ? " drag-active" : ""}`}
+                        className={`dropzone${dragOver ? " drag-active" : ""}${setupIssueByKey("upload") ? " field-invalid" : ""}`}
                         aria-disabled={uploading || uploadAvailability === "restoring"}
                         onClick={() => { if (!uploading && uploadAvailability !== "restoring") fileRef.current?.click(); }}
                         onDrop={(e) => {
@@ -3261,6 +3430,7 @@ ${agreementSection}
                         </div>
                       )}
                       {uploadError && <p className="enc-error">{uploadError}</p>}
+                      {setupIssueByKey("upload") && <p className="field-error" role="alert">{setupIssueByKey("upload")!.message}</p>}
                       {uploadNotice && <p className="hint">{uploadNotice}</p>}
                       {uploadResult && (
                         <div className="mt-12" id="tour-episode-preview">
@@ -3270,7 +3440,7 @@ ${agreementSection}
                             <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
                           </div>
                           {/* Mapping recap + open the highlighting popup */}
-                          <div className="colmap-recap">
+                          <div className={`colmap-recap${setupIssues.some((issue) => issue.key.startsWith("mapping.")) ? " field-invalid" : ""}`}>
                             <div className="colmap-recap-roles">
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.message.color }} />Message: <b>{messageColumn || "—"}</b></span>
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identifier.color }} />Identifier: <b>{rowsAsUnits ? "each row = episode" : (identifierColumns.join(" + ") || "—")}</b></span>
@@ -3287,6 +3457,9 @@ ${agreementSection}
                                 <span className="recap-warn">⚠ Context values conflict within some episodes — edit the mapping to resolve them.</span>
                               )}
                             </div>
+                            {setupIssues.filter((issue) => issue.key.startsWith("mapping.")).map((issue) => (
+                              <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                            ))}
                           </div>
 
                           {/* Original table */}
@@ -3335,7 +3508,7 @@ ${agreementSection}
                   </div>
 
                   {/* Panel 2: Codebook */}
-                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(2) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(2)}>
                       <div className="panel-head-left">
                         <span className="step-badge">2</span>
@@ -3344,6 +3517,7 @@ ${agreementSection}
                         {codebook.some((e) => e.label.trim()) && (
                           <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
                         )}
+                        {panelHasSetupIssue(2) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
@@ -3361,7 +3535,7 @@ ${agreementSection}
                       </div>
                       <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
                         <label>Codebook Variables</label>
-                        <div className="cb-summary" onClick={() => setExpandedTable("codebook")} title="Click to edit the codebook">
+                        <div className={`cb-summary${panelHasSetupIssue(2) ? " field-invalid" : ""}`} onClick={() => setExpandedTable("codebook")} title="Click to edit the codebook">
                           {codebook.filter((e) => e.label.trim()).length === 0 ? (
                             <p className="hint" style={{ margin: 0 }}>No variables yet — click to define your codebook.</p>
                           ) : (
@@ -3379,6 +3553,9 @@ ${agreementSection}
                           )}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
+                        {setupIssues.filter((issue) => issue.panel === 2).map((issue) => (
+                          <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                        ))}
                         <p className="hint mt-8">Each variable has its own <strong>aggregation method</strong>, category definition, and coded-value guidance. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one value per verified sender.</p>
                         {duplicateCodeLabels.length > 0 && (
                           <p className="enc-error mt-8" role="alert">
@@ -3446,13 +3623,14 @@ ${agreementSection}
                   </div>
 
                   {/* Panel 3: Experiment Instructions */}
-                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(3) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(3)}>
                       <div className="panel-head-left">
                         <span className="step-badge">3</span>
                         <span className="panel-label">Experiment Instructions</span>
                         <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
                         {experimentInstructions.trim() && <span className="tag">set</span>}
+                        {panelHasSetupIssue(3) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
@@ -3466,19 +3644,20 @@ ${agreementSection}
                           </button>
                         </div>
                         <textarea
-                          className="ta-fit"
+                          className={`ta-fit${setupIssueByKey("instructions") ? " field-invalid" : ""}`}
                           rows={16}
                           value={experimentInstructions}
                           onChange={(e) => setExperimentInstructions(e.target.value)}
                           placeholder={EXAMPLE_INSTRUCTIONS}
                         />
+                        {setupIssueByKey("instructions") && <p className="field-error" role="alert">{setupIssueByKey("instructions")!.message}</p>}
                         <p className="hint">Provide context about what the data represents and the research goals. Have a PDF with figures or tables? Use <strong>Import from PDF</strong> to convert it to text first. <span className="cite-note">The placeholder is a constructed example.</span></p>
                       </div>
                     </div></div></div>
                   </div>
 
                   {/* Panel 4: Models & Runs */}
-                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(4) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(4)}>
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
@@ -3487,6 +3666,7 @@ ${agreementSection}
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
+                        {panelHasSetupIssue(4) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
@@ -3506,7 +3686,7 @@ ${agreementSection}
                           const temperatureMax = modelInfo?.temperatureMax ?? 2;
 
                           return (
-                            <div className="model-slot" key={idx}>
+                            <div className={`model-slot${setupIssues.some((issue) => issue.modelIndex === idx) ? " field-invalid" : ""}`} key={idx}>
                               <div className="slot-header">
                                 <span className="slot-num">{idx + 1}</span>
                                 <span className="slot-title">{provInfo?.label ?? slot.provider} — {modelInfo?.label ?? slot.model}</span>
@@ -3518,7 +3698,7 @@ ${agreementSection}
 
                               <div className="slot-body">
                                 <div className="slot-fields">
-                                  <div className="f">
+                                  <div className={`f${modelFieldIssue(idx, "provider") ? " field-group-invalid" : ""}`}>
                                     <label>Provider</label>
                                     <select
                                       value={slot.provider}
@@ -3530,14 +3710,16 @@ ${agreementSection}
                                     >
                                       {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                                     </select>
+                                    {modelFieldIssue(idx, "provider") && <p className="field-error" role="alert">{modelFieldIssue(idx, "provider")!.message}</p>}
                                   </div>
-                                  <div className="f">
+                                  <div className={`f${modelFieldIssue(idx, "model") ? " field-group-invalid" : ""}`}>
                                     <label>Model</label>
                                     <select value={slot.model} onChange={(e) => updateSlot(idx, { model: e.target.value })}>
                                       {(provInfo?.models ?? []).map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                                     </select>
+                                    {modelFieldIssue(idx, "model") && <p className="field-error" role="alert">{modelFieldIssue(idx, "model")!.message}</p>}
                                   </div>
-                                  <div className="f">
+                                  <div className={`f${modelFieldIssue(idx, "apiKey") ? " field-group-invalid" : ""}`}>
                                     <label>API Key <span className="text-muted">(browser run only)</span></label>
                                     <div className="enc-key-wrap">
                                       <input
@@ -3559,6 +3741,7 @@ ${agreementSection}
                                         )}
                                       </button>
                                     </div>
+                                    {modelFieldIssue(idx, "apiKey") && <p className="field-error" role="alert">{modelFieldIssue(idx, "apiKey")!.message}</p>}
                                   </div>
                                 </div>
 
@@ -3614,6 +3797,7 @@ ${agreementSection}
                       >
                         + Add Model
                       </button>
+                      {setupIssueByKey("models") && <p className="field-error" role="alert">{setupIssueByKey("models")!.message}</p>}
 
                       <div className="enc-voting-settings" id="tour-runs">
                         <div className="enc-voting-row">
@@ -3640,13 +3824,18 @@ ${agreementSection}
                 {/* Run bar */}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  <button className="btn btn-outline btn-sm" disabled={!canGeneratePackage || generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
+                  {setupIssues.length > 0 && (
+                    <span className="setup-error-summary" role="alert">
+                      Fix {setupIssues.length} setup issue{setupIssues.length === 1 ? "" : "s"} highlighted above.
+                    </span>
+                  )}
+                  <button className="btn btn-outline btn-sm" disabled={generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
                     {generating ? <><span className="spinner" /> Generating</> : "Generate Package"}
                   </button>
                   {running ? (
                     <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
                   ) : (
-                    <button className="btn btn-run" disabled={!canRunCoding || generating || resultDownloadKind !== null} onClick={handleRun}>
+                    <button className="btn btn-run" disabled={generating || resultDownloadKind !== null} onClick={handleRun}>
                       Run Coding
                       {modelSlots.length * runsPerModel > 1 && (
                         <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
@@ -4042,7 +4231,7 @@ ${agreementSection}
               <div className="f">
                 <label>PDF File</label>
                 <div
-                  className={`dropzone pdf-dropzone${pdfDragOver ? " drag-active" : ""}`}
+                  className={`dropzone pdf-dropzone${pdfDragOver ? " drag-active" : ""}${pdfValidationAttempted && !pdfFile ? " field-invalid" : ""}`}
                   onClick={() => pdfFileRef.current?.click()}
                   onDrop={(e) => {
                     e.preventDefault(); setPdfDragOver(false);
@@ -4059,6 +4248,7 @@ ${agreementSection}
                   <p className="dz-text">{pdfFile ? pdfFile.name : "Drop a PDF file here, or click to browse"}</p>
                   {pdfFile && <span className="chip-meta">{(pdfFile.size / 1024 / 1024).toFixed(2)} MB</span>}
                 </div>
+                {pdfValidationAttempted && !pdfFile && <p className="field-error" role="alert">Choose a PDF file.</p>}
                 <input
                   ref={pdfFileRef}
                   className="input-hidden"
@@ -4090,7 +4280,7 @@ ${agreementSection}
                     ))}
                   </select>
                 </div>
-                <div className="f">
+                <div className={`f${pdfValidationAttempted && !pdfApiKey.trim() ? " field-group-invalid" : ""}`}>
                   <label>API Key</label>
                   <div className="enc-key-wrap">
                     <input
@@ -4107,6 +4297,7 @@ ${agreementSection}
                       )}
                     </button>
                   </div>
+                  {pdfValidationAttempted && !pdfApiKey.trim() && <p className="field-error" role="alert">Enter an API key for the selected model.</p>}
                 </div>
               </div>
 
@@ -4129,7 +4320,7 @@ ${agreementSection}
             <div className="pdf-modal-actions">
               <button className="btn btn-ghost btn-sm" onClick={closePdfModal} disabled={pdfConverting}>Cancel</button>
               <div className="flex-1" />
-              <button className="btn btn-outline btn-sm" onClick={convertPdf} disabled={pdfConverting || !pdfFile}>
+              <button className="btn btn-outline btn-sm" onClick={convertPdf} disabled={pdfConverting}>
                 {pdfConverting ? "Converting…" : pdfResultText != null ? "Re-convert" : "Convert"}
               </button>
               {pdfResultText != null && (
@@ -4148,6 +4339,11 @@ ${agreementSection}
           : role === "identity" ? (identityColumn ? [identityColumn] : [])
           : role === "order" ? (orderColumn ? [orderColumn] : [])
           : contextColumns;
+        const popupMappingIssues = mapValidationAttempted ? [
+          ...(!messageColumn ? [{ role: "message" as ColRole, message: "Tag the column that contains the message text." }] : []),
+          ...(!rowsAsUnits && identifierColumns.length === 0 ? [{ role: "identifier" as ColRole, message: "Tag at least one episode identifier, or choose “Each row is its own episode.”" }] : []),
+          ...(currentContextConflicts.length > 0 ? [{ role: "context" as ColRole, message: "Resolve the context fields with conflicting values." }] : []),
+        ] : [];
         return (
           <div className="colmap-overlay">
             <div className="colmap-modal" id="tour-map-modal">
@@ -4168,7 +4364,7 @@ ${agreementSection}
                   const done = assigned.length > 0;
                   const active = activeRole === role;
                   return (
-                    <button key={role} id={`tour-role-${role}`} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}`}
+                    <button key={role} id={`tour-role-${role}`} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}${popupMappingIssues.some((issue) => issue.role === role) ? " field-invalid" : ""}`}
                       style={active ? { borderColor: meta.color, background: meta.bg } : undefined}
                       onClick={() => setActiveRole(role)}>
                       <span className="colmap-step-num"
@@ -4303,15 +4499,15 @@ ${agreementSection}
 
               {/* Save & proceed */}
               <div className="colmap-foot" id="tour-map-proceed">
-                <span className={`hint ${colMapError ? "text-bad" : ""}`} style={{ margin: 0 }}>
-                  {colMapError
-                    ? colMapError
-                    : mappingComplete
-                    ? "Mapping complete."
-                    : !messageColumn ? "Tag a Message column to continue."
-                    : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own episode”)."
-                    : ""}
-                </span>
+                <div className="colmap-foot-status">
+                  {popupMappingIssues.length > 0
+                    ? popupMappingIssues.map((issue) => <p className="field-error" role="alert" key={issue.role}>{issue.message}</p>)
+                    : <span className={`hint ${colMapError ? "text-bad" : ""}`} style={{ margin: 0 }}>
+                        {mappingComplete && currentContextConflicts.length === 0
+                          ? "Mapping complete."
+                          : colMapError || "Complete the required mapping steps."}
+                      </span>}
+                </div>
                 <button className="btn btn-primary" onClick={saveAndProceed}>Save &amp; Proceed</button>
               </div>
             </div>
@@ -4373,11 +4569,11 @@ ${agreementSection}
               {expandedTable === "codebook" && (
                 <div className="cb-editor" id="tour-cb-editor">
                   {codebook.map((entry, idx) => (
-                    <div className="cb-card" id={idx === 0 ? "tour-cb-card" : undefined} key={idx}>
+                    <div className={`cb-card${codebookEntryIssues(idx).length > 0 ? " field-invalid" : ""}`} id={idx === 0 ? "tour-cb-card" : undefined} key={idx}>
                       <div className="cb-card-top">
-                        <input className="cb-card-label" type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="Variable label — e.g. promise" />
+                        <input className={`cb-card-label${codebookEditorIssueByKey(`codebook.${idx}.label`) ? " field-invalid" : ""}`} aria-invalid={Boolean(codebookEditorIssueByKey(`codebook.${idx}.label`))} type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="Variable label — e.g. promise" />
                         <div className="cb-type-wrap" id={idx === 0 ? "tour-cb-type" : undefined}>
-                          <select value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
+                          <select className={codebookEditorIssueByKey(`codebook.${idx}.type`) ? "field-invalid" : ""} aria-invalid={Boolean(codebookEditorIssueByKey(`codebook.${idx}.type`))} value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
                             {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                           </select>
                           <HelpTip text={TYPE_HELP} />
@@ -4388,6 +4584,9 @@ ${agreementSection}
                         </select>
                         <button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove variable" disabled={codebook.length <= 1}>×</button>
                       </div>
+                      {codebookEntryIssues(idx).map((issue) => (
+                        <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                      ))}
 
                       <div className="cb-field">
                         <label>Category Definition</label>
@@ -4478,6 +4677,9 @@ ${agreementSection}
                       Categorical values create duplicate aggregate columns. Rename the conflicting values or variables: {duplicateAggregateLabels.join(", ")}.
                     </p>
                   )}
+                  {visibleCodebookIssues.filter((issue) => issue.key === "codebook.empty").map((issue) => (
+                    <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                  ))}
                   <div className="cb-editor-foot">
                     <button className="btn btn-ghost" onClick={closeCodebookEditor}>Cancel</button>
                     <button className="btn btn-primary" onClick={saveCodebookEditor}>Save</button>
