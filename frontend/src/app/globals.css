@@ -2434,3 +2434,37 @@ textarea.ta-fit{
     width: 100%;
   }
 }
+
+/* ═══════════════════════════════════════════════════ */
+/* Step 1 — Rows to code (source-row subset)            */
+/* ═══════════════════════════════════════════════════ */
+.field-invalid{
+  border-color:var(--bad)!important;
+  box-shadow:0 0 0 2px rgba(220,38,38,.10)!important;
+}
+.field-error{
+  color:var(--bad);font-size:11px;line-height:1.4;margin-top:4px;
+}
+.row-select{
+  margin-top:12px;padding:12px;border:1px solid var(--border);
+  border-radius:var(--radius);background:var(--surface);
+}
+.row-select-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;
+}
+.row-select-title{font-size:13px;font-weight:600;color:var(--text-1)}
+.row-select-modes{display:flex;flex-wrap:wrap;gap:6px}
+.row-select-input{
+  display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;
+  font-size:13px;color:var(--text-2);
+}
+.row-select-input label{display:inline-flex;align-items:center;gap:6px}
+.row-select-num{
+  width:72px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg);color:var(--text-1);font-family:var(--mono);font-size:13px;
+}
+.row-select-spec{
+  flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg);color:var(--text-1);font-family:var(--mono);font-size:13px;
+}
+.row-select-num:focus,.row-select-spec:focus{outline:none;border-color:var(--accent)}
