@@ -7,6 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 
 from app import __version__
 from app.config import settings
+from app.gzip_request import GzipRequestMiddleware
 from app.ratelimit import limiter
 from app.routes import coding, analytics, contact, instructions
 
@@ -50,6 +51,15 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Decompress gzip-encoded request bodies (marked with X-CAT-Encoding: gzip) before
+# routing, so clients can send bodies past the upstream firewall's content scanner.
+# Added last so it is the outermost middleware and inflates the body first. The cap
+# matches the upload size limit with headroom for the multipart/JSON envelope.
+app.add_middleware(
+    GzipRequestMiddleware,
+    max_bytes=(settings.max_upload_mb + 2) * 1024 * 1024,
 )
 
 app.include_router(coding.router, prefix="/api")

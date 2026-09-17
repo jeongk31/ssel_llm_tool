@@ -12,25 +12,33 @@ export class StreamResponseError extends Error {
   }
 }
 
+import { gzipJsonInit, detectFirewallBlock, firewallBlockMessage } from "./gzipRequest";
+
 export async function streamJsonLines<T>(
   url: string,
   body: unknown,
   signal: AbortSignal,
   onMessage: (message: T) => void,
 ): Promise<void> {
+  const encoded = await gzipJsonInit(body, { Accept: "application/x-ndjson" });
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/x-ndjson",
-    },
-    body: JSON.stringify(body),
+    headers: encoded.headers,
+    body: encoded.body,
     signal,
   });
 
   if (!response.ok) {
     const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
     const raw = await response.text().catch(() => "");
+    const blocked = detectFirewallBlock(raw);
+    if (blocked) {
+      throw new StreamResponseError(firewallBlockMessage(blocked.supportId), {
+        status: response.status,
+        code: "FIREWALL_BLOCKED",
+        contentType,
+      });
+    }
     let detail = "";
     let responseCode: string | null = null;
     if (contentType.includes("application/json")) {
@@ -48,6 +56,16 @@ export async function streamJsonLines<T>(
   }
   const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
   if (!contentType.includes("application/x-ndjson")) {
+    // A 200 carrying HTML is the firewall's block page, not a coding response.
+    const raw = await response.text().catch(() => "");
+    const blocked = detectFirewallBlock(raw);
+    if (blocked) {
+      throw new StreamResponseError(firewallBlockMessage(blocked.supportId), {
+        status: response.status,
+        code: "FIREWALL_BLOCKED",
+        contentType,
+      });
+    }
     throw new StreamResponseError(
       `The coding service returned an unexpected response type (HTTP ${response.status}).`,
       { status: response.status, contentType },

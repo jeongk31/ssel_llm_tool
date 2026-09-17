@@ -10,6 +10,8 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
+import { gzipFileInit, detectFirewallBlock, firewallBlockMessage } from "@/lib/gzipRequest";
+import { RowSelectionMode, parseRowSpec, randomIndices, percentToCount } from "@/lib/rowSelection";
 import {
   clearStoredUpload,
   getStoredUpload,
@@ -267,6 +269,8 @@ async function parseUploadResponse(response: Response): Promise<UploadResult> {
   const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
   const raw = await response.text();
   if (!contentType.includes("application/json")) {
+    const blocked = detectFirewallBlock(raw);
+    if (blocked) throw new Error(firewallBlockMessage(blocked.supportId));
     const html = raw.trim().startsWith("<");
     throw new Error(
       html
@@ -893,6 +897,17 @@ interface ModelSlot {
   maxTokens?: number;
 }
 
+type SetupAction = "package" | "run";
+
+interface SetupIssue {
+  key: string;
+  panel: 1 | 2 | 3 | 4;
+  message: string;
+  codebookIndex?: number;
+  modelIndex?: number;
+  field?: "label" | "type" | "provider" | "model" | "apiKey";
+}
+
 const EMPTY_SLOT: ModelSlot = {
   provider: "openai",
   model: "gpt-4.1-mini",
@@ -989,12 +1004,13 @@ function buildSlotPayload(slot: ModelSlot) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type ActiveTool = "coding" | "instructions" | "documentation" | "contact" | "privacy";
+type ActiveTool = "coding" | "instructions" | "documentation" | "versions" | "contact" | "privacy";
 
 const TOOL_PATHS: Record<ActiveTool, string> = {
   coding: "/coding",
   instructions: "/learn-cat",
   documentation: "/documentation",
+  versions: "/versions",
   contact: "/contact",
   privacy: "/privacy",
 };
@@ -1002,6 +1018,7 @@ const TOOL_PATHS: Record<ActiveTool, string> = {
 function toolForPath(pathname: string): ActiveTool {
   if (pathname.startsWith("/learn-cat")) return "instructions";
   if (pathname.startsWith("/documentation")) return "documentation";
+  if (pathname.startsWith("/versions")) return "versions";
   if (pathname.startsWith("/contact")) return "contact";
   if (pathname.startsWith("/privacy")) return "privacy";
   return "coding";
@@ -1074,8 +1091,17 @@ export default function CatApp() {
   const [contextDescriptions, setContextDescriptions] = useState<Record<string, string>>({});
   const [contextConflictAlert, setContextConflictAlert] = useState<ContextConflict[] | null>(null);
   const [rowsAsUnits, setRowsAsUnits] = useState(false); // identifier = each row is its own unit
+
+  // Step 1 source-row subset (code only part of the uploaded dataset).
+  const [rowSelectionMode, setRowSelectionMode] = useState<RowSelectionMode>("all");
+  const [rowSelectionCount, setRowSelectionCount] = useState("");
+  const [rowSelectionPercent, setRowSelectionPercent] = useState("");
+  const [rowSelectionSpec, setRowSelectionSpec] = useState("");
+  const [rowSelectionSeed, setRowSelectionSeed] = useState(() => (Math.random() * 2 ** 31) | 0);
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [colMapError, setColMapError] = useState("");
+  const [mapValidationAttempted, setMapValidationAttempted] = useState(false);
+  const [codebookSaveAttempted, setCodebookSaveAttempted] = useState(false);
   const [exportFormat, setExportFormat] = useState<"json" | "csv" | "txt" | "pdf" | "xlsx" | "latex">("csv");
   const [activeRole, setActiveRole] = useState<ColRole>("message");
   // Snapshots for save/discard on the two popups, and a flag guarding first hydration.
@@ -1095,6 +1121,7 @@ export default function CatApp() {
   const [pdfError, setPdfError] = useState("");
   const [pdfResultText, setPdfResultText] = useState<string | null>(null);
   const [pdfDragOver, setPdfDragOver] = useState(false);
+  const [pdfValidationAttempted, setPdfValidationAttempted] = useState(false);
   const pdfFileRef = useRef<HTMLInputElement>(null);
 
   const choosePdfFile = (file: File | null) => {
@@ -1106,13 +1133,14 @@ export default function CatApp() {
 
   const openPdfModal = () => {
     setPdfFile(null); setPdfError(""); setPdfResultText(null); setPdfConverting(false);
+    setPdfValidationAttempted(false);
     setPdfModalOpen(true);
   };
   const closePdfModal = () => { if (!pdfConverting) setPdfModalOpen(false); };
 
   const convertPdf = async () => {
-    if (!pdfFile) { setPdfError("Choose a PDF file first."); return; }
-    if (!pdfApiKey.trim()) { setPdfError("Enter an API key for the selected model."); return; }
+    setPdfValidationAttempted(true);
+    if (!pdfFile || !pdfApiKey.trim()) return;
     setPdfConverting(true); setPdfError(""); setPdfResultText(null);
     try {
       const fd = new FormData();
@@ -1137,9 +1165,48 @@ export default function CatApp() {
   };
   const [codebook, setCodebook] = useState<CodebookEntry[]>([newEntry()]);
   const [senderVerificationSignature, setSenderVerificationSignature] = useState("");
+
+  // The uploaded preview holds every source row, so the row subset is resolved
+  // here into concrete 0-based indices and applied to everything downstream
+  // (sender detection, episode grouping, preview, coding, package). The same
+  // index list is sent to the backend, which slices the file before grouping.
+  const totalSourceRows = uploadResult?.preview?.length ?? 0;
+  const rowSelection = useMemo<{ indices: number[] | null; count: number; error: string | null }>(() => {
+    if (!uploadResult || totalSourceRows === 0 || rowSelectionMode === "all") {
+      return { indices: null, count: totalSourceRows, error: null };
+    }
+    if (rowSelectionMode === "count") {
+      const n = parseInt(rowSelectionCount, 10);
+      if (!rowSelectionCount.trim() || !Number.isFinite(n) || n < 1) {
+        return { indices: null, count: 0, error: "Enter how many rows to code (1 or more)." };
+      }
+      const k = Math.min(n, totalSourceRows);
+      return { indices: randomIndices(totalSourceRows, k, rowSelectionSeed), count: k, error: null };
+    }
+    if (rowSelectionMode === "percent") {
+      const p = parseFloat(rowSelectionPercent);
+      if (!rowSelectionPercent.trim() || !Number.isFinite(p) || p <= 0 || p > 100) {
+        return { indices: null, count: 0, error: "Enter a percentage between 0 and 100." };
+      }
+      const k = percentToCount(p, totalSourceRows);
+      return { indices: randomIndices(totalSourceRows, k, rowSelectionSeed), count: k, error: null };
+    }
+    const parsed = parseRowSpec(rowSelectionSpec, totalSourceRows);
+    if (parsed.error) return { indices: null, count: 0, error: parsed.error };
+    return { indices: parsed.indices, count: parsed.indices.length, error: null };
+  }, [uploadResult, totalSourceRows, rowSelectionMode, rowSelectionCount, rowSelectionPercent, rowSelectionSpec, rowSelectionSeed]);
+  const selectedSourceIndices = rowSelection.indices; // null = all rows
+  const effectiveRows = useMemo(
+    () => (selectedSourceIndices && uploadResult
+      ? selectedSourceIndices.map((i) => uploadResult.preview[i]).filter(Boolean)
+      : uploadResult?.preview ?? []),
+    [selectedSourceIndices, uploadResult],
+  );
+  const effectiveRowCount = selectedSourceIndices ? selectedSourceIndices.length : (uploadResult?.row_count ?? 0);
+
   const detectedSenderInfo = useMemo(
-    () => detectSenders(uploadResult?.preview ?? [], identityColumn),
-    [uploadResult, identityColumn],
+    () => detectSenders(effectiveRows, identityColumn),
+    [effectiveRows, identityColumn],
   );
   const participants = detectedSenderInfo.names;
   const currentSenderSignature = useMemo(
@@ -1147,20 +1214,20 @@ export default function CatApp() {
       identityColumn,
       participants,
       blankRows: detectedSenderInfo.blankRows,
-      rowCount: uploadResult?.row_count ?? 0,
+      rowCount: effectiveRowCount,
     }),
-    [identityColumn, participants, detectedSenderInfo.blankRows, uploadResult?.row_count],
+    [identityColumn, participants, detectedSenderInfo.blankRows, effectiveRowCount],
   );
   const hasSenderVar = codebook.some((entry) => entry.level === "sender");
   const senderListVerified = senderVerificationSignature === currentSenderSignature;
   const currentContextConflicts = useMemo(
     () => findContextConflicts(
-      uploadResult?.preview ?? [],
+      effectiveRows,
       identifierColumns,
       contextColumns,
       rowsAsUnits,
     ),
-    [uploadResult, identifierColumns, contextColumns, rowsAsUnits],
+    [effectiveRows, identifierColumns, contextColumns, rowsAsUnits],
   );
   const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
   const aggregateVars = useMemo(() => expandAggregateResults(codebook, participants), [codebook, participants]);
@@ -1179,6 +1246,8 @@ export default function CatApp() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [setupIssues, setSetupIssues] = useState<SetupIssue[]>([]);
+  const setupValidationSnapshotsRef = useRef<Record<SetupIssue["panel"], string> | null>(null);
 
   // Run state
   const [running, setRunning] = useState(false);
@@ -1280,8 +1349,8 @@ export default function CatApp() {
         body.runs_per_model = runsPerModel;
         body.aggregation = "per-variable";
         body.num_variables = codebook.filter((e) => e.label.trim()).length;
-        body.num_rows = uploadResult?.row_count ?? 0;
-        body.num_episodes = rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length;
+        body.num_rows = effectiveRowCount;
+        body.num_episodes = rowsAsUnits ? effectiveRowCount : preprocessedRows.length;
         body.per_sender = codebook.some((e) => e.level === "sender");
       }
       fetch("/api/analytics/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
@@ -1400,11 +1469,11 @@ export default function CatApp() {
   });
   // Snapshot each popup's state when it opens.
   useEffect(() => {
-    if (columnModalOpen) { mapSnapshotRef.current = mapStateJSON(); setColMapError(""); }
+    if (columnModalOpen) { mapSnapshotRef.current = mapStateJSON(); setColMapError(""); setMapValidationAttempted(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnModalOpen]);
   useEffect(() => {
-    if (expandedTable === "codebook") codebookSnapshotRef.current = JSON.stringify(codebook);
+    if (expandedTable === "codebook") { codebookSnapshotRef.current = JSON.stringify(codebook); setCodebookSaveAttempted(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedTable]);
 
@@ -1414,6 +1483,7 @@ export default function CatApp() {
     : "";
 
   const saveAndProceed = () => {
+    setMapValidationAttempted(true);
     if (!mappingComplete) { setColMapError(mapRequirementMsg() || "Select all required columns first."); return; }
     const conflicts = currentContextConflicts;
     if (conflicts.length > 0) {
@@ -1452,23 +1522,6 @@ export default function CatApp() {
     setColumnModalOpen(false);
   };
 
-  const saveCodebookEditor = () => {
-    if (duplicateCodeLabels.length > 0) {
-      showToast("Every output label must be unique");
-      return;
-    }
-    if (duplicateAggregateLabels.length > 0) {
-      showToast("Categorical values must create unique aggregate labels");
-      return;
-    }
-    if (hasSenderVar && !sendersOk) {
-      showToast(senderConfigurationMessage);
-      return;
-    }
-    codebookSnapshotRef.current = JSON.stringify(codebook);
-    setExpandedTable(null);
-    showToast("Codebook saved");
-  };
   const closeCodebookEditor = () => {
     if (codebookSnapshotRef.current !== null && JSON.stringify(codebook) !== codebookSnapshotRef.current) {
       if (!window.confirm("Leave without saving? Your codebook changes will be discarded.")) return;
@@ -1626,10 +1679,14 @@ export default function CatApp() {
     setUploading(true);
     setUploadError("");
     setUploadNotice("");
-    const formData = new FormData();
-    formData.append("file", file);
+    const encoded = await gzipFileInit(file);
     try {
-      const res = await fetch("/api/coding/upload", { method: "POST", body: formData, signal: controller.signal });
+      const res = await fetch("/api/coding/upload", {
+        method: "POST",
+        headers: encoded.headers,
+        body: encoded.body,
+        signal: controller.signal,
+      });
       const data = await parseUploadResponse(res);
       if (!isCurrent()) {
         cleanupServerFiles(data.file_id);
@@ -1671,6 +1728,12 @@ export default function CatApp() {
       if (options.source === "manual") {
         setSenderVerificationSignature("");
         setContextConflictAlert(null);
+        // A fresh dataset invalidates any prior row subset (row numbers/counts
+        // refer to the old file); start from "all rows".
+        setRowSelectionMode("all");
+        setRowSelectionCount("");
+        setRowSelectionPercent("");
+        setRowSelectionSpec("");
       }
       setUploadResult(data);
       setUploadMeta({ ...metadata, columns: [...data.columns] });
@@ -2039,7 +2102,7 @@ export default function CatApp() {
       setValidationReport(s.validationReport as ValidationReport | null);
       const restoredTool = s.activeTool;
       navigateToTool(
-        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "contact" || restoredTool === "privacy"
+        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "versions" || restoredTool === "contact" || restoredTool === "privacy"
           ? restoredTool
           : "coding",
       );
@@ -2101,9 +2164,9 @@ export default function CatApp() {
   // Final preprocessed rows (grouped + tagged), mirroring the backend.
   const preprocessedRows = useMemo(
     () => uploadResult
-      ? buildPreprocessedRows(uploadResult.preview, uploadResult.columns, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection)
+      ? buildPreprocessedRows(effectiveRows, uploadResult.columns, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection)
       : [],
-    [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection],
+    [uploadResult, effectiveRows, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection],
   );
   const isPreprocessed = !!messageColumn && (rowsAsUnits || identifierColumns.length > 0);
 
@@ -2127,11 +2190,13 @@ export default function CatApp() {
   // ── Codebook management ───────────────────────────────────────────────────
 
   const updateCodebook = (idx: number, field: keyof CodebookEntry, value: string) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry)));
   };
 
   // Changing the type adjusts the coded values: binary → fixed 0/1; numeric/text → none.
   const changeType = (idx: number, newType: string) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => {
       if (i !== idx) return e;
       let values = e.values;
@@ -2150,22 +2215,32 @@ export default function CatApp() {
     }));
   };
 
-  const addCodebookRow = () => setCodebook((prev) => [...prev, newEntry()]);
+  const addCodebookRow = () => {
+    setCodebookSaveAttempted(false);
+    setCodebook((prev) => [...prev, newEntry()]);
+  };
 
   const removeCodebookRow = (idx: number) => {
     if (codebook.length <= 1) return;
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.filter((_, i) => i !== idx));
   };
 
   // Per-value (coded value) helpers
-  const addValueRow = (idx: number) =>
+  const addValueRow = (idx: number) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => (i === idx ? { ...e, values: [...e.values, { ...EMPTY_VALUE }] } : e)));
-  const removeValueRow = (idx: number, vIdx: number) =>
+  };
+  const removeValueRow = (idx: number, vIdx: number) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => (i === idx ? { ...e, values: e.values.filter((_, j) => j !== vIdx) } : e)));
-  const updateValue = (idx: number, vIdx: number, field: keyof CodedValue, value: string) =>
+  };
+  const updateValue = (idx: number, vIdx: number, field: keyof CodedValue, value: string) => {
+    setCodebookSaveAttempted(false);
     setCodebook((prev) => prev.map((e, i) => (i === idx
       ? { ...e, values: e.values.map((v, j) => (j === vIdx ? { ...v, [field]: value } : v)) }
       : e)));
+  };
 
   // ── Model slot helpers ────────────────────────────────────────────────────
 
@@ -2186,38 +2261,194 @@ export default function CatApp() {
           : "";
   const sendersOk = !hasSenderVar || senderConfigurationMessage === "";
 
+  const collectCodebookIssues = (entries: CodebookEntry[] = codebook): SetupIssue[] => {
+    const issues: SetupIssue[] = [];
+    if (entries.length === 0) {
+      issues.push({ key: "codebook.empty", panel: 2, message: "Add at least one codebook variable." });
+      return issues;
+    }
+    entries.forEach((entry, index) => {
+      if (!entry.label.trim()) {
+        issues.push({
+          key: `codebook.${index}.label`, panel: 2, codebookIndex: index, field: "label",
+          message: `Codebook variable ${index + 1} needs a label.`,
+        });
+      }
+      if (!entry.type) {
+        issues.push({
+          key: `codebook.${index}.type`, panel: 2, codebookIndex: index, field: "type",
+          message: `Codebook variable ${index + 1} needs a type.`,
+        });
+      }
+    });
+    const entryExpandedVars = expandCodebook(entries, participants);
+    const entryAggregateVars = expandAggregateResults(entries, participants);
+    const entryDuplicateLabels = duplicateExpandedKeys(entryExpandedVars);
+    const entryDuplicateAggregateLabels = duplicateExpandedKeys(entryAggregateVars);
+    if (entryDuplicateLabels.length > 0) {
+      issues.push({ key: "codebook.duplicates", panel: 2, message: `Output labels must be unique: ${entryDuplicateLabels.join(", ")}.` });
+    }
+    if (entryDuplicateAggregateLabels.length > 0) {
+      issues.push({ key: "codebook.aggregate-duplicates", panel: 2, message: `Categorical values create duplicate aggregate columns: ${entryDuplicateAggregateLabels.join(", ")}.` });
+    }
+    if (entries.some((entry) => entry.level === "sender") && senderConfigurationMessage) {
+      issues.push({ key: "codebook.senders", panel: 2, message: senderConfigurationMessage });
+    }
+    return issues;
+  };
+
   // Sender verification belongs to the codebook because it is required only
   // when at least one variable is coded per sender.
   const mappingComplete =
     !!messageColumn &&
     (rowsAsUnits || identifierColumns.length > 0);
 
-  const codingSetupReady = Boolean(
-    uploadAvailability === "ready" &&
-    uploadResult &&
-    liveUploadIdRef.current === uploadResult.file_id &&
-    !uploading &&
-    mappingComplete &&
-    experimentInstructions.trim() &&
-    codebook.every((e) => e.label.trim() && e.type) &&
-    duplicateCodeLabels.length === 0 &&
-    duplicateAggregateLabels.length === 0 &&
-    sendersOk &&
-    currentContextConflicts.length === 0 &&
-    modelSlots.length > 0
-  );
-  const canGeneratePackage = Boolean(
-    codingSetupReady &&
-    modelSlots[0]?.provider &&
-    modelSlots[0]?.model
-  );
-  const canRunCoding = Boolean(
-    codingSetupReady &&
-    modelSlots.every((slot) => slot.provider && slot.model && slot.apiKey.trim())
-  );
+  const collectSetupIssues = (action: SetupAction): SetupIssue[] => {
+    const issues: SetupIssue[] = [];
+
+    if (!uploadResult) {
+      issues.push({ key: "upload", panel: 1, message: "Upload a CSV or Excel dataset." });
+    } else if (uploading || uploadAvailability === "restoring") {
+      issues.push({ key: "upload", panel: 1, message: "Wait for the dataset upload to finish." });
+    } else if (uploadAvailability !== "ready" || liveUploadIdRef.current !== uploadResult.file_id) {
+      issues.push({ key: "upload", panel: 1, message: "Restore or re-upload the dataset before continuing." });
+    }
+
+    if (uploadResult) {
+      // A row subset with an invalid entry must never fall back to coding all rows.
+      if (rowSelectionMode !== "all" && rowSelection.error) {
+        issues.push({ key: "rows", panel: 1, message: rowSelection.error });
+      }
+      if (!messageColumn) {
+        issues.push({ key: "mapping.message", panel: 1, message: "Map the column that contains the message text." });
+      }
+      if (!rowsAsUnits && identifierColumns.length === 0) {
+        issues.push({ key: "mapping.identifier", panel: 1, message: "Map at least one episode identifier, or select “each row is an episode.”" });
+      }
+      if (currentContextConflicts.length > 0) {
+        issues.push({
+          key: "mapping.context",
+          panel: 1,
+          message: `${currentContextConflicts.length} context field${currentContextConflicts.length === 1 ? " has" : "s have"} conflicting values within episodes.`,
+        });
+      }
+    }
+
+    issues.push(...collectCodebookIssues());
+
+    if (!experimentInstructions.trim()) {
+      issues.push({ key: "instructions", panel: 3, message: "Describe the experiment context and research task." });
+    }
+
+    if (modelSlots.length === 0) {
+      issues.push({ key: "models", panel: 4, message: "Add at least one model." });
+    } else {
+      const slotsToValidate = action === "package" ? modelSlots.slice(0, 1) : modelSlots;
+      slotsToValidate.forEach((slot, index) => {
+        if (!slot.provider) {
+          issues.push({ key: `model.${index}.provider`, panel: 4, modelIndex: index, field: "provider", message: `Model ${index + 1} needs a provider.` });
+        }
+        if (!slot.model) {
+          issues.push({ key: `model.${index}.model`, panel: 4, modelIndex: index, field: "model", message: `Model ${index + 1} needs a model selection.` });
+        }
+        if (action === "run" && !slot.apiKey.trim()) {
+          issues.push({ key: `model.${index}.apiKey`, panel: 4, modelIndex: index, field: "apiKey", message: `Enter an API key for model ${index + 1}.` });
+        }
+      });
+    }
+
+    return issues;
+  };
+
+  const visibleCodebookIssues = [
+    ...setupIssues.filter((issue) => issue.panel === 2),
+    ...(codebookSaveAttempted ? collectCodebookIssues() : []),
+  ].filter((issue, index, all) => all.findIndex((candidate) => candidate.key === issue.key) === index);
+  const panelHasSetupIssue = (panel: SetupIssue["panel"]) => setupIssues.some((issue) => issue.panel === panel);
+  const setupIssueByKey = (key: string) => setupIssues.find((issue) => issue.key === key);
+  const codebookEditorIssueByKey = (key: string) => visibleCodebookIssues.find((issue) => issue.key === key);
+  const codebookEntryIssues = (index: number) => visibleCodebookIssues.filter((issue) => issue.codebookIndex === index);
+  const modelFieldIssue = (index: number, field: SetupIssue["field"]) =>
+    setupIssues.find((issue) => issue.modelIndex === index && issue.field === field);
+
+  const revealSetupIssues = (issues: SetupIssue[]) => {
+    if (issues.length === 0) return;
+    setOpenPanels((previous) => {
+      const next = new Set(previous);
+      issues.forEach((issue) => next.add(issue.panel));
+      return next;
+    });
+    setLayoutMode((mode) => mode === "hidden" ? "side" : mode);
+    window.setTimeout(() => document.getElementById(`coding-panel-${issues[0].panel}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+
+  const panel1SetupFingerprint = JSON.stringify({
+      uploadId: uploadResult?.file_id ?? null, uploadAvailability, uploading,
+      messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection,
+      contextColumns, contextDescriptions, rowsAsUnits,
+    });
+  const panel2SetupFingerprint = JSON.stringify({ codebook, senderVerificationSignature });
+  const panel3SetupFingerprint = experimentInstructions;
+  const panel4SetupFingerprint = JSON.stringify({ modelSlots, runsPerModel });
+  const setupPanelSnapshots = (): Record<SetupIssue["panel"], string> => ({
+    1: panel1SetupFingerprint,
+    2: panel2SetupFingerprint,
+    3: panel3SetupFingerprint,
+    4: panel4SetupFingerprint,
+  });
+
+  const showSetupValidation = (action: SetupAction): SetupIssue[] => {
+    const issues = collectSetupIssues(action);
+    setupValidationSnapshotsRef.current = setupPanelSnapshots();
+    setSetupIssues(issues);
+    revealSetupIssues(issues);
+    return issues;
+  };
+
+  useEffect(() => {
+    const snapshots = setupValidationSnapshotsRef.current;
+    if (!snapshots || setupIssues.length === 0) return;
+    const current: Record<SetupIssue["panel"], string> = {
+      1: panel1SetupFingerprint,
+      2: panel2SetupFingerprint,
+      3: panel3SetupFingerprint,
+      4: panel4SetupFingerprint,
+    };
+    const changedPanels = new Set<SetupIssue["panel"]>();
+    setupIssues.forEach((issue) => {
+      if (current[issue.panel] !== snapshots[issue.panel]) changedPanels.add(issue.panel);
+    });
+    if (changedPanels.size === 0) return;
+    setSetupIssues((previous) => previous.filter((issue) => !changedPanels.has(issue.panel)));
+    changedPanels.forEach((panel) => { snapshots[panel] = current[panel]; });
+  }, [panel1SetupFingerprint, panel2SetupFingerprint, panel3SetupFingerprint, panel4SetupFingerprint, setupIssues]);
+
+  const saveCodebookEditor = () => {
+    const cleanedCodebook = codebook.filter((entry) => {
+      const hasValueContent = entry.values.some((value) =>
+        (entry.type !== "binary" && value.value.trim())
+        || value.definition.trim()
+        || value.examples.trim()
+        || value.context.trim()
+      );
+      return Boolean(entry.label.trim() || entry.definition.trim() || hasValueContent);
+    });
+    setCodebook(cleanedCodebook);
+    setCodebookSaveAttempted(true);
+    const issues = collectCodebookIssues(cleanedCodebook);
+    if (issues.length > 0) return;
+    setCodebookSaveAttempted(false);
+    codebookSnapshotRef.current = JSON.stringify(cleanedCodebook);
+    setExpandedTable(null);
+    const removed = codebook.length - cleanedCodebook.length;
+    showToast(removed > 0 ? `Codebook saved · removed ${removed} empty variable${removed === 1 ? "" : "s"}` : "Codebook saved");
+  };
 
   const handleDownloadPackage = async () => {
-    if (!canGeneratePackage || !uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
+    const issues = showSetupValidation("package");
+    if (issues.length > 0) return;
+    if (!uploadResult || codingActionBusyRef.current || resultDownloadKind) return;
+    setSetupIssues([]);
     codingActionBusyRef.current = true;
     setGenerating(true);
     setGenerateError("");
@@ -2245,6 +2476,7 @@ export default function CatApp() {
             // CAT_API_KEY or prompts securely when it starts.
             api_key: "provided_at_runtime",
             model_slots: [],
+            source_rows: selectedSourceIndices,
           }),
         });
         const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
@@ -2369,7 +2601,7 @@ export default function CatApp() {
       models: nonsecretModelConfig,
       runsPerModel,
       rowsAsUnits,
-      episodeCount: rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length,
+      episodeCount: rowsAsUnits ? effectiveRowCount : preprocessedRows.length,
       modelCallCount: modelSlots.length * runsPerModel,
       fingerprint,
     };
@@ -2378,7 +2610,10 @@ export default function CatApp() {
   // ── Run coding ────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
-    if (!canRunCoding || !uploadResult || resultDownloadKind) return;
+    const issues = showSetupValidation("run");
+    if (issues.length > 0) return;
+    if (!uploadResult || resultDownloadKind) return;
+    setSetupIssues([]);
     const action = beginRunAction();
     if (!action) return;
     const signal = action.controller.signal;
@@ -2503,6 +2738,7 @@ export default function CatApp() {
               context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
               model_slots: modelSlots.map(buildSlotPayload),
               runs_per_model: runsPerModel,
+              source_rows: selectedSourceIndices,
               row_indices: null,
             },
             signal,
@@ -3025,6 +3261,7 @@ ${agreementSection}
               context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
               model_slots: modelSlots.map(buildSlotPayload),
               runs_per_model: runsPerModel,
+              source_rows: selectedSourceIndices,
               row_indices: indices,
               previous_result_path: previousDetailedPath,
             },
@@ -3172,11 +3409,13 @@ ${agreementSection}
           <Link href="/coding" className="topbar-title topbar-title-link">
             CAT — Communication Annotation Tool
           </Link>
+          <span className="topbar-badge">v1.2</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <Link href="/coding" className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`}>Coding</Link>
             <Link href="/learn-cat" className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`}>Learn CAT</Link>
             <Link href="/documentation" className={`topbar-tab ${activeTool === "documentation" ? "active" : ""}`}>Documentation</Link>
+            <Link href="/versions" className={`topbar-tab ${activeTool === "versions" ? "active" : ""}`}>Versions</Link>
             <Link href="/contact" className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`}>Contact Us</Link>
             <Link href="/privacy" className={`topbar-tab ${activeTool === "privacy" ? "active" : ""}`}>Privacy</Link>
           </div>
@@ -3187,9 +3426,9 @@ ${agreementSection}
         </div>
       </nav>
 
-      <div className="layout">
+      <div className={`layout${activeTool === "coding" ? " coding-layout" : ""}`}>
         <main className="main">
-          <div className={`tool-page ${activeTool === "coding" ? "active" : ""}`}>
+          <div className={`tool-page coding-workspace ${activeTool === "coding" ? "active" : ""}`}>
             <div className="tool-header">
               <div>
                 <h1>LLM Coding</h1>
@@ -3217,7 +3456,7 @@ ${agreementSection}
                 <div className="config-scroll">
 
                   {/* Panel 1: Upload Dataset */}
-                  <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-1" className={`panel ${openPanels.has(1) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(1) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(1)}>
                       <div className="panel-head-left">
                         <span className="step-badge">1</span>
@@ -3226,12 +3465,13 @@ ${agreementSection}
                         {uploadAvailability === "ready" && uploadResult && <span className="tag">uploaded</span>}
                         {uploadAvailability === "restoring" && <span className="tag">restoring…</span>}
                         {uploadAvailability === "reupload-required" && <span className="tag">re-upload required</span>}
+                        {panelHasSetupIssue(1) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div
-                        className={`dropzone${dragOver ? " drag-active" : ""}`}
+                        className={`dropzone${dragOver ? " drag-active" : ""}${setupIssueByKey("upload") ? " field-invalid" : ""}`}
                         aria-disabled={uploading || uploadAvailability === "restoring"}
                         onClick={() => { if (!uploading && uploadAvailability !== "restoring") fileRef.current?.click(); }}
                         onDrop={(e) => {
@@ -3289,6 +3529,7 @@ ${agreementSection}
                         </div>
                       )}
                       {uploadError && <p className="enc-error">{uploadError}</p>}
+                      {setupIssueByKey("upload") && <p className="field-error" role="alert">{setupIssueByKey("upload")!.message}</p>}
                       {uploadNotice && <p className="hint">{uploadNotice}</p>}
                       {uploadResult && (
                         <div className="mt-12" id="tour-episode-preview">
@@ -3297,8 +3538,77 @@ ${agreementSection}
                             {uploadResult.file_name}
                             <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
                           </div>
+
+                          {/* Rows to code — subset the dataset before mapping/coding */}
+                          <div className={`row-select${rowSelectionMode !== "all" && rowSelection.error ? " field-invalid" : ""}`}>
+                            <div className="row-select-head">
+                              <span className="row-select-title">Rows to code</span>
+                              <span className="chip-meta">
+                                {rowSelectionMode === "all"
+                                  ? `All ${totalSourceRows} rows`
+                                  : rowSelection.error
+                                    ? "—"
+                                    : `${rowSelection.count} of ${totalSourceRows} rows`}
+                              </span>
+                            </div>
+                            <div className="row-select-modes">
+                              {([
+                                ["all", "All rows"],
+                                ["count", "Random count"],
+                                ["percent", "Random %"],
+                                ["specific", "Specific rows"],
+                              ] as [RowSelectionMode, string][]).map(([mode, label]) => (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  className={`btn btn-sm ${rowSelectionMode === mode ? "btn-primary" : "btn-outline"}`}
+                                  onClick={() => setRowSelectionMode(mode)}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            {rowSelectionMode === "count" && (
+                              <div className="row-select-input">
+                                <label>Code a random{" "}
+                                  <input type="number" min={1} max={totalSourceRows} className="row-select-num"
+                                    value={rowSelectionCount} onChange={(e) => setRowSelectionCount(e.target.value)} />
+                                  {" "}of {totalSourceRows} rows
+                                </label>
+                                <button type="button" className="btn btn-ghost btn-xs"
+                                  onClick={() => setRowSelectionSeed((Math.random() * 2 ** 31) | 0)}>↻ Reshuffle</button>
+                              </div>
+                            )}
+                            {rowSelectionMode === "percent" && (
+                              <div className="row-select-input">
+                                <label>Code a random{" "}
+                                  <input type="number" min={0.1} max={100} step={0.1} className="row-select-num"
+                                    value={rowSelectionPercent} onChange={(e) => setRowSelectionPercent(e.target.value)} />
+                                  {" "}% of rows
+                                </label>
+                                <button type="button" className="btn btn-ghost btn-xs"
+                                  onClick={() => setRowSelectionSeed((Math.random() * 2 ** 31) | 0)}>↻ Reshuffle</button>
+                              </div>
+                            )}
+                            {rowSelectionMode === "specific" && (
+                              <div className="row-select-input">
+                                <input type="text" className="row-select-spec" placeholder="e.g. 1-50, 75, 90-100"
+                                  value={rowSelectionSpec} onChange={(e) => setRowSelectionSpec(e.target.value)} />
+                                <span className="hint">Row numbers as uploaded (1–{totalSourceRows}); use ranges and commas.</span>
+                              </div>
+                            )}
+                            {rowSelectionMode !== "all" && rowSelection.error && (
+                              <p className="field-error" role="alert">{rowSelection.error}</p>
+                            )}
+                            {rowSelectionMode !== "all" && !rowSelection.error && (
+                              <p className="hint">
+                                Coding {rowSelection.count} of {totalSourceRows} rows{rowSelectionMode !== "specific" ? " (random sample)" : ""}. The other rows stay in the file but are not sent to the model.
+                              </p>
+                            )}
+                          </div>
+
                           {/* Mapping recap + open the highlighting popup */}
-                          <div className="colmap-recap">
+                          <div className={`colmap-recap${setupIssues.some((issue) => issue.key.startsWith("mapping.")) ? " field-invalid" : ""}`}>
                             <div className="colmap-recap-roles">
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.message.color }} />Message: <b>{messageColumn || "—"}</b></span>
                               <span className="recap-item"><span className="role-dot" style={{ background: ROLE_META.identifier.color }} />Identifier: <b>{rowsAsUnits ? "each row = episode" : (identifierColumns.join(" + ") || "—")}</b></span>
@@ -3315,6 +3625,9 @@ ${agreementSection}
                                 <span className="recap-warn">⚠ Context values conflict within some episodes — edit the mapping to resolve them.</span>
                               )}
                             </div>
+                            {setupIssues.filter((issue) => issue.key.startsWith("mapping.")).map((issue) => (
+                              <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                            ))}
                           </div>
 
                           {/* Original table */}
@@ -3363,7 +3676,7 @@ ${agreementSection}
                   </div>
 
                   {/* Panel 2: Codebook */}
-                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-2" className={`panel ${openPanels.has(2) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(2) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(2)}>
                       <div className="panel-head-left">
                         <span className="step-badge">2</span>
@@ -3372,6 +3685,7 @@ ${agreementSection}
                         {codebook.some((e) => e.label.trim()) && (
                           <span className="tag">{codebook.filter((e) => e.label.trim()).length} var{codebook.filter((e) => e.label.trim()).length !== 1 ? "s" : ""}</span>
                         )}
+                        {panelHasSetupIssue(2) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
@@ -3389,7 +3703,7 @@ ${agreementSection}
                       </div>
                       <div className="f" id="tour-codebook" style={{ marginTop: 12 }}>
                         <label>Codebook Variables</label>
-                        <div className="cb-summary" onClick={() => setExpandedTable("codebook")} title="Click to edit the codebook">
+                        <div className={`cb-summary${panelHasSetupIssue(2) ? " field-invalid" : ""}`} onClick={() => setExpandedTable("codebook")} title="Click to edit the codebook">
                           {codebook.filter((e) => e.label.trim()).length === 0 ? (
                             <p className="hint" style={{ margin: 0 }}>No variables yet — click to define your codebook.</p>
                           ) : (
@@ -3407,6 +3721,9 @@ ${agreementSection}
                           )}
                           <div className="cb-sum-edit">Click to edit codebook →</div>
                         </div>
+                        {setupIssues.filter((issue) => issue.panel === 2).map((issue) => (
+                          <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                        ))}
                         <p className="hint mt-8">Each variable has its own <strong>aggregation method</strong>, category definition, and coded-value guidance. <strong>Per episode</strong> = one value per episode; <strong>per sender</strong> = one value per verified sender.</p>
                         {duplicateCodeLabels.length > 0 && (
                           <p className="enc-error mt-8" role="alert">
@@ -3474,13 +3791,14 @@ ${agreementSection}
                   </div>
 
                   {/* Panel 3: Experiment Instructions */}
-                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-3" className={`panel ${openPanels.has(3) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(3) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(3)}>
                       <div className="panel-head-left">
                         <span className="step-badge">3</span>
                         <span className="panel-label">Experiment Instructions</span>
                         <HelpTip text="Give the model full context: the task, roles, decisions, payoffs, and communication rules." />
                         {experimentInstructions.trim() && <span className="tag">set</span>}
+                        {panelHasSetupIssue(3) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
@@ -3494,19 +3812,20 @@ ${agreementSection}
                           </button>
                         </div>
                         <textarea
-                          className="ta-fit"
+                          className={`ta-fit${setupIssueByKey("instructions") ? " field-invalid" : ""}`}
                           rows={16}
                           value={experimentInstructions}
                           onChange={(e) => setExperimentInstructions(e.target.value)}
                           placeholder={EXAMPLE_INSTRUCTIONS}
                         />
+                        {setupIssueByKey("instructions") && <p className="field-error" role="alert">{setupIssueByKey("instructions")!.message}</p>}
                         <p className="hint">Provide context about what the data represents and the research goals. Have a PDF with figures or tables? Use <strong>Import from PDF</strong> to convert it to text first. <span className="cite-note">The placeholder is a constructed example.</span></p>
                       </div>
                     </div></div></div>
                   </div>
 
                   {/* Panel 4: Models & Runs */}
-                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}`}>
+                  <div id="coding-panel-4" className={`panel ${openPanels.has(4) ? "open" : ""}${skipPanelAnim ? " no-animate" : ""}${panelHasSetupIssue(4) ? " setup-invalid" : ""}`}>
                     <button className="panel-head" onClick={() => togglePanel(4)}>
                       <div className="panel-head-left">
                         <span className="step-badge">4</span>
@@ -3515,6 +3834,7 @@ ${agreementSection}
                         <span className="tag">
                           {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
                         </span>
+                        {panelHasSetupIssue(4) && <span className="setup-error-tag">Needs attention</span>}
                       </div>
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
@@ -3534,7 +3854,7 @@ ${agreementSection}
                           const temperatureMax = modelInfo?.temperatureMax ?? 2;
 
                           return (
-                            <div className="model-slot" key={idx}>
+                            <div className={`model-slot${setupIssues.some((issue) => issue.modelIndex === idx) ? " field-invalid" : ""}`} key={idx}>
                               <div className="slot-header">
                                 <span className="slot-num">{idx + 1}</span>
                                 <span className="slot-title">{provInfo?.label ?? slot.provider} — {modelInfo?.label ?? slot.model}</span>
@@ -3546,7 +3866,7 @@ ${agreementSection}
 
                               <div className="slot-body">
                                 <div className="slot-fields">
-                                  <div className="f">
+                                  <div className={`f${modelFieldIssue(idx, "provider") ? " field-group-invalid" : ""}`}>
                                     <label>Provider</label>
                                     <select
                                       value={slot.provider}
@@ -3558,14 +3878,16 @@ ${agreementSection}
                                     >
                                       {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                                     </select>
+                                    {modelFieldIssue(idx, "provider") && <p className="field-error" role="alert">{modelFieldIssue(idx, "provider")!.message}</p>}
                                   </div>
-                                  <div className="f">
+                                  <div className={`f${modelFieldIssue(idx, "model") ? " field-group-invalid" : ""}`}>
                                     <label>Model</label>
                                     <select value={slot.model} onChange={(e) => updateSlot(idx, { model: e.target.value })}>
                                       {(provInfo?.models ?? []).map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                                     </select>
+                                    {modelFieldIssue(idx, "model") && <p className="field-error" role="alert">{modelFieldIssue(idx, "model")!.message}</p>}
                                   </div>
-                                  <div className="f">
+                                  <div className={`f${modelFieldIssue(idx, "apiKey") ? " field-group-invalid" : ""}`}>
                                     <label>API Key <span className="text-muted">(browser run only)</span></label>
                                     <div className="enc-key-wrap">
                                       <input
@@ -3587,6 +3909,7 @@ ${agreementSection}
                                         )}
                                       </button>
                                     </div>
+                                    {modelFieldIssue(idx, "apiKey") && <p className="field-error" role="alert">{modelFieldIssue(idx, "apiKey")!.message}</p>}
                                   </div>
                                 </div>
 
@@ -3642,6 +3965,7 @@ ${agreementSection}
                       >
                         + Add Model
                       </button>
+                      {setupIssueByKey("models") && <p className="field-error" role="alert">{setupIssueByKey("models")!.message}</p>}
 
                       <div className="enc-voting-settings" id="tour-runs">
                         <div className="enc-voting-row">
@@ -3668,13 +3992,18 @@ ${agreementSection}
                 {/* Run bar */}
                 <div id="coding-run-bar" className="run-bar">
                   {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  <button className="btn btn-outline btn-sm" disabled={!canGeneratePackage || generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
+                  {setupIssues.length > 0 && (
+                    <span className="setup-error-summary" role="alert">
+                      Fix {setupIssues.length} setup issue{setupIssues.length === 1 ? "" : "s"} highlighted above.
+                    </span>
+                  )}
+                  <button className="btn btn-outline btn-sm" disabled={generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
                     {generating ? <><span className="spinner" /> Generating</> : "Generate Package"}
                   </button>
                   {running ? (
                     <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
                   ) : (
-                    <button className="btn btn-run" disabled={!canRunCoding || generating || resultDownloadKind !== null} onClick={handleRun}>
+                    <button className="btn btn-run" disabled={generating || resultDownloadKind !== null} onClick={handleRun}>
                       Run Coding
                       {modelSlots.length * runsPerModel > 1 && (
                         <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
@@ -4036,6 +4365,85 @@ ${agreementSection}
             </div>
           )}
 
+          {activeTool === "versions" && (
+            <div className="tool-page active">
+              <div className="tool-header">
+                <div>
+                  <h1>Version History</h1>
+                  <p className="tool-desc">A record of CAT releases and the user-facing changes introduced in each version.</p>
+                </div>
+              </div>
+              <div className="tool-body release-history-body">
+                <section className="release-history" aria-labelledby="release-history-title">
+                  <div className="release-history-head">
+                    <div>
+                      <div className="documentation-paper-kicker">Product updates</div>
+                      <h2 id="release-history-title">CAT Releases</h2>
+                      <p>Features, fixes, and workflow improvements by release.</p>
+                    </div>
+                    <span className="release-current-badge">Current · v1.2</span>
+                  </div>
+
+                  <div className="release-timeline">
+                    <article className="release-entry current">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.2</h3>
+                          <time dateTime="2026-09-17">September 17, 2026</time>
+                        </div>
+                        <p className="release-summary">Code a subset of your dataset, with more reliable uploads and runs.</p>
+                        <ul>
+                          <li>Added a <strong>Rows to code</strong> control in Step 1: code all rows, a random count, a random percentage, or specific rows and ranges (for example <code>1-50, 75, 90-100</code>) — no need to prepare a separate file for a quick test run. The selected rows flow through the preview, coding, reruns, and generated packages.</li>
+                          <li>Made dataset uploads and coding runs more reliable on networks with strict security filtering, with a clearer message (and a reference ID to share with IT) when a request is blocked before it reaches CAT.</li>
+                          <li>Added this in-app <strong>Versions</strong> tab and a version badge so the running release is always visible.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.1</h3>
+                          <time dateTime="2026-09-11">September 11, 2026</time>
+                        </div>
+                        <p className="release-summary">Clearer setup validation and a more stable coding workspace.</p>
+                        <ul>
+                          <li>Kept <strong>Run Coding</strong> and <strong>Generate Package</strong> available before setup is complete.</li>
+                          <li>Added submit-time validation with red field borders and specific, actionable messages for every missing or conflicting setting.</li>
+                          <li>Made validation action-aware: browser runs require an API key for every model, while generated packages do not.</li>
+                          <li>Made validation errors clear one section at a time when that section is edited, without hiding unresolved errors elsewhere.</li>
+                          <li>Applied the same inline validation behavior to the column-mapping and codebook dialogs.</li>
+                          <li>Automatically removed completely untouched codebook variables when the codebook is saved.</li>
+                          <li>Locked the coding workspace to one viewport so the action bar stays visible while settings and results scroll independently.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.0</h3>
+                          <span>Initial release</span>
+                        </div>
+                        <p className="release-summary">The first paper-aligned public release of the Communication Annotation Tool.</p>
+                        <ul>
+                          <li>Introduced CSV and Excel upload, column mapping, episode construction, and preprocessing previews.</li>
+                          <li>Added binary, categorical, numeric, and free-text codebook variables at the episode or sender level.</li>
+                          <li>Supported browser coding with multiple providers, models, repeated calls, and per-variable aggregation.</li>
+                          <li>Added standalone coding-package generation, live progress, output validation, selective reruns, and complete result exports.</li>
+                          <li>Included experiment-instruction entry and PDF-to-text import, guided onboarding, privacy controls, and research documentation.</li>
+                        </ul>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
           {activeTool === "contact" && (
             <div className="tool-page active">
               <div className="tool-header">
@@ -4082,7 +4490,7 @@ ${agreementSection}
               <div className="f">
                 <label>PDF File</label>
                 <div
-                  className={`dropzone pdf-dropzone${pdfDragOver ? " drag-active" : ""}`}
+                  className={`dropzone pdf-dropzone${pdfDragOver ? " drag-active" : ""}${pdfValidationAttempted && !pdfFile ? " field-invalid" : ""}`}
                   onClick={() => pdfFileRef.current?.click()}
                   onDrop={(e) => {
                     e.preventDefault(); setPdfDragOver(false);
@@ -4099,6 +4507,7 @@ ${agreementSection}
                   <p className="dz-text">{pdfFile ? pdfFile.name : "Drop a PDF file here, or click to browse"}</p>
                   {pdfFile && <span className="chip-meta">{(pdfFile.size / 1024 / 1024).toFixed(2)} MB</span>}
                 </div>
+                {pdfValidationAttempted && !pdfFile && <p className="field-error" role="alert">Choose a PDF file.</p>}
                 <input
                   ref={pdfFileRef}
                   className="input-hidden"
@@ -4130,7 +4539,7 @@ ${agreementSection}
                     ))}
                   </select>
                 </div>
-                <div className="f">
+                <div className={`f${pdfValidationAttempted && !pdfApiKey.trim() ? " field-group-invalid" : ""}`}>
                   <label>API Key</label>
                   <div className="enc-key-wrap">
                     <input
@@ -4147,6 +4556,7 @@ ${agreementSection}
                       )}
                     </button>
                   </div>
+                  {pdfValidationAttempted && !pdfApiKey.trim() && <p className="field-error" role="alert">Enter an API key for the selected model.</p>}
                 </div>
               </div>
 
@@ -4169,7 +4579,7 @@ ${agreementSection}
             <div className="pdf-modal-actions">
               <button className="btn btn-ghost btn-sm" onClick={closePdfModal} disabled={pdfConverting}>Cancel</button>
               <div className="flex-1" />
-              <button className="btn btn-outline btn-sm" onClick={convertPdf} disabled={pdfConverting || !pdfFile}>
+              <button className="btn btn-outline btn-sm" onClick={convertPdf} disabled={pdfConverting}>
                 {pdfConverting ? "Converting…" : pdfResultText != null ? "Re-convert" : "Convert"}
               </button>
               {pdfResultText != null && (
@@ -4188,6 +4598,11 @@ ${agreementSection}
           : role === "identity" ? (identityColumn ? [identityColumn] : [])
           : role === "order" ? (orderColumn ? [orderColumn] : [])
           : contextColumns;
+        const popupMappingIssues = mapValidationAttempted ? [
+          ...(!messageColumn ? [{ role: "message" as ColRole, message: "Tag the column that contains the message text." }] : []),
+          ...(!rowsAsUnits && identifierColumns.length === 0 ? [{ role: "identifier" as ColRole, message: "Tag at least one episode identifier, or choose “Each row is its own episode.”" }] : []),
+          ...(currentContextConflicts.length > 0 ? [{ role: "context" as ColRole, message: "Resolve the context fields with conflicting values." }] : []),
+        ] : [];
         return (
           <div className="colmap-overlay">
             <div className="colmap-modal" id="tour-map-modal">
@@ -4208,7 +4623,7 @@ ${agreementSection}
                   const done = assigned.length > 0;
                   const active = activeRole === role;
                   return (
-                    <button key={role} id={`tour-role-${role}`} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}`}
+                    <button key={role} id={`tour-role-${role}`} className={`colmap-step ${active ? "active" : ""} ${done ? "done" : ""}${popupMappingIssues.some((issue) => issue.role === role) ? " field-invalid" : ""}`}
                       style={active ? { borderColor: meta.color, background: meta.bg } : undefined}
                       onClick={() => setActiveRole(role)}>
                       <span className="colmap-step-num"
@@ -4343,15 +4758,15 @@ ${agreementSection}
 
               {/* Save & proceed */}
               <div className="colmap-foot" id="tour-map-proceed">
-                <span className={`hint ${colMapError ? "text-bad" : ""}`} style={{ margin: 0 }}>
-                  {colMapError
-                    ? colMapError
-                    : mappingComplete
-                    ? "Mapping complete."
-                    : !messageColumn ? "Tag a Message column to continue."
-                    : (!rowsAsUnits && identifierColumns.length === 0) ? "Choose an identifier (columns or “each row is its own episode”)."
-                    : ""}
-                </span>
+                <div className="colmap-foot-status">
+                  {popupMappingIssues.length > 0
+                    ? popupMappingIssues.map((issue) => <p className="field-error" role="alert" key={issue.role}>{issue.message}</p>)
+                    : <span className={`hint ${colMapError ? "text-bad" : ""}`} style={{ margin: 0 }}>
+                        {mappingComplete && currentContextConflicts.length === 0
+                          ? "Mapping complete."
+                          : colMapError || "Complete the required mapping steps."}
+                      </span>}
+                </div>
                 <button className="btn btn-primary" onClick={saveAndProceed}>Save &amp; Proceed</button>
               </div>
             </div>
@@ -4413,11 +4828,11 @@ ${agreementSection}
               {expandedTable === "codebook" && (
                 <div className="cb-editor" id="tour-cb-editor">
                   {codebook.map((entry, idx) => (
-                    <div className="cb-card" id={idx === 0 ? "tour-cb-card" : undefined} key={idx}>
+                    <div className={`cb-card${codebookEntryIssues(idx).length > 0 ? " field-invalid" : ""}`} id={idx === 0 ? "tour-cb-card" : undefined} key={idx}>
                       <div className="cb-card-top">
-                        <input className="cb-card-label" type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="Variable label — e.g. promise" />
+                        <input className={`cb-card-label${codebookEditorIssueByKey(`codebook.${idx}.label`) ? " field-invalid" : ""}`} aria-invalid={Boolean(codebookEditorIssueByKey(`codebook.${idx}.label`))} type="text" value={entry.label} onChange={(e) => updateCodebook(idx, "label", e.target.value)} placeholder="Variable label — e.g. promise" />
                         <div className="cb-type-wrap" id={idx === 0 ? "tour-cb-type" : undefined}>
-                          <select value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
+                          <select className={codebookEditorIssueByKey(`codebook.${idx}.type`) ? "field-invalid" : ""} aria-invalid={Boolean(codebookEditorIssueByKey(`codebook.${idx}.type`))} value={entry.type} onChange={(e) => changeType(idx, e.target.value)}>
                             {CODEBOOK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                           </select>
                           <HelpTip text={TYPE_HELP} />
@@ -4428,6 +4843,9 @@ ${agreementSection}
                         </select>
                         <button className="row-rm" onClick={() => removeCodebookRow(idx)} title="Remove variable" disabled={codebook.length <= 1}>×</button>
                       </div>
+                      {codebookEntryIssues(idx).map((issue) => (
+                        <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                      ))}
 
                       <div className="cb-field">
                         <label>Category Definition</label>
@@ -4518,6 +4936,9 @@ ${agreementSection}
                       Categorical values create duplicate aggregate columns. Rename the conflicting values or variables: {duplicateAggregateLabels.join(", ")}.
                     </p>
                   )}
+                  {visibleCodebookIssues.filter((issue) => issue.key === "codebook.empty").map((issue) => (
+                    <p className="field-error" role="alert" key={issue.key}>{issue.message}</p>
+                  ))}
                   <div className="cb-editor-foot">
                     <button className="btn btn-ghost" onClick={closeCodebookEditor}>Cancel</button>
                     <button className="btn btn-primary" onClick={saveCodebookEditor}>Save</button>
