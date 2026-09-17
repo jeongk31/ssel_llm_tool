@@ -5,7 +5,33 @@ NYU Abu Dhabi for coding free-form communication with large language models (LLM
 It is designed primarily for communication data from economic experiments, although
 the workflow can support other structured content-analysis tasks.
 
-The paper-aligned release is **CAT v1.0.0**.
+The current release is **CAT v1.2.0**.
+
+## Version history
+
+### CAT v1.2.0 — September 17, 2026
+
+- Added a **Rows to code** control in Step 1: code all rows, a random count, a random
+  percentage, or specific rows and ranges (for example `1-50, 75, 90-100`) directly in
+  the interface, without preparing a separate smaller file for a test run.
+- Carried the selected rows through the preprocessing preview, coding, reruns, and
+  generated packages so the preview matches what is coded.
+- Made dataset uploads and coding runs more reliable on networks with strict security
+  filtering, and added a clearer message (with a reference ID to share with IT) when a
+  request is blocked before it reaches CAT.
+
+### CAT v1.1.0 — September 11, 2026
+
+- Kept Run Coding and Generate Package available before configuration is complete, with submit-time inline validation and actionable field-level errors.
+- Made validation requirements action-specific and kept unresolved errors visible only until their corresponding section is edited.
+- Applied consistent validation to column mapping, codebook editing, and PDF import.
+- Removed completely untouched codebook variables automatically on save.
+- Kept the coding action bar fixed in the viewport while settings and results scroll independently.
+
+### CAT v1.0.0 — Initial release
+
+- Introduced the complete paper-aligned workflow for data upload, episode construction, codebook design, LLM coding, validation, reruns, and exports.
+- Added multiple providers and models, repeated calls, per-variable aggregation, standalone package generation, guided onboarding, privacy controls, and research documentation.
 
 Researchers can upload a dataset, define communication episodes, create a coding
 manual, provide experimental context, run one or more LLMs, review validation results,

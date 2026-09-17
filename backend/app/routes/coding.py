@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import pandas as pd
-from fastapi import APIRouter, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, Request
+from urllib.parse import unquote
+
+from fastapi import APIRouter, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -65,6 +67,26 @@ class UploadResolutionError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+def _select_source_rows(df: "pd.DataFrame", source_rows: Any) -> "pd.DataFrame":
+    """Slice a dataset to a subset of source rows selected in Step 1.
+
+    ``source_rows`` is a list of 0-based row positions into the uploaded dataset.
+    Positions are de-duplicated and sorted ascending so the original row order —
+    and therefore episode grouping — is preserved. Out-of-range positions are
+    ignored; an empty or non-list selection is rejected.
+    """
+    if not isinstance(source_rows, list):
+        raise ValueError("Row selection must be a list of row positions.")
+    valid = sorted({
+        int(i)
+        for i in source_rows
+        if isinstance(i, int) and not isinstance(i, bool) and 0 <= int(i) < len(df)
+    })
+    if not valid:
+        raise ValueError("The selected rows are outside the dataset. Please adjust the row selection.")
+    return df.iloc[valid].reset_index(drop=True)
 
 
 def _upload_dir_for_id(file_id: str) -> str | None:
@@ -433,26 +455,45 @@ def _group_units(
 
 @router.post("/coding/upload")
 @limiter.limit("30/minute")
-async def upload_coding_file(request: Request, file: UploadFile):
-    """Upload a CSV/Excel file, save temporarily, return columns + preview."""
-    if not file.filename:
-        raise HTTPException(400, "No file provided")
+async def upload_coding_file(request: Request, file: UploadFile | None = File(default=None)):
+    """Upload a CSV/Excel file, save temporarily, return columns + preview.
 
-    ext = file.filename.rsplit(".", 1)[-1].lower()
+    Two request shapes are accepted:
+
+    * ``multipart/form-data`` with a ``file`` part (the ordinary browser upload); and
+    * a raw request body carrying the file bytes, with the original name in the
+      ``X-CAT-Filename`` header. Clients use this when they gzip the body to get past
+      the upstream firewall's text scanner (``GzipRequestMiddleware`` has already
+      decompressed it by the time this handler runs).
+    """
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+
+    if file is not None and file.filename:
+        filename = file.filename
+        # Read in bounded chunks so an oversized upload can't exhaust memory.
+        buf = bytearray()
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            buf.extend(chunk)
+            if len(buf) > max_bytes:
+                raise HTTPException(413, f"File too large (max {settings.max_upload_mb} MB).")
+        content = bytes(buf)
+    else:
+        # Raw-body mode. The body is already fully in memory and bounded by the
+        # decompression cap in GzipRequestMiddleware; enforce the upload limit too.
+        raw_name = request.headers.get("X-CAT-Filename", "")
+        filename = unquote(raw_name) if raw_name else ""
+        if not filename:
+            raise HTTPException(400, "No file provided")
+        content = await request.body()
+        if len(content) > max_bytes:
+            raise HTTPException(413, f"File too large (max {settings.max_upload_mb} MB).")
+
+    ext = filename.rsplit(".", 1)[-1].lower()
     if ext not in ("csv", "xlsx", "xls"):
         raise HTTPException(400, f"Unsupported file type: .{ext}")
-
-    # Read in bounded chunks so an oversized upload can't exhaust memory.
-    max_bytes = settings.max_upload_mb * 1024 * 1024
-    buf = bytearray()
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        buf.extend(chunk)
-        if len(buf) > max_bytes:
-            raise HTTPException(413, f"File too large (max {settings.max_upload_mb} MB).")
-    content = bytes(buf)
 
     try:
         if ext == "csv":
@@ -469,7 +510,7 @@ async def upload_coding_file(request: Request, file: UploadFile):
     # directory. The mapping remains recoverable by another process that shares
     # this temp filesystem, while the original contents still expire after 24h.
     try:
-        file_id, _ = _store_uploaded_file(content, file.filename, ext)
+        file_id, _ = _store_uploaded_file(content, filename, ext)
     except OSError:
         raise HTTPException(
             500,
@@ -487,7 +528,7 @@ async def upload_coding_file(request: Request, file: UploadFile):
 
     return {
         "file_id": file_id,
-        "file_name": file.filename,
+        "file_name": filename,
         "columns": list(df.columns),
         "row_count": len(df),
         "preview": all_rows,
@@ -564,6 +605,8 @@ class GenerateScriptRequest(BaseModel):
 
 class GeneratePackageRequest(GenerateScriptRequest):
     file_id: str
+    # Optional Step 1 source-row subset (0-based positions into the uploaded file).
+    source_rows: list[int] | None = None
 
 
 @router.post("/coding/generate-script")
@@ -632,6 +675,12 @@ async def generate_package(request: Request, req: GeneratePackageRequest):
             df = pd.read_excel(file_path)
     except Exception:
         raise HTTPException(400, "Could not read the uploaded dataset.")
+
+    if req.source_rows is not None:
+        try:
+            df = _select_source_rows(df, req.source_rows)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
 
     if req.message_column not in df.columns:
         raise HTTPException(400, f"Column '{req.message_column}' not found in the dataset.")
@@ -788,6 +837,16 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
         df = pd.read_csv(file_path)
     else:
         df = pd.read_excel(file_path)
+
+    # Apply an optional source-row subset (e.g. code only a 50-row test slice)
+    # before any grouping, so episodes and their indices match the client preview.
+    source_rows = config.get("source_rows")
+    if source_rows is not None:
+        try:
+            df = _select_source_rows(df, source_rows)
+        except ValueError as exc:
+            yield {"type": "error", "message": str(exc)}
+            return
 
     message_column = config.get("message_column", "")
     if message_column not in df.columns:

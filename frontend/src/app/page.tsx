@@ -6,6 +6,8 @@ import Instructions, { EXAMPLE_INSTRUCTIONS, ContactForm } from "@/app/tools/How
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
+import { gzipFileInit, detectFirewallBlock, firewallBlockMessage } from "@/lib/gzipRequest";
+import { RowSelectionMode, parseRowSpec, randomIndices, percentToCount } from "@/lib/rowSelection";
 import {
   clearStoredUpload,
   getStoredUpload,
@@ -263,6 +265,8 @@ async function parseUploadResponse(response: Response): Promise<UploadResult> {
   const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
   const raw = await response.text();
   if (!contentType.includes("application/json")) {
+    const blocked = detectFirewallBlock(raw);
+    if (blocked) throw new Error(firewallBlockMessage(blocked.supportId));
     const html = raw.trim().startsWith("<");
     throw new Error(
       html
@@ -997,7 +1001,7 @@ function buildSlotPayload(slot: ModelSlot) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<"coding" | "instructions" | "documentation" | "contact">("coding");
+  const [activeTool, setActiveTool] = useState<"coding" | "instructions" | "documentation" | "versions" | "contact">("coding");
   const [analyticsConsent, setAnalyticsConsent] = useState<"loading" | "undecided" | "accepted" | "rejected">("loading");
   const [tourOpen, setTourOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1058,6 +1062,13 @@ export default function Home() {
   const [contextDescriptions, setContextDescriptions] = useState<Record<string, string>>({});
   const [contextConflictAlert, setContextConflictAlert] = useState<ContextConflict[] | null>(null);
   const [rowsAsUnits, setRowsAsUnits] = useState(false); // identifier = each row is its own unit
+
+  // Step 1 source-row subset (code only part of the uploaded dataset).
+  const [rowSelectionMode, setRowSelectionMode] = useState<RowSelectionMode>("all");
+  const [rowSelectionCount, setRowSelectionCount] = useState("");
+  const [rowSelectionPercent, setRowSelectionPercent] = useState("");
+  const [rowSelectionSpec, setRowSelectionSpec] = useState("");
+  const [rowSelectionSeed, setRowSelectionSeed] = useState(() => (Math.random() * 2 ** 31) | 0);
   const [columnModalOpen, setColumnModalOpen] = useState(false);
   const [colMapError, setColMapError] = useState("");
   const [mapValidationAttempted, setMapValidationAttempted] = useState(false);
@@ -1125,9 +1136,48 @@ export default function Home() {
   };
   const [codebook, setCodebook] = useState<CodebookEntry[]>([newEntry()]);
   const [senderVerificationSignature, setSenderVerificationSignature] = useState("");
+
+  // The uploaded preview holds every source row, so the row subset is resolved
+  // here into concrete 0-based indices and applied to everything downstream
+  // (sender detection, episode grouping, preview, coding, package). The same
+  // index list is sent to the backend, which slices the file before grouping.
+  const totalSourceRows = uploadResult?.preview?.length ?? 0;
+  const rowSelection = useMemo<{ indices: number[] | null; count: number; error: string | null }>(() => {
+    if (!uploadResult || totalSourceRows === 0 || rowSelectionMode === "all") {
+      return { indices: null, count: totalSourceRows, error: null };
+    }
+    if (rowSelectionMode === "count") {
+      const n = parseInt(rowSelectionCount, 10);
+      if (!rowSelectionCount.trim() || !Number.isFinite(n) || n < 1) {
+        return { indices: null, count: 0, error: "Enter how many rows to code (1 or more)." };
+      }
+      const k = Math.min(n, totalSourceRows);
+      return { indices: randomIndices(totalSourceRows, k, rowSelectionSeed), count: k, error: null };
+    }
+    if (rowSelectionMode === "percent") {
+      const p = parseFloat(rowSelectionPercent);
+      if (!rowSelectionPercent.trim() || !Number.isFinite(p) || p <= 0 || p > 100) {
+        return { indices: null, count: 0, error: "Enter a percentage between 0 and 100." };
+      }
+      const k = percentToCount(p, totalSourceRows);
+      return { indices: randomIndices(totalSourceRows, k, rowSelectionSeed), count: k, error: null };
+    }
+    const parsed = parseRowSpec(rowSelectionSpec, totalSourceRows);
+    if (parsed.error) return { indices: null, count: 0, error: parsed.error };
+    return { indices: parsed.indices, count: parsed.indices.length, error: null };
+  }, [uploadResult, totalSourceRows, rowSelectionMode, rowSelectionCount, rowSelectionPercent, rowSelectionSpec, rowSelectionSeed]);
+  const selectedSourceIndices = rowSelection.indices; // null = all rows
+  const effectiveRows = useMemo(
+    () => (selectedSourceIndices && uploadResult
+      ? selectedSourceIndices.map((i) => uploadResult.preview[i]).filter(Boolean)
+      : uploadResult?.preview ?? []),
+    [selectedSourceIndices, uploadResult],
+  );
+  const effectiveRowCount = selectedSourceIndices ? selectedSourceIndices.length : (uploadResult?.row_count ?? 0);
+
   const detectedSenderInfo = useMemo(
-    () => detectSenders(uploadResult?.preview ?? [], identityColumn),
-    [uploadResult, identityColumn],
+    () => detectSenders(effectiveRows, identityColumn),
+    [effectiveRows, identityColumn],
   );
   const participants = detectedSenderInfo.names;
   const currentSenderSignature = useMemo(
@@ -1135,20 +1185,20 @@ export default function Home() {
       identityColumn,
       participants,
       blankRows: detectedSenderInfo.blankRows,
-      rowCount: uploadResult?.row_count ?? 0,
+      rowCount: effectiveRowCount,
     }),
-    [identityColumn, participants, detectedSenderInfo.blankRows, uploadResult?.row_count],
+    [identityColumn, participants, detectedSenderInfo.blankRows, effectiveRowCount],
   );
   const hasSenderVar = codebook.some((entry) => entry.level === "sender");
   const senderListVerified = senderVerificationSignature === currentSenderSignature;
   const currentContextConflicts = useMemo(
     () => findContextConflicts(
-      uploadResult?.preview ?? [],
+      effectiveRows,
       identifierColumns,
       contextColumns,
       rowsAsUnits,
     ),
-    [uploadResult, identifierColumns, contextColumns, rowsAsUnits],
+    [effectiveRows, identifierColumns, contextColumns, rowsAsUnits],
   );
   const expandedVars = useMemo(() => expandCodebook(codebook, participants), [codebook, participants]);
   const aggregateVars = useMemo(() => expandAggregateResults(codebook, participants), [codebook, participants]);
@@ -1270,8 +1320,8 @@ export default function Home() {
         body.runs_per_model = runsPerModel;
         body.aggregation = "per-variable";
         body.num_variables = codebook.filter((e) => e.label.trim()).length;
-        body.num_rows = uploadResult?.row_count ?? 0;
-        body.num_episodes = rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length;
+        body.num_rows = effectiveRowCount;
+        body.num_episodes = rowsAsUnits ? effectiveRowCount : preprocessedRows.length;
         body.per_sender = codebook.some((e) => e.level === "sender");
       }
       fetch("/api/analytics/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
@@ -1600,10 +1650,14 @@ export default function Home() {
     setUploading(true);
     setUploadError("");
     setUploadNotice("");
-    const formData = new FormData();
-    formData.append("file", file);
+    const encoded = await gzipFileInit(file);
     try {
-      const res = await fetch("/api/coding/upload", { method: "POST", body: formData, signal: controller.signal });
+      const res = await fetch("/api/coding/upload", {
+        method: "POST",
+        headers: encoded.headers,
+        body: encoded.body,
+        signal: controller.signal,
+      });
       const data = await parseUploadResponse(res);
       if (!isCurrent()) {
         cleanupServerFiles(data.file_id);
@@ -1645,6 +1699,12 @@ export default function Home() {
       if (options.source === "manual") {
         setSenderVerificationSignature("");
         setContextConflictAlert(null);
+        // A fresh dataset invalidates any prior row subset (row numbers/counts
+        // refer to the old file); start from "all rows".
+        setRowSelectionMode("all");
+        setRowSelectionCount("");
+        setRowSelectionPercent("");
+        setRowSelectionSpec("");
       }
       setUploadResult(data);
       setUploadMeta({ ...metadata, columns: [...data.columns] });
@@ -2013,7 +2073,7 @@ export default function Home() {
       setValidationReport(s.validationReport as ValidationReport | null);
       const restoredTool = s.activeTool;
       setActiveTool(
-        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "contact"
+        restoredTool === "instructions" || restoredTool === "documentation" || restoredTool === "versions" || restoredTool === "contact"
           ? restoredTool
           : "coding",
       );
@@ -2075,9 +2135,9 @@ export default function Home() {
   // Final preprocessed rows (grouped + tagged), mirroring the backend.
   const preprocessedRows = useMemo(
     () => uploadResult
-      ? buildPreprocessedRows(uploadResult.preview, uploadResult.columns, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection)
+      ? buildPreprocessedRows(effectiveRows, uploadResult.columns, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection)
       : [],
-    [uploadResult, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection],
+    [uploadResult, effectiveRows, messageColumn, identifierColumns, identityColumn, orderColumn, orderDirection],
   );
   const isPreprocessed = !!messageColumn && (rowsAsUnits || identifierColumns.length > 0);
 
@@ -2226,6 +2286,9 @@ export default function Home() {
     }
 
     if (uploadResult) {
+      if (rowSelectionMode !== "all" && rowSelection.error) {
+        issues.push({ key: "rows", panel: 1, message: rowSelection.error });
+      }
       if (!messageColumn) {
         issues.push({ key: "mapping.message", panel: 1, message: "Map the column that contains the message text." });
       }
@@ -2383,6 +2446,7 @@ export default function Home() {
             // CAT_API_KEY or prompts securely when it starts.
             api_key: "provided_at_runtime",
             model_slots: [],
+            source_rows: selectedSourceIndices,
           }),
         });
         const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
@@ -2507,7 +2571,7 @@ export default function Home() {
       models: nonsecretModelConfig,
       runsPerModel,
       rowsAsUnits,
-      episodeCount: rowsAsUnits ? (uploadResult?.row_count ?? 0) : preprocessedRows.length,
+      episodeCount: rowsAsUnits ? effectiveRowCount : preprocessedRows.length,
       modelCallCount: modelSlots.length * runsPerModel,
       fingerprint,
     };
@@ -2644,6 +2708,7 @@ export default function Home() {
               context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
               model_slots: modelSlots.map(buildSlotPayload),
               runs_per_model: runsPerModel,
+              source_rows: selectedSourceIndices,
               row_indices: null,
             },
             signal,
@@ -3166,6 +3231,7 @@ ${agreementSection}
               context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
               model_slots: modelSlots.map(buildSlotPayload),
               runs_per_model: runsPerModel,
+              source_rows: selectedSourceIndices,
               row_indices: indices,
               previous_result_path: previousDetailedPath,
             },
@@ -3318,12 +3384,13 @@ ${agreementSection}
           >
             CAT — Communication Annotation Tool
           </span>
-          <span className="topbar-badge">beta</span>
+          <span className="topbar-badge">v1.2</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <button className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`} onClick={() => setActiveTool("coding")}>Coding</button>
             <button className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`} onClick={() => setActiveTool("instructions")}>Learn CAT</button>
             <button className={`topbar-tab ${activeTool === "documentation" ? "active" : ""}`} onClick={() => setActiveTool("documentation")}>Documentation</button>
+            <button className={`topbar-tab ${activeTool === "versions" ? "active" : ""}`} onClick={() => setActiveTool("versions")}>Versions</button>
             <button className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`} onClick={() => setActiveTool("contact")}>Contact Us</button>
             <button className="topbar-tab" onClick={() => { setShowWelcome(false); setAnalyticsConsent("undecided"); }}>Privacy</button>
           </div>
@@ -3439,6 +3506,75 @@ ${agreementSection}
                             {uploadResult.file_name}
                             <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
                           </div>
+
+                          {/* Rows to code — subset the dataset before mapping/coding */}
+                          <div className={`row-select${setupIssueByKey("rows") ? " field-invalid" : ""}`}>
+                            <div className="row-select-head">
+                              <span className="row-select-title">Rows to code</span>
+                              <span className="chip-meta">
+                                {rowSelectionMode === "all"
+                                  ? `All ${totalSourceRows} rows`
+                                  : rowSelection.error
+                                    ? "—"
+                                    : `${rowSelection.count} of ${totalSourceRows} rows`}
+                              </span>
+                            </div>
+                            <div className="row-select-modes">
+                              {([
+                                ["all", "All rows"],
+                                ["count", "Random count"],
+                                ["percent", "Random %"],
+                                ["specific", "Specific rows"],
+                              ] as [RowSelectionMode, string][]).map(([mode, label]) => (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  className={`btn btn-sm ${rowSelectionMode === mode ? "btn-primary" : "btn-outline"}`}
+                                  onClick={() => setRowSelectionMode(mode)}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            {rowSelectionMode === "count" && (
+                              <div className="row-select-input">
+                                <label>Code a random{" "}
+                                  <input type="number" min={1} max={totalSourceRows} className="row-select-num"
+                                    value={rowSelectionCount} onChange={(e) => setRowSelectionCount(e.target.value)} />
+                                  {" "}of {totalSourceRows} rows
+                                </label>
+                                <button type="button" className="btn btn-ghost btn-xs"
+                                  onClick={() => setRowSelectionSeed((Math.random() * 2 ** 31) | 0)}>↻ Reshuffle</button>
+                              </div>
+                            )}
+                            {rowSelectionMode === "percent" && (
+                              <div className="row-select-input">
+                                <label>Code a random{" "}
+                                  <input type="number" min={0.1} max={100} step={0.1} className="row-select-num"
+                                    value={rowSelectionPercent} onChange={(e) => setRowSelectionPercent(e.target.value)} />
+                                  {" "}% of rows
+                                </label>
+                                <button type="button" className="btn btn-ghost btn-xs"
+                                  onClick={() => setRowSelectionSeed((Math.random() * 2 ** 31) | 0)}>↻ Reshuffle</button>
+                              </div>
+                            )}
+                            {rowSelectionMode === "specific" && (
+                              <div className="row-select-input">
+                                <input type="text" className="row-select-spec" placeholder="e.g. 1-50, 75, 90-100"
+                                  value={rowSelectionSpec} onChange={(e) => setRowSelectionSpec(e.target.value)} />
+                                <span className="hint">Row numbers as uploaded (1–{totalSourceRows}); use ranges and commas.</span>
+                              </div>
+                            )}
+                            {rowSelectionMode !== "all" && rowSelection.error && (
+                              <p className="field-error" role="alert">{rowSelection.error}</p>
+                            )}
+                            {rowSelectionMode !== "all" && !rowSelection.error && (
+                              <p className="hint">
+                                Coding {rowSelection.count} of {totalSourceRows} rows{rowSelectionMode !== "specific" ? " (random sample)" : ""}. The other rows stay in the file but are not sent to the model.
+                              </p>
+                            )}
+                          </div>
+
                           {/* Mapping recap + open the highlighting popup */}
                           <div className={`colmap-recap${setupIssues.some((issue) => issue.key.startsWith("mapping.")) ? " field-invalid" : ""}`}>
                             <div className="colmap-recap-roles">
@@ -4192,6 +4328,86 @@ ${agreementSection}
                     </div>
                   </article>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTool === "versions" && (
+            <div className="tool-page active">
+              <div className="tool-header">
+                <div>
+                  <h1>Version History</h1>
+                  <p className="tool-desc">A record of CAT releases and the user-facing changes introduced in each version.</p>
+                </div>
+              </div>
+              <div className="tool-body release-history-body">
+                <section className="release-history" aria-labelledby="release-history-title">
+                  <div className="release-history-head">
+                    <div>
+                      <div className="documentation-paper-kicker">Product updates</div>
+                      <h2 id="release-history-title">CAT Releases</h2>
+                      <p>Features, fixes, and workflow improvements by release.</p>
+                    </div>
+                    <span className="release-current-badge">Current · v1.2</span>
+                  </div>
+
+                  <div className="release-timeline">
+                    <article className="release-entry current">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.2</h3>
+                          <time dateTime="2026-09-17">September 17, 2026</time>
+                        </div>
+                        <p className="release-summary">Code a subset of your dataset, with more reliable uploads and runs.</p>
+                        <ul>
+                          <li>Added a <strong>Rows to code</strong> control in Step 1: code all rows, a random count, a random percentage, or specific rows and ranges (for example <code>1-50, 75, 90-100</code>) — no need to prepare a separate file for a quick test run.</li>
+                          <li>The chosen rows flow through the preprocessing preview, coding, reruns, and generated packages, so what you preview is exactly what is coded.</li>
+                          <li>Made dataset uploads and coding runs more reliable on networks with strict security filtering.</li>
+                          <li>Added a clearer message, with a reference ID to share with IT, when a request is blocked before it reaches CAT.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.1</h3>
+                          <time dateTime="2026-09-11">September 11, 2026</time>
+                        </div>
+                        <p className="release-summary">Clearer setup validation and a more stable coding workspace.</p>
+                        <ul>
+                          <li>Kept <strong>Run Coding</strong> and <strong>Generate Package</strong> available before setup is complete.</li>
+                          <li>Added submit-time validation with red field borders and specific, actionable messages for every missing or conflicting setting.</li>
+                          <li>Made validation action-aware: browser runs require an API key for every model, while generated packages do not.</li>
+                          <li>Made validation errors clear one section at a time when that section is edited, without hiding unresolved errors elsewhere.</li>
+                          <li>Applied the same inline validation behavior to the column-mapping, codebook, and PDF-import dialogs.</li>
+                          <li>Automatically removed completely untouched codebook variables when the codebook is saved.</li>
+                          <li>Locked the coding workspace to one viewport so the action bar stays visible and scrolling remains inside the settings and results panes.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.0</h3>
+                          <span>Initial release</span>
+                        </div>
+                        <p className="release-summary">The first paper-aligned public release of the Communication Annotation Tool.</p>
+                        <ul>
+                          <li>Introduced CSV and Excel upload, column mapping, episode construction, and preprocessing previews.</li>
+                          <li>Added binary, categorical, numeric, and free-text codebook variables at the episode or sender level.</li>
+                          <li>Supported browser coding with multiple providers, models, repeated calls, and per-variable aggregation.</li>
+                          <li>Added standalone coding-package generation, live progress, output validation, selective reruns, and complete result exports.</li>
+                          <li>Included experiment-instruction entry and PDF-to-text import, guided onboarding, privacy controls, and research documentation.</li>
+                        </ul>
+                      </div>
+                    </article>
+                  </div>
+                </section>
               </div>
             </div>
           )}
