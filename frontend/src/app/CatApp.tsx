@@ -3409,7 +3409,7 @@ ${agreementSection}
           <Link href="/coding" className="topbar-title topbar-title-link">
             CAT — Communication Annotation Tool
           </Link>
-          <span className="topbar-badge">v1.1</span>
+          <span className="topbar-badge">v1.2</span>
           <div className="topbar-sep" />
           <div className="topbar-tabs">
             <Link href="/coding" className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`}>Coding</Link>
@@ -4381,7 +4381,7 @@ ${agreementSection}
                       <h2 id="release-history-title">CAT Releases</h2>
                       <p>Features, fixes, and workflow improvements by release.</p>
                     </div>
-                    <span className="release-current-badge">Current · v1.1</span>
+                    <span className="release-current-badge">Current · v1.2</span>
                   </div>
 
                   <div className="release-timeline">
@@ -4389,7 +4389,7 @@ ${agreementSection}
                       <div className="release-marker" aria-hidden="true" />
                       <div className="release-entry-body">
                         <div className="release-entry-title">
-                          <h3>CAT v1.1</h3>
+                          <h3>CAT v1.2</h3>
                           <time dateTime="2026-09-17">September 17, 2026</time>
                         </div>
                         <p className="release-summary">Code a subset of your dataset, clearer setup validation, and more reliable uploads and runs.</p>

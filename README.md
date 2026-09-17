@@ -5,11 +5,11 @@ NYU Abu Dhabi for coding free-form communication with large language models (LLM
 It is designed primarily for communication data from economic experiments, although
 the workflow can support other structured content-analysis tasks.
 
-The current release is **CAT v1.1.0**.
+The current release is **CAT v1.2.0**.
 
 ## Version history
 
-### CAT v1.1.0
+### CAT v1.2.0
 
 - Added a **Rows to code** control in Step 1: code all rows, a random count, a random
   percentage, or specific rows and ranges (for example `1-50, 75, 90-100`) directly in
