@@ -15,13 +15,20 @@ The current release is **CAT v1.2.0**.
   percentage, or specific rows and ranges (for example `1-50, 75, 90-100`) directly in
   the interface, without preparing a separate smaller file for a test run. The selected
   rows carry through the preprocessing preview, coding, reruns, and generated packages.
-- Kept **Run Coding** and **Generate Package** available before setup is complete, with
-  submit-time validation and specific, actionable messages for every missing or
-  conflicting setting, applied consistently across column mapping and the codebook.
 - Made dataset uploads and coding runs more reliable on networks with strict security
   filtering, and added a clearer message (with a reference ID to share with IT) when a
   request is blocked before it reaches CAT.
 - Added an in-app **Versions** tab and version badge.
+
+### CAT v1.1.0
+
+- Kept **Run Coding** and **Generate Package** available before setup is complete, with
+  submit-time validation and specific, actionable field-level messages for every missing
+  or conflicting setting.
+- Made validation action-aware (browser runs require an API key for every model; generated
+  packages do not) and cleared each section's errors as it is edited.
+- Applied the same inline validation to the column-mapping and codebook dialogs, removed
+  untouched codebook variables on save, and kept the coding action bar fixed in the viewport.
 
 ### CAT v1.0.0
 

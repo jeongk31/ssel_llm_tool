@@ -4392,13 +4392,31 @@ ${agreementSection}
                           <h3>CAT v1.2</h3>
                           <time dateTime="2026-09-17">September 17, 2026</time>
                         </div>
-                        <p className="release-summary">Code a subset of your dataset, clearer setup validation, and more reliable uploads and runs.</p>
+                        <p className="release-summary">Code a subset of your dataset, with more reliable uploads and runs.</p>
                         <ul>
                           <li>Added a <strong>Rows to code</strong> control in Step 1: code all rows, a random count, a random percentage, or specific rows and ranges (for example <code>1-50, 75, 90-100</code>) — no need to prepare a separate file for a quick test run. The selected rows flow through the preview, coding, reruns, and generated packages.</li>
-                          <li>Kept <strong>Run Coding</strong> and <strong>Generate Package</strong> available before setup is complete, with submit-time validation and specific, actionable messages for every missing or conflicting setting.</li>
-                          <li>Made validation action-aware (browser runs require an API key for every model; generated packages do not) and cleared each section&apos;s errors as it is edited.</li>
-                          <li>Applied the same inline validation to the column-mapping and codebook dialogs, and removed completely untouched codebook variables when the codebook is saved.</li>
                           <li>Made dataset uploads and coding runs more reliable on networks with strict security filtering, with a clearer message (and a reference ID to share with IT) when a request is blocked before it reaches CAT.</li>
+                          <li>Added this in-app <strong>Versions</strong> tab and a version badge so the running release is always visible.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.1</h3>
+                          <time dateTime="2026-09-11">September 11, 2026</time>
+                        </div>
+                        <p className="release-summary">Clearer setup validation and a more stable coding workspace.</p>
+                        <ul>
+                          <li>Kept <strong>Run Coding</strong> and <strong>Generate Package</strong> available before setup is complete.</li>
+                          <li>Added submit-time validation with red field borders and specific, actionable messages for every missing or conflicting setting.</li>
+                          <li>Made validation action-aware: browser runs require an API key for every model, while generated packages do not.</li>
+                          <li>Made validation errors clear one section at a time when that section is edited, without hiding unresolved errors elsewhere.</li>
+                          <li>Applied the same inline validation behavior to the column-mapping and codebook dialogs.</li>
+                          <li>Automatically removed completely untouched codebook variables when the codebook is saved.</li>
+                          <li>Locked the coding workspace to one viewport so the action bar stays visible while settings and results scroll independently.</li>
                         </ul>
                       </div>
                     </article>
