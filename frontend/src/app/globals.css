@@ -442,48 +442,6 @@ body{
   display:block;
 }
 
-/* Keep the coding workspace inside the viewport. The settings and results
-   panes own their scroll; the page shell and action bar never move. */
-.layout.coding-layout{
-  height:calc(100dvh - var(--topbar-h));
-  min-height:0;
-  overflow:hidden;
-}
-.coding-layout .main{
-  height:100%;
-  min-height:0;
-  overflow:hidden;
-}
-.tool-page.coding-workspace{
-  height:100%;
-  min-height:0;
-  overflow:hidden;
-  flex-direction:column;
-}
-.tool-page.coding-workspace.active{display:flex}
-.coding-workspace>.tool-header{flex:0 0 auto}
-.coding-workspace>.pipeline-layout{
-  flex:1 1 0;
-  height:auto;
-  min-height:0;
-  overflow:hidden;
-}
-.coding-workspace .config-col{
-  height:100%;
-  max-height:none;
-  overflow:hidden;
-}
-.coding-workspace .config-scroll{
-  min-height:0;
-  overflow-y:auto;
-  overscroll-behavior:contain;
-}
-.coding-workspace .results-col{
-  height:100%;
-  max-height:none;
-  overscroll-behavior:contain;
-}
-.coding-workspace .layout-rail{height:100%}
 .results-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   min-height:300px;color:var(--text-3);gap:8px;text-align:center;

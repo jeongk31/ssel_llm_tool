@@ -3391,7 +3391,7 @@ ${agreementSection}
               aria-label="Visit the NYU Abu Dhabi website"
               title="NYU Abu Dhabi"
             >
-              <Image src="/nyuad_logo.avif" alt="NYU Abu Dhabi" width={138} height={24} className="topbar-logo topbar-logo-nyuad" priority />
+              <Image src="/nyuad_logo.avif" alt="NYU Abu Dhabi" width={138} height={24} className="topbar-logo topbar-logo-nyuad" priority unoptimized />
             </a>
             <div className="topbar-sep" aria-hidden="true" />
             <a
@@ -3402,7 +3402,7 @@ ${agreementSection}
               aria-label="Visit the Social Science Experimental Laboratory website"
               title="Social Science Experimental Laboratory"
             >
-              <Image src="/ssel_logo.png" alt="SSELab" width={110} height={24} className="topbar-logo" priority />
+              <Image src="/ssel_logo.png" alt="SSELab" width={110} height={24} className="topbar-logo" priority unoptimized />
             </a>
           </div>
           <div className="topbar-sep" />
@@ -3426,9 +3426,9 @@ ${agreementSection}
         </div>
       </nav>
 
-      <div className={`layout${activeTool === "coding" ? " coding-layout" : ""}`}>
+      <div className="layout">
         <main className="main">
-          <div className={`tool-page coding-workspace ${activeTool === "coding" ? "active" : ""}`}>
+          <div className={`tool-page ${activeTool === "coding" ? "active" : ""}`}>
             <div className="tool-header">
               <div>
                 <h1>LLM Coding</h1>
