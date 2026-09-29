@@ -12,11 +12,13 @@ header, the body is opaque to the scanner. This middleware decodes it before rou
 so downstream handlers see the original bytes and need no per-route changes. Two
 encodings are supported:
 
-- ``gzip``   — preferred; smaller on the wire (used when the browser has
-  ``CompressionStream``).
-- ``base64`` — universal fallback for browsers without ``CompressionStream``, so the
-  mitigation still applies (a plain body would otherwise be scanned and could be
-  rejected).
+- ``gzip+base64`` — preferred: gzip-compressed then base64-encoded. base64's restricted
+  alphabet (A-Z a-z 0-9 + / =) can never contain the byte patterns the firewall's
+  signatures match (``<``, quotes, ``../``, ``%``, ``--`` …), which raw gzip binary can
+  hit by coincidence on larger payloads. base64 keeps it opaque; gzip keeps it small.
+- ``base64`` — same safety without compression (browsers without ``CompressionStream``).
+- ``gzip`` — legacy/compat: raw gzip binary. Still decoded, but no longer sent by the
+  client because the raw binary can coincidentally trip a signature.
 
 This is a workaround for an upstream firewall we do not control, not a security
 boundary. A decoded-size cap guards against decompression bombs.
@@ -26,7 +28,7 @@ import base64
 import zlib
 
 _GZIP_WBITS = 16 + zlib.MAX_WBITS  # decode the gzip container, not raw deflate
-_SUPPORTED_ENCODINGS = (b"gzip", b"base64")
+_SUPPORTED_ENCODINGS = (b"gzip", b"base64", b"gzip+base64")
 
 
 class GzipRequestMiddleware:
@@ -63,8 +65,10 @@ class GzipRequestMiddleware:
         try:
             if encoding == b"gzip":
                 decompressed = self._inflate(bytes(body))
-            else:  # base64
+            elif encoding == b"base64":
                 decompressed = self._b64decode(bytes(body))
+            else:  # gzip+base64
+                decompressed = self._inflate(self._b64_bytes(bytes(body)))
         except _BodyTooLarge:
             return await _send_error(send, 413, "Encoded request body is too large.")
         except Exception:
@@ -103,12 +107,16 @@ class GzipRequestMiddleware:
 
         return await self.app(new_scope, patched_receive, send)
 
-    def _b64decode(self, data: bytes) -> bytes:
-        # Reject an oversized payload before allocating the decoded buffer.
-        # base64 expands the original by ~4/3, so bound the encoded input too.
+    def _b64_bytes(self, data: bytes) -> bytes:
+        # base64 expands the original by ~4/3, so bound the encoded input. For
+        # gzip+base64 the decoded bytes are the (small) gzip stream; _inflate then
+        # caps the final decompressed size.
         if len(data) > (self.max_bytes // 3) * 4 + 8:
             raise _BodyTooLarge()
-        decoded = base64.b64decode(data, validate=False)
+        return base64.b64decode(data, validate=False)
+
+    def _b64decode(self, data: bytes) -> bytes:
+        decoded = self._b64_bytes(data)
         if len(decoded) > self.max_bytes:
             raise _BodyTooLarge()
         return decoded

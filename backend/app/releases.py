@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.7",
+        "date": "2026-09-29",
+        "title": "Firewall: base64-safe request encoding",
+        "notes": "Send request bodies as gzip+base64 so large gzipped uploads no longer trip the firewall by coincidence.",
+    },
+    {
         "version": "1.2.6",
         "date": "2026-09-29",
         "title": "Contributor and AI-agent notes",
