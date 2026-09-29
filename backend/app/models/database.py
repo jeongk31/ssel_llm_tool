@@ -85,6 +85,8 @@ def _migrate_usage_events(conn):
         "ip": "VARCHAR(64)", "country": "VARCHAR(80)", "country_code": "VARCHAR(4)",
         "city": "VARCHAR(120)", "region": "VARCHAR(120)",
         "user_agent": "TEXT", "referer": "TEXT",
+        "run_id": "VARCHAR(64)", "status": "VARCHAR(20)",
+        "episodes_coded": "INTEGER", "error_count": "INTEGER", "duration_ms": "INTEGER",
     }
     for col, ddl in adds.items():
         if col not in existing:
@@ -101,8 +103,15 @@ class UsageEvent(Base):
     __tablename__ = "usage_events"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    event = Column(String(20))            # "visit" | "run"
+    event = Column(String(20))            # "visit" | "run" | "run_complete"
     session_id = Column(String(64))
+    # Correlates a "run" (started) event with its "run_complete" (outcome) event.
+    run_id = Column(String(64))
+    # Outcome fields, populated on the "run_complete" event.
+    status = Column(String(20))           # "completed" | "failed" | "stopped"
+    episodes_coded = Column(Integer, default=0)
+    error_count = Column(Integer, default=0)
+    duration_ms = Column(Integer, default=0)
     providers = Column(JSONField, default=[])
     models = Column(JSONField, default=[])
     num_models = Column(Integer, default=0)

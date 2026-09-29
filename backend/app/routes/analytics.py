@@ -104,7 +104,7 @@ def _int(v, default=0):
 @limiter.limit("120/minute")
 async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_db)):
     event = str(payload.get("event", ""))[:20]
-    if event not in ("visit", "run"):
+    if event not in ("visit", "run", "run_complete"):
         return {"ok": False}
     consent = str(payload.get("consent", ""))
 
@@ -137,9 +137,18 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
         except ValueError:
             pass
     geo = await _geo_lookup(ip)
+    # A run's outcome ("run_complete") is correlated to its start ("run") by run_id.
+    status = str(payload.get("status", ""))[:20]
+    if event == "run":
+        status = "started"
     ev = UsageEvent(
         event=event,
         session_id=str(payload.get("session_id", ""))[:64],
+        run_id=str(payload.get("run_id", ""))[:64],
+        status=status,
+        episodes_coded=_int(payload.get("episodes_coded")),
+        error_count=_int(payload.get("error_count")),
+        duration_ms=_int(payload.get("duration_ms")),
         providers=[str(p)[:40] for p in providers][:20],
         models=[str(m)[:80] for m in models][:20],
         num_models=_int(payload.get("num_models")),
@@ -162,12 +171,25 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
     return {"ok": True}
 
 
+def _sort_key(r) -> str:
+    return str(r.created_at or "")
+
+
 async def _compute_stats(db: AsyncSession) -> dict:
     rows = (await db.execute(select(UsageEvent))).scalars().all()
     visits = [r for r in rows if r.event == "visit"]
-    runs = [r for r in rows if r.event == "run"]
+    starts = [r for r in rows if r.event == "run"]
+    completes = [r for r in rows if r.event == "run_complete"]
+
+    # Correlate each run's outcome with its start by run_id. A start with no
+    # matching completion is an abandoned run (closed the tab, crashed, etc.).
+    complete_by_run = {}
+    for c in completes:
+        if c.run_id:
+            complete_by_run[c.run_id] = c
+
     provider_c, model_c, rpm_c, agg_c = Counter(), Counter(), Counter(), Counter()
-    country_c, cc_c, day_c = Counter(), Counter(), Counter()
+    country_c, cc_c, day_c, status_c = Counter(), Counter(), Counter(), Counter()
     per_sender_runs = 0
     for r in rows:
         country_c[r.country or "Unknown"] += 1
@@ -175,22 +197,110 @@ async def _compute_stats(db: AsyncSession) -> dict:
             cc_c[r.country_code.upper()] += 1
         if r.created_at:
             day_c[_to_uae(r.created_at)[:10]] += 1
-    for r in runs:
-        for p in (r.providers or []):
+
+    runs = []  # one entry per Run Coding action, start merged with outcome
+    total_episodes_coded = 0
+    total_duration_ms = 0
+    completed_count = 0
+    for s in starts:
+        for p in (s.providers or []):
             provider_c[p] += 1
-        for m in (r.models or []):
+        for m in (s.models or []):
             model_c[m] += 1
-        rpm_c[str(r.runs_per_model or 0)] += 1
-        agg_c[r.aggregation or "?"] += 1
-        if r.per_sender:
+        rpm_c[str(s.runs_per_model or 0)] += 1
+        agg_c[s.aggregation or "?"] += 1
+        if s.per_sender:
             per_sender_runs += 1
-    recent = sorted(rows, key=lambda r: str(r.created_at or ""), reverse=True)[:200]
+        outcome = complete_by_run.get(s.run_id) if s.run_id else None
+        status = (outcome.status if outcome else "abandoned") or "abandoned"
+        status_c[status] += 1
+        if outcome:
+            total_episodes_coded += int(outcome.episodes_coded or 0)
+            total_duration_ms += int(outcome.duration_ms or 0)
+            if status == "completed":
+                completed_count += 1
+        runs.append({
+            "at": _to_uae(s.created_at),
+            "ts": _sort_key(s),
+            "session": (s.session_id or "")[:8],
+            "session_full": s.session_id or "",
+            "run_id": s.run_id or "",
+            "providers": s.providers or [],
+            "models": s.models or [],
+            "num_models": s.num_models or (len(s.models or []) or 0),
+            "runs_per_model": s.runs_per_model or 0,
+            "aggregation": s.aggregation or "",
+            "variables": s.num_variables or 0,
+            "rows": s.num_rows or 0,
+            "episodes": s.num_episodes or 0,
+            "per_sender": bool(s.per_sender),
+            "country": s.country or "",
+            "city": s.city or "",
+            "status": status,
+            "episodes_coded": int(outcome.episodes_coded or 0) if outcome else None,
+            "error_count": int(outcome.error_count or 0) if outcome else None,
+            "duration_ms": int(outcome.duration_ms or 0) if outcome else None,
+        })
+    runs.sort(key=lambda x: x["ts"], reverse=True)
+
+    # Group everything by session so the admin can show "who did what".
+    sessions_map = {}
+    for r in rows:
+        sid = r.session_id or ""
+        if not sid:
+            continue
+        sess = sessions_map.setdefault(sid, {
+            "id": sid, "short": sid[:8], "first_ts": _sort_key(r), "last_ts": _sort_key(r),
+            "first": _to_uae(r.created_at), "last": _to_uae(r.created_at),
+            "country": "", "city": "", "visits": 0, "runs": 0,
+            "models": set(), "episodes": 0, "per_sender": False,
+        })
+        k = _sort_key(r)
+        if k < sess["first_ts"]:
+            sess["first_ts"], sess["first"] = k, _to_uae(r.created_at)
+        if k >= sess["last_ts"]:
+            sess["last_ts"], sess["last"] = k, _to_uae(r.created_at)
+        if r.country and r.country != "Local":
+            sess["country"] = r.country
+            sess["city"] = r.city or sess["city"]
+        if r.event == "visit":
+            sess["visits"] += 1
+        elif r.event == "run":
+            sess["runs"] += 1
+            for m in (r.models or []):
+                sess["models"].add(m)
+            sess["episodes"] += int(r.num_episodes or 0)
+            if r.per_sender:
+                sess["per_sender"] = True
+
+    runs_by_session = {}
+    for run in runs:
+        runs_by_session.setdefault(run["session_full"], []).append(run)
+
+    sessions = []
+    for sid, sess in sessions_map.items():
+        sess["models"] = sorted(sess["models"])
+        sess["run_list"] = runs_by_session.get(sid, [])
+        sessions.append(sess)
+    sessions.sort(key=lambda x: x["last_ts"], reverse=True)
+
+    started_n = len(starts)
+    recent = sorted(rows, key=_sort_key, reverse=True)[:300]
     return {
         "visits": len(visits),
         "unique_visitors": len({r.session_id for r in rows if r.session_id}),
         "countries": len({r.country for r in rows if r.country and r.country != "Local"}),
-        "runs": len(runs),
-        "sessions_that_ran": len({r.session_id for r in runs if r.session_id}),
+        # Run-outcome summary.
+        "runs": started_n,                       # Run Coding actions started
+        "runs_completed": completed_count,
+        "runs_failed": status_c.get("failed", 0),
+        "runs_stopped": status_c.get("stopped", 0),
+        "runs_abandoned": status_c.get("abandoned", 0),
+        "success_rate": round(100 * completed_count / started_n, 1) if started_n else 0,
+        "avg_episodes": round(total_episodes_coded / completed_count, 1) if completed_count else 0,
+        "avg_duration_ms": round(total_duration_ms / completed_count) if completed_count else 0,
+        "total_episodes_coded": total_episodes_coded,
+        "sessions_that_ran": len({r.session_id for r in starts if r.session_id}),
         "per_sender_runs": per_sender_runs,
         "by_country": dict(country_c.most_common()),
         "by_country_code": dict(cc_c.most_common()),
@@ -198,7 +308,10 @@ async def _compute_stats(db: AsyncSession) -> dict:
         "by_model": dict(model_c.most_common()),
         "by_runs_per_model": dict(rpm_c.most_common()),
         "by_aggregation": dict(agg_c.most_common()),
+        "by_status": dict(status_c.most_common()),
         "by_day": dict(sorted(day_c.items())),
+        "runs_list": runs[:300],
+        "sessions": sessions[:300],
         "events": [
             {
                 "at": _to_uae(r.created_at),
@@ -213,6 +326,7 @@ async def _compute_stats(db: AsyncSession) -> dict:
                 "variables": r.num_variables,
                 "rows": r.num_rows,
                 "episodes": r.num_episodes,
+                "status": r.status or "",
                 "per_sender": bool(r.per_sender),
                 "referer": r.referer or "",
                 "user_agent": (r.user_agent or "")[:80],
