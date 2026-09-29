@@ -156,6 +156,7 @@ ADMIN_HTML = r"""<!DOCTYPE html>
   </div>
   <div class="nav">
     <button data-view="home" class="active"><span class="ico">◎</span> Overview</button>
+    <button data-view="versions"><span class="ico">⎘</span> Version history</button>
     <button data-view="runs"><span class="ico">▶</span> Coding runs</button>
     <button data-view="sessions"><span class="ico">◇</span> Sessions</button>
     <button data-view="analytics"><span class="ico">▤</span> Analytics</button>
@@ -176,6 +177,16 @@ ADMIN_HTML = r"""<!DOCTYPE html>
       <div class="chart-box"><h4>Activity over time</h4><canvas id="c-home-day" height="150"></canvas></div>
       <div class="chart-box"><h4>Run outcomes</h4><canvas id="c-home-outcome" height="150"></canvas></div>
     </div>
+  </section>
+
+  <!-- VERSION HISTORY -->
+  <section class="view" id="view-versions">
+    <div class="head"><h1>Version history</h1><div class="sub">Every version deployed to production, newest first. The website shows the major version (e.g. v1.2); each deploy adds a patch (1.2.1, 1.2.2, …).</div></div>
+    <div class="cards" id="ver-cards" style="margin-bottom:18px"></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Version</th><th>Date</th><th>What changed</th></tr></thead>
+      <tbody id="ver-rows"></tbody>
+    </table></div>
   </section>
 
   <!-- RUNS -->
@@ -310,6 +321,41 @@ homeStats.forEach(s => {
   if(s.hint) c.appendChild(el('div','hint', s.hint));
   hc.appendChild(c);
 });
+
+// ---- version history ----
+const REL = DATA.releases || [];
+(function(){
+  const cards = document.getElementById('ver-cards');
+  if (cards) {
+    const cur = el('div','card accent');
+    cur.appendChild(el('div','v', 'v' + (DATA.version || (REL[0] && REL[0].version) || '?')));
+    cur.appendChild(el('div','l','Current version'));
+    if (REL[0]) cur.appendChild(el('div','hint','deployed ' + REL[0].date));
+    cards.appendChild(cur);
+    const cnt = el('div','card');
+    cnt.appendChild(el('div','v', String(REL.length)));
+    cnt.appendChild(el('div','l','Releases'));
+    cards.appendChild(cnt);
+  }
+  const body = document.getElementById('ver-rows');
+  if (body) {
+    if (!REL.length) { body.innerHTML = '<tr><td colspan="3" class="muted" style="text-align:center;padding:30px">No release history.</td></tr>'; }
+    REL.forEach((r,i) => {
+      const tr = el('tr');
+      const vc = el('td');
+      const vs = el('span','mono'); vs.textContent = 'v' + r.version; vc.appendChild(vs);
+      if (i===0) { vc.appendChild(document.createTextNode(' ')); vc.appendChild(el('span','pill p-completed','current')); }
+      tr.appendChild(vc);
+      tr.appendChild(td(r.date));
+      const wc = el('td'); wc.style.whiteSpace='normal';
+      const t = el('div', null, r.title || ''); t.style.fontWeight='600';
+      wc.appendChild(t);
+      if (r.notes) { const n = el('div','muted', r.notes); n.style.fontSize='11.5px'; n.style.marginTop='2px'; wc.appendChild(n); }
+      tr.appendChild(wc);
+      body.appendChild(tr);
+    });
+  }
+})();
 
 // ---- runs summary cards ----
 const rc = document.getElementById('runs-cards');

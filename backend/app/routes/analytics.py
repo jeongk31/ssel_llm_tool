@@ -347,6 +347,9 @@ async def _fetch_messages(db: AsyncSession) -> list[dict]:
 
 
 async def _admin_payload(db: AsyncSession) -> dict:
+    from app.releases import RELEASES
+    from app import __version__
+
     messages = await _fetch_messages(db)
     return {
         "stats": await _compute_stats(db),
@@ -356,6 +359,8 @@ async def _admin_payload(db: AsyncSession) -> dict:
             "resolved": sum(1 for m in messages if m["status"] == "resolved"),
             "total": len(messages),
         },
+        "version": __version__,
+        "releases": RELEASES,
     }
 
 
