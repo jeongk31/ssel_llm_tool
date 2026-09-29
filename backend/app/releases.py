@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.6",
+        "date": "2026-09-29",
+        "title": "Contributor and AI-agent notes",
+        "notes": "Added CLAUDE.md documenting the release, deploy, and firewall-encoding conventions.",
+    },
+    {
         "version": "1.2.5",
         "date": "2026-09-29",
         "title": "Admin version history",
