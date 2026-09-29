@@ -17,12 +17,12 @@ export const GZIP_ENCODING_HEADER = "X-CAT-Encoding";
 const canGzip = (): boolean =>
   typeof CompressionStream !== "undefined" && typeof Response !== "undefined";
 
-async function gzip(input: BufferSource): Promise<Blob> {
+async function gzipBytes(input: BufferSource): Promise<Uint8Array> {
   const stream = new CompressionStream("gzip");
   const writer = stream.writable.getWriter();
   void writer.write(input);
   void writer.close();
-  return new Response(stream.readable).blob();
+  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
 }
 
 // Base64-encode bytes. Universal fallback for browsers without CompressionStream:
@@ -45,42 +45,41 @@ export async function gzipJsonInit(
 ): Promise<{ headers: Record<string, string>; body: BodyInit }> {
   const json = JSON.stringify(value);
   const bytes = new TextEncoder().encode(json);
-  if (canGzip()) {
-    try {
-      const body = await gzip(bytes as BufferSource);
-      return {
-        headers: {
-          // Wire type is binary so the firewall does not text-scan the body; the
-          // backend restores the real type (X-CAT-Content-Type) before parsing.
-          "Content-Type": "application/octet-stream",
-          "X-CAT-Content-Type": "application/json",
-          [GZIP_ENCODING_HEADER]: "gzip",
-          ...extraHeaders,
-        },
-        body,
-      };
-    } catch {
-      // fall through to base64
-    }
-  }
-  try {
-    const body = bytesToBase64(bytes);
-    return {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "X-CAT-Content-Type": "application/json",
-        [GZIP_ENCODING_HEADER]: "base64",
-        ...extraHeaders,
-      },
-      body,
-    };
-  } catch {
-    // last resort: plain body (may be scanned by the firewall)
-  }
+  const encoded = await encodeBody(bytes, "application/json", extraHeaders);
+  if (encoded) return encoded;
+  // last resort: plain body (only if base64 itself failed — essentially never)
   return {
     headers: { "Content-Type": "application/json", ...extraHeaders },
     body: json,
   };
+}
+
+// Encode raw bytes for transport past the firewall. Prefer gzip+base64 (small and
+// signature-safe); fall back to plain base64 without CompressionStream. The wire is
+// always base64 text, whose alphabet can't contain the firewall's trigger patterns.
+async function encodeBody(
+  bytes: Uint8Array,
+  realContentType: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ headers: Record<string, string>; body: BodyInit } | null> {
+  const baseHeaders = {
+    "Content-Type": "application/octet-stream",
+    "X-CAT-Content-Type": realContentType,
+    ...extraHeaders,
+  };
+  if (canGzip()) {
+    try {
+      const gz = await gzipBytes(bytes as BufferSource);
+      return { headers: { ...baseHeaders, [GZIP_ENCODING_HEADER]: "gzip+base64" }, body: bytesToBase64(gz) };
+    } catch {
+      // fall through to plain base64
+    }
+  }
+  try {
+    return { headers: { ...baseHeaders, [GZIP_ENCODING_HEADER]: "base64" }, body: bytesToBase64(bytes) };
+  } catch {
+    return null;
+  }
 }
 
 // Compress a file's bytes into a gzip raw-body request init, or fall back to a
@@ -90,36 +89,13 @@ export async function gzipFileInit(
   file: File,
 ): Promise<{ headers: Record<string, string>; body: BodyInit }> {
   const buffer = await file.arrayBuffer();
-  if (canGzip()) {
-    try {
-      const body = await gzip(buffer);
-      return {
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "X-CAT-Content-Type": "application/octet-stream",
-          [GZIP_ENCODING_HEADER]: "gzip",
-          "X-CAT-Filename": encodeURIComponent(file.name),
-        },
-        body,
-      };
-    } catch {
-      // fall through to base64
-    }
-  }
-  try {
-    const body = bytesToBase64(new Uint8Array(buffer));
-    return {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "X-CAT-Content-Type": "application/octet-stream",
-        [GZIP_ENCODING_HEADER]: "base64",
-        "X-CAT-Filename": encodeURIComponent(file.name),
-      },
-      body,
-    };
-  } catch {
-    // last resort: multipart (may be scanned by the firewall)
-  }
+  const encoded = await encodeBody(
+    new Uint8Array(buffer),
+    "application/octet-stream",
+    { "X-CAT-Filename": encodeURIComponent(file.name) },
+  );
+  if (encoded) return encoded;
+  // last resort: multipart (may be scanned by the firewall)
   const form = new FormData();
   form.append("file", file);
   return { headers: {}, body: form };
