@@ -1324,7 +1324,11 @@ export default function CatApp() {
     } catch { clientIpRef.current = ""; }
     return clientIpRef.current ?? "";
   };
-  const trackEvent = async (event: "visit" | "run", choice = analyticsConsent) => {
+  const trackEvent = async (
+    event: "visit" | "run" | "run_complete",
+    extra: Record<string, unknown> = {},
+    choice = analyticsConsent,
+  ) => {
     try {
       if (choice === "rejected") {
         if (event === "visit") {
@@ -1341,7 +1345,7 @@ export default function CatApp() {
       let sid = localStorage.getItem("ssel_session_id");
       if (!sid) { sid = (crypto.randomUUID?.() ?? String(Date.now() + Math.random())); localStorage.setItem("ssel_session_id", sid); }
       const client_ip = await getClientIp();
-      const body: Record<string, unknown> = { event, consent: "accepted", session_id: sid, client_ip };
+      const body: Record<string, unknown> = { event, consent: "accepted", session_id: sid, client_ip, ...extra };
       if (event === "run") {
         body.providers = modelSlots.map((s) => s.provider);
         body.models = modelSlots.map((s) => s.model);
@@ -1370,7 +1374,7 @@ export default function CatApp() {
   useEffect(() => {
     if (analyticsConsent !== "accepted" && analyticsConsent !== "rejected") return;
     try { if (sessionStorage.getItem("ssel_visited")) return; sessionStorage.setItem("ssel_visited", "1"); } catch {}
-    void trackEvent("visit", analyticsConsent);
+    void trackEvent("visit", {}, analyticsConsent);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyticsConsent]);
 
@@ -2636,6 +2640,15 @@ export default function CatApp() {
     setRunFinishedAt(null);
     log("info", "Checking the uploaded dataset...");
 
+    // Outcome tracking (state is stale inside this closure, so use locals).
+    const runId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+    const runStartMs = Date.now();
+    let startTracked = false;
+    let outcomeCoded = 0;
+    let outcomeErrors = 0;
+    let outcomeCompleted = false;
+    let outcomeStopped = false;
+
     let stage: "preflight" | "script" | "validation" | "stream" = "preflight";
     try {
       const activeUpload = await withReadyUpload(
@@ -2643,7 +2656,8 @@ export default function CatApp() {
         { recovery: uploadRecovery, signal },
       );
       assertCurrentRunAction(action);
-      trackEvent("run");
+      trackEvent("run", { run_id: runId });
+      startTracked = true;
 
       stage = "script";
       log("info", "Generating coding script...");
@@ -2750,12 +2764,14 @@ export default function CatApp() {
               } else if (msg.type === "row") {
                 const row = { index: msg.index!, original: msg.original!, coded: msg.coded! };
                 setCodedRows((prev) => [...prev, row]);
+                outcomeCoded += 1;
                 const issues = checkRow(row.index, row.coded, resultVars);
                 for (const issue of issues) {
                   const detail = issue.issueType === "api_error"
                     ? `Episode ${row.index + 1}: ${issue.value}`
                     : `Episode ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
                   setRunErrors((prev) => [...prev, detail]);
+                  outcomeErrors += 1;
                   log("warn", detail);
                 }
               } else if (msg.type === "error" && isRestorableUploadCode(msg.code)) {
@@ -2763,10 +2779,12 @@ export default function CatApp() {
               } else if (msg.type === "error" && msg.index !== undefined) {
                 const message = msg.message ?? "Coding failed";
                 setRunErrors((prev) => [...prev, message]);
+                outcomeErrors += 1;
                 log("error", message);
               } else if (msg.type === "error") {
                 const message = msg.message ?? "Coding failed";
                 setRunError(message);
+                outcomeErrors += 1;
                 log("error", `Fatal: ${message}`);
               } else if (msg.type === "complete") {
                 setRunComplete({
@@ -2774,6 +2792,8 @@ export default function CatApp() {
                   coded_rows: msg.coded_rows!,
                   file_path: msg.file_path!,
                 });
+                outcomeCompleted = true;
+                outcomeCoded = msg.coded_rows ?? outcomeCoded;
                 log("info", `Coding complete. ${msg.total_rows} episodes processed, ${msg.coded_rows} coded.`);
               }
             },
@@ -2787,8 +2807,10 @@ export default function CatApp() {
         }
       }, { initialUpload: activeUpload, recovery: uploadRecovery, signal });
     } catch (e: unknown) {
+      if (isAbortError(e)) outcomeStopped = true;
       if (isAbortError(e) || !isCurrentRunAction(action)) return;
       const message = e instanceof Error ? e.message : "Coding failed";
+      outcomeErrors += 1;
       if (stage === "preflight") {
         setGenerateError(message);
       } else if (stage === "script") {
@@ -2801,6 +2823,18 @@ export default function CatApp() {
         setRunError(message);
       }
     } finally {
+      // Record the run's outcome so the admin can distinguish completed runs
+      // from failed, stopped, or abandoned ones.
+      if (startTracked) {
+        const status = outcomeStopped ? "stopped" : outcomeCompleted ? "completed" : "failed";
+        trackEvent("run_complete", {
+          run_id: runId,
+          status,
+          episodes_coded: outcomeCoded,
+          error_count: outcomeErrors,
+          duration_ms: Date.now() - runStartMs,
+        });
+      }
       finishRunAction(action);
     }
   };
