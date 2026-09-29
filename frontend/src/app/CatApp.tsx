@@ -10,7 +10,7 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
-import { gzipFileInit, detectFirewallBlock, firewallBlockMessage } from "@/lib/gzipRequest";
+import { gzipFileInit, gzipJsonInit, detectFirewallBlock, firewallBlockMessage, firewallErrorFromText } from "@/lib/gzipRequest";
 import { RowSelectionMode, parseRowSpec, randomIndices, percentToCount } from "@/lib/rowSelection";
 import {
   clearStoredUpload,
@@ -333,6 +333,8 @@ async function parseDownloadArtifact(
   }
 
   const raw = await response.text();
+  const firewall = firewallErrorFromText(raw);
+  if (firewall) throw firewall;
   let detail = "";
   let responseCode: string | null = null;
   if (contentType.includes("application/json")) {
@@ -1563,32 +1565,36 @@ export default function CatApp() {
     const controller = new AbortController();
     setAgreementLoading(true);
     setAgreementError("");
-    fetch("/api/coding/inter-coder-agreement", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({
-        result_path: runComplete.file_path,
-        codebook: resultExportConfig.codebook,
-        participants: resultExportConfig.participants,
-      }),
-    })
-      .then(async (response) => {
+    (async () => {
+      try {
+        const init = await gzipJsonInit({
+          result_path: runComplete.file_path,
+          codebook: resultExportConfig.codebook,
+          participants: resultExportConfig.participants,
+        });
+        const response = await fetch("/api/coding/inter-coder-agreement", {
+          method: "POST",
+          headers: init.headers,
+          signal: controller.signal,
+          body: init.body,
+        });
+        const raw = await response.text();
+        const firewall = firewallErrorFromText(raw);
+        if (firewall) throw firewall;
         if (!response.ok) {
-          const body = await response.json().catch(() => ({ detail: response.statusText }));
-          throw new Error(body.detail || response.statusText);
+          let detail = response.statusText;
+          try { detail = (JSON.parse(raw) as { detail?: string }).detail || detail; } catch {}
+          throw new Error(detail);
         }
-        return response.json() as Promise<InterCoderAgreementReport>;
-      })
-      .then((report) => setAgreementReport(report))
-      .catch((error: unknown) => {
+        setAgreementReport(JSON.parse(raw) as InterCoderAgreementReport);
+      } catch (error: unknown) {
         if (isAbortError(error)) return;
         setAgreementReport(null);
         setAgreementError(error instanceof Error ? error.message : "Could not calculate inter-coder agreement.");
-      })
-      .finally(() => {
+      } finally {
         if (!controller.signal.aborted) setAgreementLoading(false);
-      });
+      }
+    })();
     return () => controller.abort();
   }, [runComplete, resultExportConfig, agreementRequestVersion]);
 
@@ -2458,34 +2464,37 @@ export default function CatApp() {
     setGenerateError("");
     try {
       const download = await withReadyUpload(async (activeUpload) => {
+        const pkgInit = await gzipJsonInit({
+          file_id: activeUpload.file_id,
+          file_name: activeUpload.file_name,
+          message_column: messageColumn,
+          identifier_columns: identifierColumns,
+          identity_column: identityColumn || null,
+          order_column: orderColumn || null,
+          order_direction: orderDirection,
+          experiment_instructions: experimentInstructions,
+          empty_message_handling: emptyMessageHandling,
+          codebook,
+          participants,
+          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+          provider,
+          model,
+          // Generated packages never contain credentials; the local script reads
+          // CAT_API_KEY or prompts securely when it starts.
+          api_key: "provided_at_runtime",
+          model_slots: [],
+          source_rows: selectedSourceIndices,
+        });
         const res = await fetch("/api/coding/generate-package", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            file_id: activeUpload.file_id,
-            file_name: activeUpload.file_name,
-            message_column: messageColumn,
-            identifier_columns: identifierColumns,
-            identity_column: identityColumn || null,
-            order_column: orderColumn || null,
-            order_direction: orderDirection,
-            experiment_instructions: experimentInstructions,
-            empty_message_handling: emptyMessageHandling,
-            codebook,
-            participants,
-            context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
-            provider,
-            model,
-            // Generated packages never contain credentials; the local script reads
-            // CAT_API_KEY or prompts securely when it starts.
-            api_key: "provided_at_runtime",
-            model_slots: [],
-            source_rows: selectedSourceIndices,
-          }),
+          headers: pkgInit.headers,
+          body: pkgInit.body,
         });
         const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
         if (!res.ok || !contentType.includes("application/zip")) {
           const raw = await res.text();
+          const pkgFirewall = firewallErrorFromText(raw);
+          if (pkgFirewall) throw pkgFirewall;
           let detail = "";
           let responseCode: string | null = null;
           if (contentType.includes("application/json")) {
@@ -2661,55 +2670,64 @@ export default function CatApp() {
 
       stage = "script";
       log("info", "Generating coding script...");
+      const scriptInit = await gzipJsonInit({
+        file_name: activeUpload.file_name,
+        message_column: messageColumn,
+        identifier_columns: identifierColumns,
+        identity_column: identityColumn || null,
+        order_column: orderColumn || null,
+        order_direction: orderDirection,
+        experiment_instructions: experimentInstructions,
+        empty_message_handling: emptyMessageHandling,
+        codebook,
+        participants,
+        context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+        provider,
+        model,
+        // Script previews do not contain credentials. The actual browser run
+        // sends the entered key only to validation and coding endpoints below.
+        api_key: "provided_at_runtime",
+        model_slots: [],
+      });
       const res = await fetch("/api/coding/generate-script", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: scriptInit.headers,
         signal,
-        body: JSON.stringify({
-          file_name: activeUpload.file_name,
-          message_column: messageColumn,
-          identifier_columns: identifierColumns,
-          identity_column: identityColumn || null,
-          order_column: orderColumn || null,
-          order_direction: orderDirection,
-          experiment_instructions: experimentInstructions,
-          empty_message_handling: emptyMessageHandling,
-          codebook,
-          participants,
-          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
-          provider,
-          model,
-          // Script previews do not contain credentials. The actual browser run
-          // sends the entered key only to validation and coding endpoints below.
-          api_key: "provided_at_runtime",
-          model_slots: [],
-        }),
+        body: scriptInit.body,
       });
+      const scriptRaw = await res.text();
+      const scriptFirewall = firewallErrorFromText(scriptRaw);
+      if (scriptFirewall) throw scriptFirewall;
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(body.detail || res.statusText);
+        let detail = res.statusText;
+        try { detail = (JSON.parse(scriptRaw) as { detail?: string }).detail || detail; } catch {}
+        throw new Error(detail);
       }
-      const data: GenerateResult = await res.json();
+      const data: GenerateResult = JSON.parse(scriptRaw);
       assertCurrentRunAction(action);
       setResult(data);
       log("info", `Script generated: ${data.filename}`);
 
       stage = "validation";
       log("info", "Validating API keys and models...");
+      const valInit = await gzipJsonInit({
+        model_slots: modelSlots.map((s) => ({
+          provider: s.provider,
+          model: s.model,
+          api_key: s.apiKey,
+        })),
+      });
       const valRes = await fetch("/api/coding/validate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: valInit.headers,
         signal,
-        body: JSON.stringify({
-          model_slots: modelSlots.map((s) => ({
-            provider: s.provider,
-            model: s.model,
-            api_key: s.apiKey,
-          })),
-        }),
+        body: valInit.body,
       });
+      const valRaw = await valRes.text();
+      const valFirewall = firewallErrorFromText(valRaw);
+      if (valFirewall) throw valFirewall;
       if (!valRes.ok) throw new Error("Validation request failed");
-      const valData = await valRes.json();
+      const valData = JSON.parse(valRaw);
       assertCurrentRunAction(action);
       for (const r of valData.results) {
         if (r.ok) log("info", `  ${r.label} — OK`);
@@ -2872,26 +2890,27 @@ export default function CatApp() {
     try {
       const fallbackStem = (uploadResult.file_name || "dataset").replace(/\.[^.]+$/, "") || "dataset";
       const artifact = await withReadyUpload(async (activeUpload) => {
+        const exportInit = await gzipJsonInit({
+          file_id: activeUpload.file_id,
+          message_column: exportConfig.messageColumn,
+          identifier_columns: exportConfig.identifierColumns,
+          identity_column: exportConfig.identityColumn || null,
+          order_column: exportConfig.orderColumn || null,
+          order_direction: exportConfig.orderDirection,
+          context: exportConfig.context,
+          codebook: exportConfig.codebook,
+          participants: exportConfig.participants,
+          // Send only the latest aggregate value for each episode. Selective
+          // reruns replace entries in codedRows by index before this export.
+          coded_rows: codedRows.map(({ index, coded }) => ({ index, coded })),
+          kind: "primary",
+          result_path: runComplete.file_path,
+          model_call_count: exportConfig.modelCallCount,
+        });
         const response = await fetch("/api/coding/export-results", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            file_id: activeUpload.file_id,
-            message_column: exportConfig.messageColumn,
-            identifier_columns: exportConfig.identifierColumns,
-            identity_column: exportConfig.identityColumn || null,
-            order_column: exportConfig.orderColumn || null,
-            order_direction: exportConfig.orderDirection,
-            context: exportConfig.context,
-            codebook: exportConfig.codebook,
-            participants: exportConfig.participants,
-            // Send only the latest aggregate value for each episode. Selective
-            // reruns replace entries in codedRows by index before this export.
-            coded_rows: codedRows.map(({ index, coded }) => ({ index, coded })),
-            kind: "primary",
-            result_path: runComplete.file_path,
-            model_call_count: exportConfig.modelCallCount,
-          }),
+          headers: exportInit.headers,
+          body: exportInit.body,
         });
         return parseDownloadArtifact(
           response,

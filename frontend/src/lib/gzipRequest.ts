@@ -143,3 +143,10 @@ export function firewallBlockMessage(supportId: string | null): string {
     ? `${base} Please report support ID ${supportId} to IT.`
     : base;
 }
+
+// Convenience for response handlers: if a response body is the firewall block
+// page, return a ready-to-throw Error with the friendly message; else null.
+export function firewallErrorFromText(raw: string): Error | null {
+  const blocked = detectFirewallBlock(raw);
+  return blocked ? new Error(firewallBlockMessage(blocked.supportId)) : null;
+}
