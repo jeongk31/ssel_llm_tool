@@ -25,6 +25,18 @@ async function gzip(input: BufferSource): Promise<Blob> {
   return new Response(stream.readable).blob();
 }
 
+// Base64-encode bytes. Universal fallback for browsers without CompressionStream:
+// a base64 body is still opaque to the firewall's text scanner, so the mitigation
+// keeps working (a plain body would be scanned and could be rejected).
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 // Compress a JSON-serializable value into a gzip request init, or fall back to a
 // plain application/json body when compression is not available.
 export async function gzipJsonInit(
@@ -32,9 +44,10 @@ export async function gzipJsonInit(
   extraHeaders: Record<string, string> = {},
 ): Promise<{ headers: Record<string, string>; body: BodyInit }> {
   const json = JSON.stringify(value);
+  const bytes = new TextEncoder().encode(json);
   if (canGzip()) {
     try {
-      const body = await gzip(new TextEncoder().encode(json) as BufferSource);
+      const body = await gzip(bytes as BufferSource);
       return {
         headers: {
           // Wire type is binary so the firewall does not text-scan the body; the
@@ -47,8 +60,22 @@ export async function gzipJsonInit(
         body,
       };
     } catch {
-      // fall through to the plain body
+      // fall through to base64
     }
+  }
+  try {
+    const body = bytesToBase64(bytes);
+    return {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-CAT-Content-Type": "application/json",
+        [GZIP_ENCODING_HEADER]: "base64",
+        ...extraHeaders,
+      },
+      body,
+    };
+  } catch {
+    // last resort: plain body (may be scanned by the firewall)
   }
   return {
     headers: { "Content-Type": "application/json", ...extraHeaders },
@@ -62,9 +89,10 @@ export async function gzipJsonInit(
 export async function gzipFileInit(
   file: File,
 ): Promise<{ headers: Record<string, string>; body: BodyInit }> {
+  const buffer = await file.arrayBuffer();
   if (canGzip()) {
     try {
-      const body = await gzip(await file.arrayBuffer());
+      const body = await gzip(buffer);
       return {
         headers: {
           "Content-Type": "application/octet-stream",
@@ -75,8 +103,22 @@ export async function gzipFileInit(
         body,
       };
     } catch {
-      // fall through to multipart
+      // fall through to base64
     }
+  }
+  try {
+    const body = bytesToBase64(new Uint8Array(buffer));
+    return {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-CAT-Content-Type": "application/octet-stream",
+        [GZIP_ENCODING_HEADER]: "base64",
+        "X-CAT-Filename": encodeURIComponent(file.name),
+      },
+      body,
+    };
+  } catch {
+    // last resort: multipart (may be scanned by the firewall)
   }
   const form = new FormData();
   form.append("file", file);

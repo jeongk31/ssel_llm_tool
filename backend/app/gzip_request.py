@@ -1,4 +1,4 @@
-"""ASGI middleware that transparently decompresses gzip-encoded request bodies.
+"""ASGI middleware that transparently decodes encoded request bodies.
 
 Some deployments sit behind a web application firewall (the NYU gateway runs an
 F5 BIG-IP ASM policy) that scans plain-text request bodies and rejects ones whose
@@ -7,18 +7,26 @@ content matches attack signatures. Ordinary research text — percentages such a
 transcript — trips those signatures even though the application builds no SQL from
 user input.
 
-When the client sends the request body gzip-compressed and marks it with the
-``X-CAT-Encoding: gzip`` header, the body is opaque binary and is not signature
-scanned. This middleware inflates it before routing so downstream handlers see the
-original bytes and need no per-route changes.
+When the client encodes the request body and marks it with an ``X-CAT-Encoding``
+header, the body is opaque to the scanner. This middleware decodes it before routing
+so downstream handlers see the original bytes and need no per-route changes. Two
+encodings are supported:
+
+- ``gzip``   — preferred; smaller on the wire (used when the browser has
+  ``CompressionStream``).
+- ``base64`` — universal fallback for browsers without ``CompressionStream``, so the
+  mitigation still applies (a plain body would otherwise be scanned and could be
+  rejected).
 
 This is a workaround for an upstream firewall we do not control, not a security
-boundary. A decompressed-size cap guards against gzip bombs.
+boundary. A decoded-size cap guards against decompression bombs.
 """
 
+import base64
 import zlib
 
 _GZIP_WBITS = 16 + zlib.MAX_WBITS  # decode the gzip container, not raw deflate
+_SUPPORTED_ENCODINGS = (b"gzip", b"base64")
 
 
 class GzipRequestMiddleware:
@@ -39,10 +47,10 @@ class GzipRequestMiddleware:
                 encoding = value.lower()
             elif lowered == b"x-cat-content-type":
                 target_content_type = value
-        if encoding != b"gzip":
+        if encoding not in _SUPPORTED_ENCODINGS:
             return await self.app(scope, receive, send)
 
-        # Drain the (compressed) body.
+        # Drain the (encoded) body.
         body = bytearray()
         more_body = True
         while more_body:
@@ -53,11 +61,14 @@ class GzipRequestMiddleware:
             more_body = message.get("more_body", False)
 
         try:
-            decompressed = self._inflate(bytes(body))
+            if encoding == b"gzip":
+                decompressed = self._inflate(bytes(body))
+            else:  # base64
+                decompressed = self._b64decode(bytes(body))
         except _BodyTooLarge:
-            return await _send_error(send, 413, "Compressed request body is too large.")
+            return await _send_error(send, 413, "Encoded request body is too large.")
         except Exception:
-            return await _send_error(send, 400, "Malformed compressed request body.")
+            return await _send_error(send, 400, "Malformed encoded request body.")
 
         # Rewrite headers: drop the compression markers and stale length, set the
         # real decompressed length, and restore the true content-type. The wire
@@ -91,6 +102,16 @@ class GzipRequestMiddleware:
             return {"type": "http.request", "body": decompressed, "more_body": False}
 
         return await self.app(new_scope, patched_receive, send)
+
+    def _b64decode(self, data: bytes) -> bytes:
+        # Reject an oversized payload before allocating the decoded buffer.
+        # base64 expands the original by ~4/3, so bound the encoded input too.
+        if len(data) > (self.max_bytes // 3) * 4 + 8:
+            raise _BodyTooLarge()
+        decoded = base64.b64decode(data, validate=False)
+        if len(decoded) > self.max_bytes:
+            raise _BodyTooLarge()
+        return decoded
 
     def _inflate(self, data: bytes) -> bytes:
         decompressor = zlib.decompressobj(_GZIP_WBITS)
