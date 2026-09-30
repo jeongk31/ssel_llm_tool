@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.10",
+        "date": "2026-09-30",
+        "title": "Persistent error log; remove live server-log view",
+        "notes": "Removed the live server-log tail. Backend exceptions are now persisted and shown in the admin Errors view alongside coding-run errors.",
+    },
+    {
         "version": "1.2.9",
         "date": "2026-09-30",
         "title": "Hotfix: backend stability",
