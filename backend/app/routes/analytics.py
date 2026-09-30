@@ -17,6 +17,7 @@ def _to_uae(dt) -> str:
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from starlette.concurrency import run_in_threadpool
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -178,8 +179,20 @@ def _sort_key(r) -> str:
     return str(r.created_at or "")
 
 
+_STATS_ROW_CAP = 50000  # bound memory/CPU on large deployments (newest events)
+
+
 async def _compute_stats(db: AsyncSession) -> dict:
-    rows = (await db.execute(select(UsageEvent))).scalars().all()
+    # Load the newest events (bounded) then process OFF the event loop, so a large
+    # dataset or frequent admin polling can never block the whole backend.
+    result = await db.execute(
+        select(UsageEvent).order_by(UsageEvent.created_at.desc()).limit(_STATS_ROW_CAP)
+    )
+    rows = list(result.scalars().all())
+    return await run_in_threadpool(_process_stats, rows)
+
+
+def _process_stats(rows) -> dict:
     visits = [r for r in rows if r.event == "visit"]
     starts = [r for r in rows if r.event == "run"]
     completes = [r for r in rows if r.event == "run_complete"]
@@ -400,6 +413,13 @@ async def admin_logs(after: int = 0, _: bool = Depends(require_admin)):
     """Recent backend server-log lines (in-memory ring buffer) for live tailing."""
     from app.logbuffer import recent_logs
     return recent_logs(after_seq=after)
+
+
+@admin_router.post("/admin/logs/clear")
+async def admin_logs_clear(_: bool = Depends(require_admin)):
+    """Clear the in-memory server-log buffer."""
+    from app.logbuffer import clear_logs
+    return clear_logs()
 
 
 class _StatusUpdate(BaseModel):
