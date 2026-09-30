@@ -33,7 +33,7 @@ function formatCount(value: number): string {
   return value.toLocaleString("en-US");
 }
 
-/** World map of where CAT is used, shaded by number of recorded events. */
+/** World map of the countries CAT has been used from. */
 function CountryMap({ counts }: { counts: Record<string, number> }) {
   const holder = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -54,20 +54,17 @@ function CountryMap({ counts }: { counts: Record<string, number> }) {
           totals[code.toUpperCase()] = count;
           totals[code.toLowerCase()] = count;
         }
-        // This version of jsvectormap has only an ORDINAL scale: it looks a region's
-        // value up in `scale` as a key. Passing a two-colour array with raw counts
-        // means scale[24] is undefined and the country is painted black. Bucket each
-        // count into a step of the ramp instead, and key the scale by that step.
-        const RAMP = ["#ede9fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#6d28d9"];
-        const scale: Record<number, string> = {};
-        RAMP.forEach((colour, index) => { scale[index] = colour; });
-        const max = Math.max(1, ...Object.values(totals));
+        // Every country that has used CAT is filled with the same purple: the map
+        // answers "where has this been used", and shading by volume made the
+        // quieter countries fade into the background.
+        //
+        // This version of jsvectormap has only an ORDINAL scale — it looks a
+        // region's value up in `scale` as a key — so each used country is given the
+        // key 1 and the scale maps that one key to the colour.
+        const scale: Record<number, string> = { 1: "#5b2d8e" };
         const values: Record<string, number> = {};
         for (const [code, count] of Object.entries(totals)) {
-          values[code] = Math.min(
-            RAMP.length - 1,
-            Math.max(0, Math.ceil((count / max) * RAMP.length) - 1),
-          );
+          if (count > 0) values[code] = 1;
         }
         map = new JsVectorMap({
           selector: holder.current,
