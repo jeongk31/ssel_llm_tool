@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.11",
+        "date": "2026-09-30",
+        "title": "Fix coding runs freezing the server",
+        "notes": "The request-decoding middleware answered receive() instantly, which made streaming coding runs busy-loop and hang the whole backend. It now defers to the real receive.",
+    },
+    {
         "version": "1.2.10",
         "date": "2026-09-30",
         "title": "Persistent error log; remove live server-log view",

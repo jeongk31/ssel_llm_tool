@@ -100,10 +100,18 @@ class GzipRequestMiddleware:
 
         async def patched_receive():
             nonlocal served
-            if served:
-                return {"type": "http.request", "body": b"", "more_body": False}
-            served = True
-            return {"type": "http.request", "body": decompressed, "more_body": False}
+            if not served:
+                served = True
+                return {"type": "http.request", "body": decompressed, "more_body": False}
+            # The body has already been delivered. Defer to the real receive from
+            # here on, so protocol messages (notably "http.disconnect") pass
+            # through and actually suspend.
+            #
+            # Returning a synthetic message immediately would busy-loop: a
+            # StreamingResponse watches for disconnects by calling receive() in a
+            # loop, so an instant reply spins the event loop and freezes the whole
+            # server for the life of the stream.
+            return await receive()
 
         return await self.app(new_scope, patched_receive, send)
 
