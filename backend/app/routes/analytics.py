@@ -27,6 +27,7 @@ from app.admin_template import ADMIN_HTML
 from app.config import settings
 from app.models.database import get_db, UsageEvent, ContactMessage, ErrorLog
 from app.ratelimit import limiter
+from app.usage import scrub_secrets
 
 
 # ── Geo-IP (best effort, cached per IP) ─────────────────────────────────────
@@ -143,7 +144,8 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
     if event == "run":
         status = "started"
     raw_samples = payload.get("error_sample") if isinstance(payload.get("error_sample"), list) else []
-    error_sample = [str(s)[:300] for s in raw_samples][:10]
+    # Provider errors quote the key that was rejected; never persist one.
+    error_sample = [scrub_secrets(str(s))[:300] for s in raw_samples][:10]
     ev = UsageEvent(
         event=event,
         session_id=str(payload.get("session_id", ""))[:64],
@@ -192,25 +194,61 @@ async def _compute_stats(db: AsyncSession) -> dict:
     return await run_in_threadpool(_process_stats, rows)
 
 
+def _is_server(row) -> bool:
+    """A backend-recorded event. Legacy rows predate the column and are browser ones."""
+    return (row.source or "client") == "server"
+
+
+def _merge_run_reports(starts: list) -> list:
+    """Collapse the two reports of one run into a single run.
+
+    A coding run is reported twice: by the browser (only with analytics consent, and
+    only if the tab survives the run) and by the backend (always, and authoritative
+    about the outcome). They share a run_id, so pick one row per run. The browser row
+    is preferred as the descriptor because it also carries the visitor's location and
+    the dataset counts; the backend row stands in when the visitor declined analytics.
+    """
+    by_run: dict[str, list] = {}
+    unidentified = []
+    for s in starts:
+        if s.run_id:
+            by_run.setdefault(s.run_id, []).append(s)
+        else:
+            unidentified.append(s)  # legacy rows recorded before run ids existed
+    merged = [next((r for r in group if not _is_server(r)), group[0]) for group in by_run.values()]
+    return merged + unidentified
+
+
 def _process_stats(rows) -> dict:
     visits = [r for r in rows if r.event == "visit"]
-    starts = [r for r in rows if r.event == "run"]
+    downloads = [r for r in rows if r.event == "package_download"]
     completes = [r for r in rows if r.event == "run_complete"]
+    starts = _merge_run_reports([r for r in rows if r.event == "run"])
 
     # Correlate each run's outcome with its start by run_id. A start with no
-    # matching completion is an abandoned run (closed the tab, crashed, etc.).
+    # matching completion is an abandoned run (the server restarted mid-run, or an
+    # old browser-only run whose tab was closed). The backend's outcome wins: it is
+    # the one report that cannot be lost to consent or a closed tab.
     complete_by_run = {}
     for c in completes:
-        if c.run_id:
+        if not c.run_id:
+            continue
+        if c.run_id not in complete_by_run or _is_server(c):
             complete_by_run[c.run_id] = c
 
     provider_c, model_c, rpm_c, agg_c = Counter(), Counter(), Counter(), Counter()
     country_c, cc_c, day_c, status_c = Counter(), Counter(), Counter(), Counter()
     per_sender_runs = 0
+    # Location comes only from browser-reported events; backend events deliberately
+    # carry none, so counting them would just inflate "Unknown".
     for r in rows:
+        if _is_server(r):
+            continue
         country_c[r.country or "Unknown"] += 1
         if r.country_code and r.country and r.country != "Local":
             cc_c[r.country_code.upper()] += 1
+    # Activity per day counts each visit, run, and download once.
+    for r in visits + starts + downloads:
         if r.created_at:
             day_c[_to_uae(r.created_at)[:10]] += 1
 
@@ -309,6 +347,11 @@ def _process_stats(rows) -> dict:
         "countries": len({r.country for r in rows if r.country and r.country != "Local"}),
         # Run-outcome summary.
         "runs": started_n,                       # Run Coding actions started
+        # The two ways a run reaches the dashboard, so it is obvious when browser
+        # analytics are being declined and the server counts are carrying the load.
+        "runs_recorded_by_server": sum(1 for r in rows if r.event == "run" and _is_server(r)),
+        "runs_reported_by_browser": sum(1 for r in rows if r.event == "run" and not _is_server(r)),
+        "package_downloads": len(downloads),     # script packages downloaded to run offline
         "runs_completed": completed_count,
         "runs_failed": status_c.get("failed", 0),
         "runs_stopped": status_c.get("stopped", 0),
@@ -333,6 +376,7 @@ def _process_stats(rows) -> dict:
             {
                 "at": _to_uae(r.created_at),
                 "event": r.event,
+                "source": "server" if _is_server(r) else "browser",
                 "session": (r.session_id or "")[:8],
                 "country": r.country or "",
                 "city": r.city or "",

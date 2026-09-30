@@ -77,6 +77,7 @@ async def _record_unhandled_error(request, exc):
     from fastapi.responses import JSONResponse
     try:
         from app.models.database import AsyncSessionLocal, ErrorLog
+        from app.usage import scrub_secrets
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         async with AsyncSessionLocal() as session:
             session.add(ErrorLog(
@@ -84,8 +85,9 @@ async def _record_unhandled_error(request, exc):
                 method=request.method[:10],
                 path=str(request.url.path)[:300],
                 kind=type(exc).__name__[:120],
-                message=str(exc)[:1000],
-                detail=tb[-4000:],
+                # An exception can quote a rejected provider key; never store one.
+                message=scrub_secrets(str(exc))[:1000],
+                detail=scrub_secrets(tb)[-4000:],
             ))
             await session.commit()
     except Exception:

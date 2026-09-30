@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.12",
+        "date": "2026-09-30",
+        "title": "Count coding runs and downloads on the server",
+        "notes": "Coding runs, their outcomes, and script-package downloads are now recorded by the backend, so the admin no longer undercounts runs when a visitor declines browser analytics or closes the tab.",
+    },
+    {
         "version": "1.2.11",
         "date": "2026-09-30",
         "title": "Fix coding runs freezing the server",

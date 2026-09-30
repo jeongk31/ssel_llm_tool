@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import math
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.ratelimit import limiter
 from app.streaming import with_keepalive
+from app.usage import RunTracker, track_package_download
 from app.services.script_generator import generate_coding_script
 from app.services.coding_runner import (
     DETAIL_EPISODE_INDEX_COLUMN,
@@ -814,6 +816,9 @@ The generated script does not contain your API key. When it starts, it reads the
         zf.writestr("README.md", readme)
         zf.writestr("requirements.txt", _package_requirements(req.provider))
 
+    # Count the offline path separately from in-interface runs.
+    track_package_download(req)
+
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
@@ -958,13 +963,37 @@ async def _coding_updates(config: dict, file_info: dict | None = None):
         yield update
 
 
-async def _coding_ndjson(config: dict, file_info: dict | None = None):
+async def _coding_ndjson(config: dict, file_info: dict | None = None, tracker: "RunTracker | None" = None):
     try:
         yield json.dumps({"type": "started"}) + "\n"
         async for update in with_keepalive(_coding_updates(config, file_info)):
+            if tracker is not None:
+                tracker.observe(update)
             yield json.dumps(update, ensure_ascii=False, default=str) + "\n"
     except Exception as exc:
+        if tracker is not None:
+            tracker.note_error(str(exc))
         yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
+
+
+async def _tracked_coding_ndjson(config: dict, file_info: dict | None, tracker: "RunTracker"):
+    """Stream the run and record its real outcome, including a client disconnect.
+
+    The browser also reports run outcomes, but only with analytics consent and only
+    if it survives the run; this is the authoritative record for the dashboard.
+    """
+    tracker.start()
+    try:
+        async for chunk in _coding_ndjson(config, file_info, tracker=tracker):
+            yield chunk
+    except (asyncio.CancelledError, GeneratorExit):
+        # The client went away — Stop was pressed, the tab closed, or the network
+        # dropped. Record it as stopped rather than silently losing the run.
+        tracker.stopped = True
+        raise
+    finally:
+        # finish() only schedules the write, so it is safe while being cancelled.
+        tracker.finish()
 
 
 @router.post("/coding/run-stream")
@@ -978,8 +1007,9 @@ async def run_coding_stream(request: Request, config: dict):
     except UploadResolutionError as exc:
         return _upload_error_response(exc)
 
+    tracker = RunTracker(config)
     return StreamingResponse(
-        _coding_ndjson(config, file_info),
+        _tracked_coding_ndjson(config, file_info, tracker),
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache, no-transform",
