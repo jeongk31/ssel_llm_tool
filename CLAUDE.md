@@ -44,6 +44,21 @@ obvious from the code alone. Applies to any AI assistant or human contributor.
   or it will be blocked for real users. Do not send instructions/codebook/dataset content as
   plain JSON.
 
+## Usage counting (admin dashboard)
+
+- Coding runs and package downloads are counted **on the server** (`backend/app/usage.py`,
+  wired into `/coding/run-stream` and `/coding/generate-package`). The browser also reports
+  runs, but that path is consent-gated and dies with the tab, so it undercounts badly — it
+  is an enrichment (location), never the count.
+- Both reports of one run share a `run_id` (the browser sends `client_run_id` when analytics
+  consent was given) and `_merge_run_reports` in `routes/analytics.py` collapses them, so a
+  run is never counted twice. Events carry `source` = `client` | `server`.
+- Anything persisted from a provider error must go through `usage.scrub_secrets` first:
+  a 401 quotes the rejected API key, in full when the key is short.
+- Server-recorded events deliberately carry **no** IP, location, session id, or user agent.
+  If that changes, update the privacy notice (`tools/PrivacyNotice.tsx`) and the consent
+  dialog copy in the same PR.
+
 ## Other
 
 - No SQLite fallback: the backend requires a real `DATABASE_URL` (PostgreSQL). Only usage

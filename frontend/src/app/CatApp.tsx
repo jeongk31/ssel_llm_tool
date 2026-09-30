@@ -2777,6 +2777,11 @@ export default function CatApp() {
               runs_per_model: runsPerModel,
               source_rows: selectedSourceIndices,
               row_indices: null,
+              // The server records every run's outcome on its own (the browser
+              // report below needs analytics consent and a surviving tab). Sharing
+              // the id lets the dashboard treat both reports as one run. Only sent
+              // with consent: without it the server uses an id of its own.
+              client_run_id: analyticsConsent === "accepted" ? runId : null,
             },
             signal,
             (msg) => {
@@ -5041,7 +5046,9 @@ ${agreementSection}
                 If you accept, CAT records your public IP address, approximate IP-derived location,
                 a browser identifier, browser metadata, and basic configuration counts. CAT never
                 records API keys or dataset contents. If you reject, CAT records only one anonymous
-                visit count—without your IP address, location, or browser identifier.
+                visit count—without your IP address, location, or browser identifier. Either way, the
+                server keeps an operational record of each coding run and package download (time,
+                model names, task counts, and outcome) with none of those identifiers.
               </p>
               <a href="/privacy" target="_blank" rel="noopener noreferrer">Read the full privacy notice</a>
             </div>

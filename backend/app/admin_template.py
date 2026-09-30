@@ -259,7 +259,7 @@ ADMIN_HTML = r"""<!DOCTYPE html>
   <section class="view" id="view-logs">
     <div class="head"><h1>Event log</h1><div class="sub" id="logs-sub"></div></div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>When (UAE)</th><th>Event</th><th>Session</th><th>Location</th><th>IP</th><th>Models</th><th class="num">Rows</th><th class="num">Episodes</th><th>Status</th><th>User agent</th></tr></thead>
+      <thead><tr><th>When (UAE)</th><th>Event</th><th>Recorded by</th><th>Session</th><th>Location</th><th>IP</th><th>Models</th><th class="num">Rows</th><th class="num">Episodes</th><th>Status</th><th>User agent</th></tr></thead>
       <tbody id="log-rows"></tbody>
     </table></div>
   </section>
@@ -324,9 +324,9 @@ function renderHomeCards(){
   const counts = DATA.counts || {};
   const homeStats = [
     {v:S.visits, l:'Visits'}, {v:S.unique_visitors, l:'Unique visitors'}, {v:S.countries, l:'Countries'},
-    {v:S.runs, l:'Runs started', hint:'Run Coding launches'},
+    {v:S.runs, l:'Runs in the interface', hint:'Run Coding launches, incl. re-runs'},
     {v:S.runs_completed, l:'Completed', accent:true, hint:(S.success_rate||0)+'% success'},
-    {v:S.avg_episodes||0, l:'Avg episodes / run', hint:'completed runs'},
+    {v:S.package_downloads||0, l:'Packages downloaded', hint:'coded offline with the script'},
     {v:S.total_episodes_coded||0, l:'Episodes coded', hint:'all completed runs'},
     {v:counts.unresolved||0, l:'Open messages'},
   ];
@@ -381,7 +381,10 @@ function renderRunsCards(){
   const rc = document.getElementById('runs-cards'); rc.innerHTML = '';
   [['Started',S.runs,null],['Completed',S.runs_completed,'completed'],['Failed',S.runs_failed,'failed'],
    ['Stopped',S.runs_stopped,'stopped'],['Abandoned',S.runs_abandoned,'abandoned'],
-   ['Success rate',(S.success_rate||0)+'%',null],['Avg duration',fmtDur(S.avg_duration_ms),null]]
+   ['Success rate',(S.success_rate||0)+'%',null],['Avg duration',fmtDur(S.avg_duration_ms),null],
+   ['Avg episodes / run',S.avg_episodes||0,null],['Packages downloaded',S.package_downloads||0,null],
+   ['Recorded by the server',S.runs_recorded_by_server||0,null],
+   ['Also reported by the browser',S.runs_reported_by_browser||0,null]]
   .forEach(([l,v,st]) => {
     const c = el('div','card');
     c.appendChild(el('div','v', String(v)));
@@ -535,6 +538,7 @@ function renderEventLog(){
     const tr = el('tr');
     tr.appendChild(td(r.at));
     tr.appendChild(td(pill(r.event)));
+    tr.appendChild(td(r.source||'browser','small muted'));
     tr.appendChild(td(r.session||'—','mono'));
     tr.appendChild(td([r.country, r.city].filter(Boolean).join(' · ') || '—'));
     tr.appendChild(td(r.ip||'—','mono'));
@@ -545,7 +549,7 @@ function renderEventLog(){
     const ua = el('td'); ua.appendChild(el('span','small muted', r.user_agent||'')); tr.appendChild(ua);
     lrows.appendChild(tr);
   });
-  if(!(S.events||[]).length) lrows.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;padding:30px">No events yet</td></tr>';
+  if(!(S.events||[]).length) lrows.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center;padding:30px">No events yet</td></tr>';
 }
 renderEventLog();
 

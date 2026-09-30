@@ -38,6 +38,17 @@ export default function PrivacyNotice({ onChangeAnalyticsChoice }: PrivacyNotice
             configuration for that event. As with any website, university infrastructure and reverse-
             proxy access logs may process connection information for security and operations.
           </p>
+
+          <h2>Operational service records</h2>
+          <p>
+            Independently of the analytics choice above, the CAT server keeps an operational record of
+            each browser coding run and each generated-package download so the laboratory can monitor
+            that the service is working. Such a record contains the time, the selected provider and
+            model names, counts describing the configured task, and the run&apos;s outcome, including
+            how many episodes were coded, how many errors occurred, how long the run took, and a short
+            truncated sample of any error messages. It does not contain an IP address, an approximate
+            location, a browser session identifier, a user agent, an API key, or any dataset content.
+          </p>
           <p>
             Your choice is stored in this browser as <code>cat_analytics_consent</code>. Use the button
             below to make a new choice for future events.

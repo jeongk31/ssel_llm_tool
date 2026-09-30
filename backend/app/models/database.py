@@ -85,7 +85,7 @@ def _migrate_usage_events(conn):
         "ip": "VARCHAR(64)", "country": "VARCHAR(80)", "country_code": "VARCHAR(4)",
         "city": "VARCHAR(120)", "region": "VARCHAR(120)",
         "user_agent": "TEXT", "referer": "TEXT",
-        "run_id": "VARCHAR(64)", "status": "VARCHAR(20)",
+        "run_id": "VARCHAR(64)", "status": "VARCHAR(20)", "source": "VARCHAR(10)",
         "episodes_coded": "INTEGER", "error_count": "INTEGER", "duration_ms": "INTEGER",
         "error_sample": "TEXT",
     }
@@ -104,7 +104,11 @@ class UsageEvent(Base):
     __tablename__ = "usage_events"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    event = Column(String(20))            # "visit" | "run" | "run_complete"
+    event = Column(String(20))            # "visit" | "run" | "run_complete" | "package_download"
+    # "client" (browser-reported, consent-gated, carries location) or "server"
+    # (recorded by the backend, authoritative for run counts and outcomes).
+    # Legacy rows predate the column and are NULL, i.e. browser-reported.
+    source = Column(String(10), default="client")
     session_id = Column(String(64))
     # Correlates a "run" (started) event with its "run_complete" (outcome) event.
     run_id = Column(String(64))
