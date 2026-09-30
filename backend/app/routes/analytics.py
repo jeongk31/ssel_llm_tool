@@ -3,6 +3,7 @@ import asyncio
 import ipaddress
 import json
 import secrets
+import time
 import urllib.request
 from collections import Counter
 from datetime import timedelta
@@ -20,7 +21,7 @@ from fastapi.responses import HTMLResponse
 from starlette.concurrency import run_in_threadpool
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin_template import ADMIN_HTML
@@ -175,6 +176,129 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
     db.add(ev)
     await db.commit()
     return {"ok": True}
+
+
+# ── Public usage summary ────────────────────────────────────────────────────
+# Served unauthenticated on the Usage Statistics page, so it exposes only coarse
+# aggregates: counts and totals, provider/model names, and activity per month.
+# Never an IP address, a city, a session identifier, a user agent, or error text.
+# Country totals are published so the page can show a map. That is coarser than
+# anything the admin sees — no city, IP, session, or timestamp — but it is still
+# more than a bare count, so keep it at country granularity.
+
+_PUBLIC_CACHE_TTL_SECONDS = 120
+_PUBLIC_MODELS_ROW_CAP = 20000
+_public_summary_cache: dict[str, object] = {"at": 0.0, "payload": None}
+
+
+async def _compute_public_summary(db: AsyncSession) -> dict:
+    async def count_where(*conditions) -> int:
+        return int(await db.scalar(select(func.count()).select_from(UsageEvent).where(*conditions)) or 0)
+
+    identified = UsageEvent.run_id.isnot(None) & (UsageEvent.run_id != "")
+
+    # A run is reported by the browser and by the server under one run_id, so count
+    # distinct ids; rows predating run ids are counted individually.
+    distinct_runs = int(await db.scalar(
+        select(func.count(func.distinct(UsageEvent.run_id)))
+        .where(UsageEvent.event == "run", identified)
+    ) or 0)
+    unidentified_runs = await count_where(UsageEvent.event == "run", ~identified)
+
+    completed = (
+        select(
+            UsageEvent.run_id.label("run_id"),
+            func.max(UsageEvent.episodes_coded).label("coded"),
+        )
+        .where(
+            UsageEvent.event == "run_complete",
+            UsageEvent.status == "completed",
+            identified,
+        )
+        .group_by(UsageEvent.run_id)
+        .subquery()
+    )
+    completed_count, episodes_coded = (await db.execute(
+        select(func.count(), func.coalesce(func.sum(completed.c.coded), 0)).select_from(completed)
+    )).one()
+
+    visits = await count_where(UsageEvent.event == "visit")
+    downloads = await count_where(UsageEvent.event == "package_download")
+    unique_visitors = int(await db.scalar(
+        select(func.count(func.distinct(UsageEvent.session_id)))
+        .where(UsageEvent.session_id.isnot(None), UsageEvent.session_id != "")
+    ) or 0)
+    country_rows = (await db.execute(
+        select(UsageEvent.country, UsageEvent.country_code, func.count())
+        .where(
+            UsageEvent.country.isnot(None),
+            UsageEvent.country != "",
+            UsageEvent.country != "Local",
+        )
+        .group_by(UsageEvent.country, UsageEvent.country_code)
+    )).all()
+    by_country: Counter = Counter()
+    by_country_code: Counter = Counter()
+    for name, code, count in country_rows:
+        by_country[str(name)] += int(count)
+        if code:
+            by_country_code[str(code).upper()] += int(count)
+    countries = len(by_country)
+    first_event = await db.scalar(select(func.min(UsageEvent.created_at)))
+
+    # Activity per month, so the page can show a trend without exposing timestamps.
+    month = func.to_char(UsageEvent.created_at, "YYYY-MM")
+    month_rows = (await db.execute(
+        select(month, func.count())
+        .where(UsageEvent.created_at.isnot(None))
+        .group_by(month)
+        .order_by(month)
+    )).all()
+
+    # The model list is stored as JSON text, so it is tallied in Python.
+    model_rows = (await db.execute(
+        select(UsageEvent.models, UsageEvent.providers)
+        .where(UsageEvent.event == "run")
+        .limit(_PUBLIC_MODELS_ROW_CAP)
+    )).all()
+    model_counter, provider_counter = Counter(), Counter()
+    for models, providers in model_rows:
+        for name in set(models or []):
+            model_counter[str(name)] += 1
+        for name in set(providers or []):
+            provider_counter[str(name)] += 1
+
+    return {
+        "since": _to_uae(first_event)[:10] if first_event else "",
+        "visits": visits,
+        "unique_visitors": unique_visitors,
+        "countries": countries,
+        "runs": distinct_runs + unidentified_runs,
+        "runs_completed": int(completed_count or 0),
+        "episodes_coded": int(episodes_coded or 0),
+        "package_downloads": downloads,
+        "by_month": {str(label): int(count) for label, count in month_rows if label},
+        # Country totals drive the map. This is coarser than the per-visit records
+        # the admin sees: names and counts only, never a city, IP, or session.
+        "by_country": dict(by_country.most_common()),
+        "by_country_code": dict(by_country_code.most_common()),
+        "top_models": [{"name": name, "runs": count} for name, count in model_counter.most_common(8)],
+        "providers": [{"name": name, "runs": count} for name, count in provider_counter.most_common(8)],
+    }
+
+
+@router.get("/analytics/public-summary")
+@limiter.limit("60/minute")
+async def public_summary(request: Request, db: AsyncSession = Depends(get_db)):
+    """Aggregate usage figures for the public Usage Statistics page."""
+    now = time.monotonic()
+    cached = _public_summary_cache.get("payload")
+    if cached is not None and now - float(_public_summary_cache["at"]) < _PUBLIC_CACHE_TTL_SECONDS:
+        return cached
+    payload = await _compute_public_summary(db)
+    _public_summary_cache["at"] = now
+    _public_summary_cache["payload"] = payload
+    return payload
 
 
 def _sort_key(r) -> str:

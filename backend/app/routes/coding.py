@@ -1316,7 +1316,9 @@ async def export_results(request: Request, req: ExportResultsRequest):
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
-            if agreement_report["eligible"] and agreement_report["numeric_variables"]:
+            if (
+                agreement_report["eligible"] or agreement_report["within_eligible"]
+            ) and agreement_report["numeric_variables"]:
                 archive.writestr(
                     "inter_coder_agreement.csv",
                     dataframe_to_csv(agreement_report_frame(agreement_report)),

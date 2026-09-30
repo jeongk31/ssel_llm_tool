@@ -518,12 +518,23 @@ function initMap(){
   if (mapInited) return; mapInited = true;
   try {
     if (!window.jsVectorMap) return;
-    const cc = S.by_country_code || {}; const values = {};
-    Object.keys(cc).forEach(k => { values[k.toUpperCase()] = cc[k]; values[k.toLowerCase()] = cc[k]; });
+    const cc = S.by_country_code || {}; const counts = {};
+    Object.keys(cc).forEach(k => { counts[k.toUpperCase()] = cc[k]; counts[k.toLowerCase()] = cc[k]; });
+    // jsvectormap 1.5 only has an ORDINAL scale: it looks the region's value up in
+    // `scale` as a key. Handing it a two-colour array and a raw count means
+    // scale[24] === undefined and the country renders black. So bucket each count
+    // into a step of a ramp and key the scale by that step.
+    const RAMP = ['#ede9fe', '#c4b5fd', '#a78bfa', '#8b5cf6', '#6d28d9'];
+    const scale = {}; RAMP.forEach((c, i) => { scale[i] = c; });
+    const max = Math.max(1, ...Object.values(counts));
+    const values = {};
+    Object.keys(counts).forEach(k => {
+      values[k] = Math.min(RAMP.length - 1, Math.max(0, Math.ceil(counts[k] / max * RAMP.length) - 1));
+    });
     new jsVectorMap({ selector:'#worldmap', map:'world', zoomButtons:true,
       regionStyle:{ initial:{ fill: root.getAttribute('data-theme')==='dark'?'#2a2f3a':'#e5e7eb', stroke:'#fff', strokeWidth:.4 } },
-      series:{ regions:[{ attribute:'fill', scale:['#ddd6fe', '#7c3aed'], normalizeFunction:'polynomial', values }] },
-      onRegionTooltipShow(ev, tooltip, code){ try { tooltip.text(tooltip.text() + ' — ' + (values[code] || 0) + ' events'); } catch(e){} } });
+      series:{ regions:[{ attribute:'fill', scale, values }] },
+      onRegionTooltipShow(ev, tooltip, code){ try { tooltip.text(tooltip.text() + ' — ' + (counts[code] || 0) + ' events'); } catch(e){} } });
   } catch(e){ mapInited = false; }
 }
 const crows = document.getElementById('country-rows');
