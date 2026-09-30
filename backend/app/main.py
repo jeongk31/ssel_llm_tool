@@ -17,8 +17,6 @@ async def lifespan(app: FastAPI):
     import asyncio
     from app.models.database import init_db, engine
     from app.routes.coding import sweep_temp_files
-    from app.logbuffer import install_log_buffer
-    install_log_buffer()  # capture recent server logs for the admin "Server logs" view
     await init_db()
     print(f"CAT (Communication Annotation Tool) API started — database: {engine.dialect.name} @ {engine.url.host}")
 
@@ -69,6 +67,30 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(contact.router, prefix="/api")
 app.include_router(instructions.router, prefix="/api")
 app.include_router(analytics.admin_router)  # /admin (password protected)
+
+
+@app.exception_handler(Exception)
+async def _record_unhandled_error(request, exc):
+    """Persist any unhandled backend exception so it shows up in the admin Errors
+    view. Never lets error-logging break the response."""
+    import traceback
+    from fastapi.responses import JSONResponse
+    try:
+        from app.models.database import AsyncSessionLocal, ErrorLog
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        async with AsyncSessionLocal() as session:
+            session.add(ErrorLog(
+                source="backend",
+                method=request.method[:10],
+                path=str(request.url.path)[:300],
+                kind=type(exc).__name__[:120],
+                message=str(exc)[:1000],
+                detail=tb[-4000:],
+            ))
+            await session.commit()
+    except Exception:
+        pass
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/")

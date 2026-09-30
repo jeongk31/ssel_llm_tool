@@ -152,17 +152,6 @@ ADMIN_HTML = r"""<!DOCTYPE html>
   .err-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--mut)}
   .err-msgs{margin:0;padding-left:16px;font-size:12px;color:var(--ink-2);line-height:1.6;font-family:ui-monospace,Menlo,monospace}
   .err-msgs li{margin:2px 0;word-break:break-word}
-  /* server logs */
-  .logbar{display:flex;align-items:center;gap:14px;margin-bottom:12px}
-  .logchk{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
-  .logpre{background:#0b0d12;color:#d4d4d8;border:1px solid var(--line);border-radius:10px;padding:14px 16px;
-    height:62vh;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;margin:0;white-space:pre-wrap;word-break:break-word}
-  .logline{display:block}
-  .lvl-ERROR,.lvl-CRITICAL{color:#f87171} .lvl-WARNING{color:#fbbf24} .lvl-INFO{color:#93c5fd} .lvl-DEBUG{color:#71717a}
-  .log-ts{color:#6b7280;margin-right:8px}
-  /* live indicator */
-  #live-btn.on{background:rgba(239,68,68,.18);color:#fecaca}
-  #live-btn.on #live-dot{color:#ef4444}
 </style></head>
 <body>
 <div class="side">
@@ -179,12 +168,10 @@ ADMIN_HTML = r"""<!DOCTYPE html>
     <button data-view="analytics"><span class="ico">▤</span> Analytics</button>
     <button data-view="map"><span class="ico">◍</span> Map</button>
     <button data-view="logs"><span class="ico">≡</span> Event log</button>
-    <button data-view="serverlogs"><span class="ico">❯</span> Server logs</button>
     <button data-view="messages"><span class="ico">✉</span> Messages <span class="badge" id="msg-badge" style="display:none"></span></button>
   </div>
   <div class="side-foot">
-    <button class="theme-btn" id="live-btn"><span id="live-dot">○</span> <span id="live-label">Go live</span></button>
-    <button class="theme-btn" id="theme-btn" style="margin-top:6px"><span id="theme-ico">◐</span> <span id="theme-label">Theme</span></button>
+    <button class="theme-btn" id="theme-btn"><span id="theme-ico">◐</span> <span id="theme-label">Theme</span></button>
   </div>
 </div>
 <div class="main">
@@ -228,8 +215,11 @@ ADMIN_HTML = r"""<!DOCTYPE html>
 
   <!-- ERRORS -->
   <section class="view" id="view-errors">
-    <div class="head"><h1>Errors</h1><div class="sub">Runs that failed or produced coding errors, newest first, with the actual error messages. Server-side crashes/tracebacks are in <b>Server logs</b>.</div></div>
+    <div class="head"><h1>Errors</h1><div class="sub">Any error that happened, newest first — backend exceptions and coding-run errors, with their actual messages.</div></div>
     <div class="cards" id="err-cards" style="margin-bottom:18px"></div>
+    <h3>Server errors (backend)</h3>
+    <div id="srv-err-list"></div>
+    <h3>Coding-run errors</h3>
     <div id="err-list"></div>
   </section>
 
@@ -272,17 +262,6 @@ ADMIN_HTML = r"""<!DOCTYPE html>
       <thead><tr><th>When (UAE)</th><th>Event</th><th>Session</th><th>Location</th><th>IP</th><th>Models</th><th class="num">Rows</th><th class="num">Episodes</th><th>Status</th><th>User agent</th></tr></thead>
       <tbody id="log-rows"></tbody>
     </table></div>
-  </section>
-
-  <!-- SERVER LOGS -->
-  <section class="view" id="view-serverlogs">
-    <div class="head"><h1>Server logs</h1><div class="sub">Live tail of the backend process (uvicorn + application logs). In-memory and bounded — resets on restart. Turn on <b>Go live</b> in the sidebar to auto-follow.</div></div>
-    <div class="logbar">
-      <label class="logchk"><input type="checkbox" id="log-autoscroll" checked> Auto-scroll</label>
-      <button class="btn btn-sm" id="log-refresh">Refresh now</button>
-      <span class="muted" id="log-status" style="font-size:11px"></span>
-    </div>
-    <pre id="log-pre" class="logpre"></pre>
   </section>
 
   <!-- MESSAGES -->
@@ -574,21 +553,41 @@ renderEventLog();
 function renderErrors(){
   const list = document.getElementById('err-list'); if(!list) return;
   const errRuns = (RUNS||[]).filter(r => (r.error_count && r.error_count>0) || r.status==='failed');
+  const srvErrors = DATA.server_errors || [];
   const cards = document.getElementById('err-cards'); cards.innerHTML='';
-  [['Failed runs',(RUNS||[]).filter(r=>r.status==='failed').length,'failed'],
+  [['Server errors',srvErrors.length,'failed'],
+   ['Failed runs',(RUNS||[]).filter(r=>r.status==='failed').length,'failed'],
    ['Runs with errors',errRuns.length,null],
-   ['Total error messages',errRuns.reduce((a,r)=>a+(r.error_count||0),0),null]]
+   ['Total run-error messages',errRuns.reduce((a,r)=>a+(r.error_count||0),0),null]]
   .forEach(([l,v,st])=>{ const c=el('div','card'); c.appendChild(el('div','v',String(v))); const ll=el('div','l'); if(st){const d=el('span','dot');d.style.background=STATUS_COLOR[st];ll.appendChild(d);} ll.appendChild(document.createTextNode(l)); c.appendChild(ll); cards.appendChild(c); });
   const badge=document.getElementById('err-badge');
-  if(errRuns.length){ badge.style.display='inline-block'; badge.textContent=errRuns.length; } else { badge.style.display='none'; }
+  const total = errRuns.length + srvErrors.length;
+  if(total){ badge.style.display='inline-block'; badge.textContent=total; } else { badge.style.display='none'; }
+
+  // Server (backend) errors
+  const slist = document.getElementById('srv-err-list'); slist.innerHTML='';
+  if(!srvErrors.length){ slist.appendChild(el('div','empty','No server errors recorded. 🎉')); }
+  srvErrors.forEach(e => {
+    const box = el('div','err');
+    const top = el('div','err-top');
+    top.appendChild(el('span','pill p-failed', e.kind || 'Error'));
+    top.appendChild(el('span',null,e.at));
+    if(e.method||e.path){ top.appendChild(el('span','mono', ((e.method||'')+' '+(e.path||'')).trim())); }
+    box.appendChild(top);
+    if(e.message){ const m=el('div','err-msgs'); m.textContent=e.message; box.appendChild(m); }
+    if(e.detail){ const d=el('details'); const sm=el('summary',null,'traceback'); sm.style.cursor='pointer'; sm.style.fontSize='11px'; sm.style.color='var(--mut)'; d.appendChild(sm); const pre=el('pre'); pre.textContent=e.detail; pre.style.cssText='white-space:pre-wrap;font-size:11px;color:var(--ink-2);margin:6px 0 0;overflow:auto'; d.appendChild(pre); box.appendChild(d); }
+    slist.appendChild(box);
+  });
+
+  // Coding-run errors
   list.innerHTML='';
-  if(!errRuns.length){ list.appendChild(el('div','empty','No errors recorded. 🎉')); return; }
+  if(!errRuns.length){ list.appendChild(el('div','empty','No coding-run errors recorded. 🎉')); return; }
   errRuns.forEach(r => {
     const box = el('div','err');
     const top = el('div','err-top');
     top.appendChild(pill(r.status));
     top.appendChild(el('span',null,r.at));
-    const sess=el('span','mono',r.session||'—'); top.appendChild(sess);
+    top.appendChild(el('span','mono',r.session||'—'));
     top.appendChild(el('span',null,(r.models||[]).join(', ')||'—'));
     top.appendChild(el('span',null,(r.error_count||0)+' error'+((r.error_count||0)===1?'':'s')));
     box.appendChild(top);
@@ -648,59 +647,5 @@ function renderMessages(){
   });
 }
 renderMessages(); updateBadge();
-
-// ---- server logs (live tail) ----
-let logSeq = 0;
-const LVL = {ERROR:'lvl-ERROR', CRITICAL:'lvl-CRITICAL', WARNING:'lvl-WARNING', INFO:'lvl-INFO', DEBUG:'lvl-DEBUG'};
-function fmtLogTs(ts){ try { return new Date(ts*1000).toLocaleTimeString('en-GB'); } catch(e){ return ''; } }
-async function fetchLogs(){
-  try {
-    const res = await fetch('/admin/logs?after=' + logSeq, { headers:{'Accept':'application/json'} });
-    if(!res.ok) return;
-    const data = await res.json();
-    const pre = document.getElementById('log-pre');
-    (data.lines||[]).forEach(r => {
-      const line = el('span','logline ' + (LVL[r.level]||''));
-      const ts = el('span','log-ts', fmtLogTs(r.ts)); line.appendChild(ts);
-      line.appendChild(document.createTextNode('[' + r.level + '] ' + r.msg));
-      line.appendChild(document.createTextNode('\n'));
-      pre.appendChild(line);
-    });
-    if(typeof data.last_seq === 'number') logSeq = data.last_seq;
-    // trim to last 1500 lines to keep the DOM light
-    while(pre.childNodes.length > 1500) pre.removeChild(pre.firstChild);
-    if((data.lines||[]).length && document.getElementById('log-autoscroll').checked){ pre.scrollTop = pre.scrollHeight; }
-    document.getElementById('log-status').textContent = pre.childNodes.length ? (pre.childNodes.length + ' lines') : 'no logs yet (buffer resets on restart)';
-  } catch(e){}
-}
-document.getElementById('log-refresh').addEventListener('click', fetchLogs);
-fetchLogs();
-
-// ---- live auto-refresh ----
-let liveTimer = null, liveLogTimer = null;
-async function refreshData(){
-  try {
-    const res = await fetch('/admin/data', { headers:{'Accept':'application/json'} });
-    if(!res.ok) return;
-    const d = await res.json();
-    DATA.stats = d.stats; DATA.messages = d.messages; DATA.counts = d.counts; DATA.version = d.version;
-    S = d.stats; MSGS = d.messages || []; RUNS = S.runs_list || []; SESS = S.sessions || [];
-    renderHomeCards(); renderRunsCards(); renderRuns(); renderSessions(document.getElementById('sess-search').value);
-    renderEventLog(); renderErrors(); renderMessages(); updateBadge();
-  } catch(e){}
-}
-function setLive(on){
-  const btn = document.getElementById('live-btn');
-  if(on){
-    btn.classList.add('on'); document.getElementById('live-dot').textContent='●'; document.getElementById('live-label').textContent='Live · on';
-    refreshData(); fetchLogs();
-    liveTimer = setInterval(refreshData, 5000);
-    liveLogTimer = setInterval(fetchLogs, 2500);
-  } else {
-    btn.classList.remove('on'); document.getElementById('live-dot').textContent='○'; document.getElementById('live-label').textContent='Go live';
-    clearInterval(liveTimer); clearInterval(liveLogTimer); liveTimer = liveLogTimer = null;
-  }
-}
-document.getElementById('live-btn').addEventListener('click', () => setLive(!liveTimer));
 </script>
 </body></html>"""

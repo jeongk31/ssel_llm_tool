@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin_template import ADMIN_HTML
 from app.config import settings
-from app.models.database import get_db, UsageEvent, ContactMessage
+from app.models.database import get_db, UsageEvent, ContactMessage, ErrorLog
 from app.ratelimit import limiter
 
 
@@ -363,6 +363,21 @@ async def _fetch_messages(db: AsyncSession) -> list[dict]:
     } for m in rows]
 
 
+async def _fetch_server_errors(db: AsyncSession, limit: int = 200) -> list[dict]:
+    rows = (await db.execute(
+        select(ErrorLog).order_by(ErrorLog.created_at.desc()).limit(limit)
+    )).scalars().all()
+    return [{
+        "at": _to_uae(e.created_at),
+        "source": e.source or "backend",
+        "method": e.method or "",
+        "path": e.path or "",
+        "kind": e.kind or "Error",
+        "message": e.message or "",
+        "detail": e.detail or "",
+    } for e in rows]
+
+
 async def _admin_payload(db: AsyncSession) -> dict:
     from app.releases import RELEASES
     from app import __version__
@@ -370,6 +385,7 @@ async def _admin_payload(db: AsyncSession) -> dict:
     messages = await _fetch_messages(db)
     return {
         "stats": await _compute_stats(db),
+        "server_errors": await _fetch_server_errors(db),
         "messages": messages,
         "counts": {
             "unresolved": sum(1 for m in messages if m["status"] == "unresolved"),
@@ -402,24 +418,6 @@ async def admin(db: AsyncSession = Depends(get_db), _: bool = Depends(require_ad
     return HTMLResponse(_render_admin(await _admin_payload(db)))
 
 
-@admin_router.get("/admin/data")
-async def admin_data(db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
-    """JSON payload for the admin's live auto-refresh (same data as the page)."""
-    return await _admin_payload(db)
-
-
-@admin_router.get("/admin/logs")
-async def admin_logs(after: int = 0, _: bool = Depends(require_admin)):
-    """Recent backend server-log lines (in-memory ring buffer) for live tailing."""
-    from app.logbuffer import recent_logs
-    return recent_logs(after_seq=after)
-
-
-@admin_router.post("/admin/logs/clear")
-async def admin_logs_clear(_: bool = Depends(require_admin)):
-    """Clear the in-memory server-log buffer."""
-    from app.logbuffer import clear_logs
-    return clear_logs()
 
 
 class _StatusUpdate(BaseModel):

@@ -147,3 +147,20 @@ class ContactMessage(Base):
     body = Column(Text)
     status = Column(String(20), default="unresolved")  # "unresolved" | "resolved"
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ErrorLog(Base):
+    """Server-side errors (unhandled exceptions), so the admin can see any error
+    that happens anywhere on the backend. Bounded by a periodic trim; contains no
+    uploaded participant data (message/detail are truncated, metadata only)."""
+    __tablename__ = "error_logs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    source = Column(String(20), default="backend")  # "backend" | "coding"
+    method = Column(String(10))
+    path = Column(String(300))
+    kind = Column(String(120))     # exception class name
+    message = Column(Text)         # truncated str(exc)
+    detail = Column(Text)          # truncated traceback
+    session_id = Column(String(64))
+    created_at = Column(DateTime, server_default=func.now())
