@@ -10,6 +10,7 @@ class AnthropicProvider(LLMProvider):
     """Anthropic Claude API provider."""
 
     _PROVIDER_CONTROLLED_SAMPLING_MODELS = {
+        "claude-fable-5-1",
         "claude-fable-5",
         "claude-opus-5",
         "claude-sonnet-5",

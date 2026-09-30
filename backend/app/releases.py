@@ -13,6 +13,21 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.3.0",
+        "date": "2026-09-30",
+        "title": "Coder agreement, usage statistics, and a clearer workspace",
+        "notes": (
+            "Agreement statistics are back in the results: exact agreement, Cohen's kappa, "
+            "Gwet's AC1 and N, both within each LLM (across its repeated runs) and between "
+            "LLMs, shown below the downloads and included in the run summary PDF and the "
+            "exported agreement CSV. Navigation moved to a compact menu bar with new public "
+            "Usage Statistics (live figures and a world map) and Acknowledgements pages. "
+            "Added the latest models from every provider. The workspace gained a slimmer top "
+            "bar, a pinned run bar showing what is about to run, an upload box that shows the "
+            "loaded dataset, and a more visible Import from PDF button."
+        ),
+    },
+    {
         "version": "1.2.12",
         "date": "2026-09-30",
         "title": "Count coding runs and downloads on the server",

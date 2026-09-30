@@ -50,6 +50,13 @@ export default function PrivacyNotice({ onChangeAnalyticsChoice }: PrivacyNotice
             location, a browser session identifier, a user agent, an API key, or any dataset content.
           </p>
           <p>
+            CAT publishes aggregate usage figures on its public{" "}
+            <a href="/usage">Usage Statistics</a> page: totals for runs, coded episodes and package
+            downloads, and the number of recorded events per country. Those per-country totals derive
+            from the approximate locations described above and are published only as country-level
+            counts — never a city, an IP address, a browser identifier, or an individual visit.
+          </p>
+          <p>
             Your choice is stored in this browser as <code>cat_analytics_consent</code>. Use the button
             below to make a new choice for future events.
           </p>

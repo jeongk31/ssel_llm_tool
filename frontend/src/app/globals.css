@@ -49,7 +49,7 @@
   --shadow-md:  0 1px 6px rgba(20,24,33,.07);
 
   /* layout */
-  --topbar-h:   58px;
+  --topbar-h:   46px;
   --sidebar-w:  220px;
 }
 
@@ -120,7 +120,6 @@ body{
 /* ═══════════════════════════════════════════════════ */
 /* TOPBAR TABS & DROPDOWNS                             */
 /* ═══════════════════════════════════════════════════ */
-.topbar-tabs{display:flex;align-items:center;gap:2px}
 .topbar-tab{
   border:none;background:none;cursor:pointer;
   font-family:var(--sans);font-size:12px;font-weight:500;color:var(--text-2);
@@ -132,6 +131,38 @@ body{
 .topbar-tab.active{color:var(--purple);font-weight:600}
 .topbar-tab svg{opacity:.5}
 .topbar-tab-sep{width:1px;height:16px;background:var(--border-lt);margin:0 4px}
+
+/* desktop-style menu bar: short master labels, destinations underneath */
+.topbar-menu{display:flex;align-items:center;gap:1px}
+.topbar-menu-group{position:relative}
+.topbar-menu-btn{gap:5px}
+.topbar-menu-btn svg{opacity:.45;transition:transform .12s ease}
+.topbar-menu-btn.open{background:var(--bg);color:var(--text)}
+.topbar-menu-btn.open svg{transform:rotate(180deg);opacity:.8}
+.topbar-dropdown{
+  position:absolute;top:calc(100% + 5px);left:0;z-index:300;
+  min-width:232px;padding:5px;
+  background:var(--surface);
+  border:1px solid var(--border);border-radius:7px;
+  box-shadow:0 10px 28px rgba(15,23,42,.14),0 2px 6px rgba(15,23,42,.06);
+}
+.topbar-dropdown-item{
+  display:block;padding:7px 9px;border-radius:5px;
+  text-decoration:none;transition:background .1s ease;
+}
+.topbar-dropdown-item:hover{background:var(--bg)}
+.topbar-dropdown-item.active .topbar-dropdown-label{color:var(--purple)}
+.topbar-dropdown-label{
+  display:block;font-size:12px;font-weight:550;color:var(--text);line-height:1.3;
+}
+.topbar-dropdown-hint{
+  display:block;margin-top:1px;font-size:10.5px;color:var(--text-3);line-height:1.35;
+}
+
+@media(max-width:900px){
+  .topbar-dropdown{min-width:190px}
+  .topbar-dropdown-hint{display:none}
+}
 
 /* Dropdown menus (reused in topbar) */
 .menu-dropdown{position:relative}
@@ -168,6 +199,20 @@ body{
  .tool-page{display:none}
 .tool-page.active{display:block}
 
+/* The coding workspace fills the window exactly: the header takes the height it
+   needs, and the two columns share every remaining pixel. The columns used to be
+   sized as calc(100vh - topbar - 80px), where 80px stood in for the header's
+   height — so any change to the header left a dead strip along the bottom. */
+.tool-page-fill.active{
+  display:flex;flex-direction:column;
+  height:calc(100vh - var(--topbar-h));
+}
+.tool-page-fill > .tool-header,
+.tool-page-fill > .run-bar{flex:0 0 auto}
+.tool-page-fill .pipeline-layout{flex:1 1 auto;min-height:0}
+.tool-page-fill .config-col,
+.tool-page-fill .results-col{max-height:none;height:100%}
+
 .tool-header{
   position:relative;
   padding:16px 28px 16px;
@@ -181,6 +226,8 @@ body{
 }
 .tool-header h1{font-size:18px;font-weight:700;letter-spacing:-0.02em}
 .tool-desc{font-size:13px;color:var(--text-2);margin-top:2px}
+/* Coding workspace: no title block, just the citation — keep the strip thin. */
+.tool-header-slim{padding:8px 20px}
 
 .empty-tool{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -426,6 +473,7 @@ body{
   overflow-y:auto;overflow-x:hidden;
   max-height:calc(100vh - var(--topbar-h) - 80px);
   display:flex;flex-direction:column;
+  flex:0 0 auto;
   transition:width .26s cubic-bezier(.4,0,.2,1);
 }
 .pipeline-layout.split .config-col{
@@ -437,6 +485,11 @@ body{
   overflow-y:auto;
   max-height:calc(100vh - var(--topbar-h) - 80px);
   padding:20px;
+  /* The config column carries an explicit width, so the results column takes
+     whatever is left. Without this it is sized to its own content and leaves a
+     bare strip down the right of the window. */
+  flex:1 1 auto;
+  min-width:0;
 }
 .pipeline-layout.split .results-col{
   display:block;
@@ -627,6 +680,14 @@ input[type="range"]::-webkit-slider-thumb{
 @keyframes spin{to{transform:rotate(360deg)}}
 .btn-xs{padding:4px 9px;font-size:10.5px}
 .btn-sm{padding:5px 11px;font-size:11.5px}
+/* Import from PDF sat as a faint outline button and was easy to miss. */
+.btn-pdf-import{
+  gap:6px;color:var(--purple);
+  background:var(--purple-bg);border-color:var(--purple-lt);
+  box-shadow:0 1px 2px rgba(15,23,42,.06);
+}
+.btn-pdf-import:hover{background:var(--purple);border-color:var(--purple);color:#fff}
+.btn-pdf-import svg{opacity:.9}
 
 /* ═══════════════════════════════════════════════════ */
 /* RUN BAR                                             */
@@ -634,15 +695,34 @@ input[type="range"]::-webkit-slider-thumb{
 .config-scroll{
   flex:1;overflow-y:auto;
 }
+/* The workspace footer: same height as the top bar, spanning the full width
+   under both columns. It is a flex row of the page rather than position:fixed,
+   so it stays put while the middle scrolls and never covers content. */
 .run-bar{
-  flex-shrink:0;
+  flex:0 0 auto;
+  height:var(--topbar-h);
   background:var(--surface);
   border-top:1px solid var(--border);
-  padding:10px 16px;
-  display:flex;justify-content:flex-end;gap:8px;
+  padding:0 16px;
+  display:flex;align-items:center;justify-content:flex-end;gap:8px;
 }
+/* One size for every footer button, set here rather than by whichever utility
+   class each button happens to carry, so the row stays even. */
+.run-bar-summary{
+  display:flex;align-items:center;gap:8px;margin-right:auto;min-width:0;
+}
+.run-bar-scope{
+  font-size:11.5px;color:var(--text-2);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.run-bar-scope strong{color:var(--text);font-weight:650}
+.run-bar-dot{margin:0 6px;color:var(--text-3)}
+.run-bar-help{display:inline-flex;align-items:center;margin-right:2px}
+.run-bar .btn{padding:7px 15px;font-size:12px}
+.run-bar .btn-run{padding:7px 19px;font-size:12.5px}
 .setup-error-summary{
-  align-self:center;margin-right:auto;color:var(--bad);font-size:11.5px;font-weight:600;
+  margin-right:auto;color:var(--bad);font-size:11.5px;font-weight:600;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 
 /* Submit-time setup validation */
@@ -706,6 +786,29 @@ input[type="range"]::-webkit-slider-thumb{
 .dz-icon{width:28px;height:28px;color:var(--text-3);margin:0 auto 6px}
 .dz-text{font-size:12px;color:var(--text-2);display:flex;align-items:center;justify-content:center;gap:6px}
 .dz-text .spinner{width:14px;height:14px;border-color:var(--purple);border-top-color:transparent}
+
+/* With a dataset loaded the box shows the file instead of the prompt, and only
+   the × clears it — so a stray click cannot silently reopen the file picker. */
+.dropzone.dz-loaded{
+  border-style:solid;border-color:var(--good);
+  background:var(--good-bg);cursor:default;padding:14px;
+}
+.dropzone.dz-loaded:hover{border-color:var(--good);background:var(--good-bg)}
+.dz-file{display:flex;align-items:center;gap:11px;text-align:left}
+.dz-file-icon{color:var(--good);flex-shrink:0}
+.dz-file-info{display:flex;flex-direction:column;min-width:0;flex:1}
+.dz-file-name{
+  font-size:12.5px;font-weight:650;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dz-file-meta{font-size:11px;color:var(--text-2);margin-top:1px}
+.dz-file-clear{
+  flex-shrink:0;width:24px;height:24px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid transparent;border-radius:5px;background:none;
+  color:var(--text-2);font-size:17px;cursor:pointer;transition:all .12s;
+}
+.dz-file-clear:hover{background:var(--surface);border-color:var(--bad);color:var(--bad)}
 
 .file-chip{
   display:inline-flex;align-items:center;gap:6px;
@@ -900,7 +1003,7 @@ input[type="range"]::-webkit-slider-thumb{
 .btn-stop{background:var(--bad);color:white;border:1px solid var(--bad)}
 .btn-stop:hover{background:#b91c1c}
 .run-calls-hint{opacity:.7;font-weight:400;margin-left:4px}
-.run-bar-error{flex:1;margin-right:8px}
+.run-bar-error{flex:1;min-width:0;margin-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .enc-errors-body{padding:8px 14px;font-size:12px;max-height:120px;overflow-y:auto}
 .enc-error-line{color:var(--bad);margin-bottom:4px}
 .tab-strip-gap{margin-bottom:16px}
@@ -1316,7 +1419,13 @@ input[type="range"]::-webkit-slider-thumb{
   .pipeline-layout.split .results-col{border-top:1px solid var(--border)}
 }
 @media(max-width:768px){
-  .topbar-tabs{display:none}
+  /* The menu bar stays reachable on a phone — it is only a few short labels —
+     but the logos and wordmark give up their space first. */
+  .topbar{padding:0 10px}
+  .topbar-left{gap:7px}
+  .topbar-logos,.topbar-title,.topbar-badge{display:none}
+  .topbar-left > .topbar-sep{display:none}
+  .topbar-tab{padding:5px 8px;font-size:11.5px}
   .cols-3,.cols-4{grid-template-columns:1fr 1fr}
 }
 
@@ -1414,7 +1523,7 @@ input[type="range"]::-webkit-slider-thumb{
 .enc-vi-more{color:var(--text-3);font-style:italic;padding:5px 0;font-size:11px}
 .enc-validation-actions{display:flex;gap:8px;flex-wrap:wrap}
 
-/* model-level inter-coder agreement */
+/* coder agreement: within a model's runs, and between models */
 .agreement-card{border-color:#d8c7e9}
 .agreement-status{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -1439,11 +1548,24 @@ input[type="range"]::-webkit-slider-thumb{
 }
 .agreement-table-wrap{max-height:310px}
 .agreement-table th:not(:first-child),.agreement-table td:not(:first-child){text-align:right}
-.agreement-note{margin:10px 2px 1px;color:var(--text-3);font-size:10.5px;line-height:1.4}
+.agreement-note{margin:10px 12px 12px;color:var(--text-3);font-size:10.5px;line-height:1.4}
 
+/* one group per comparison: within a model's runs, and between models */
+.agreement-group{padding:10px 12px 2px}
+.agreement-group + .agreement-group{padding-top:2px}
+.agreement-group-h{
+  display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  margin:0 2px 8px;font-size:11px;font-weight:700;color:var(--text);
+  text-transform:uppercase;letter-spacing:.04em
+}
+.agreement-group-sub{
+  text-transform:none;letter-spacing:0;font-weight:450;
+  font-size:10.5px;color:var(--text-3)
+}
 @media(max-width:768px){
   .agreement-pair-header{align-items:flex-start;flex-direction:column;gap:4px}
   .agreement-summary-metrics{text-align:left}
+  .agreement-group-h{flex-direction:column;gap:2px}
 }
 
 /* researcher-facing result downloads */
@@ -1710,6 +1832,14 @@ input[type="range"]::-webkit-slider-thumb{
   transition:background .15s,border-color .15s,color .15s;
 }
 .help-tip:hover{background:var(--purple-bg);border-color:var(--purple-lt);color:var(--purple)}
+/* Same tooltip, but as a labelled pill instead of a bare "?" — used in the
+   workspace footer where the label has to say what the tooltip is about. */
+.help-tip-labelled{
+  width:auto;height:auto;padding:4px 10px;border-radius:12px;
+  font-size:11px;font-weight:600;white-space:nowrap;
+  color:var(--purple);border-color:var(--purple-lt);background:var(--purple-bg);
+}
+.help-tip-labelled:hover{background:var(--purple);border-color:var(--purple);color:#fff}
 .help-tip-bubble{
   position:fixed;transform:translateY(-50%);
   width:240px;max-width:calc(100vw - 24px);
@@ -1718,6 +1848,11 @@ input[type="range"]::-webkit-slider-thumb{
   padding:8px 10px;border-radius:8px;z-index:2200;
   box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none;
   animation:tourCardIn .12s ease;
+}
+/* Above the trigger, centred on it — for the run bar, where a side bubble would
+   fall off the bottom of the window. Width matches TOP_BUBBLE_WIDTH in HelpTip. */
+.help-tip-bubble-top{
+  width:340px;transform:translate(-50%,-100%);
 }
 
 /* First-visit welcome prompt */
@@ -2311,9 +2446,8 @@ textarea.ta-fit{
 .episode-def {
   display: block;
   margin-top: 6px;
-  max-width: 720px;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .episode-def-term {
@@ -2327,26 +2461,22 @@ textarea.ta-fit{
 }
 
 .tool-citation-note {
-  max-width: 980px;
-  margin-top: 10px;
-  padding: 10px 12px;
+  margin: 0;
+  padding: 7px 12px;
   border-left: 3px solid var(--purple);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 5px 5px 0;
   background: var(--purple-bg);
   color: var(--text-2);
-  font-size: 10.5px;
-  line-height: 1.5;
+  font-size: 11.5px;
+  line-height: 1.45;
 }
 
 .tool-citation-note strong {
   color: var(--text);
-  font-size: 11px;
 }
 
-.tool-citation-note p {
-  margin: 5px 0 0;
-}
-
+/* The documentation page balances its citation over two lines on purpose. The
+   coding page's citation has no such spans, so it stays on one line when it fits. */
 .citation-balanced-line {
   display: block;
 }
@@ -2534,4 +2664,94 @@ textarea.ta-fit{
   .release-history-body{padding:16px 12px}
   .release-history{padding:21px 18px}
   .release-history-head{flex-direction:column;gap:10px}
+}
+
+/* ═══════════════════════════════════════════════════ */
+/* USAGE STATISTICS & ACKNOWLEDGEMENTS                 */
+/* ═══════════════════════════════════════════════════ */
+.usage-body,.ack-body{padding:20px 28px 40px;max-width:1080px}
+.usage-status{
+  display:flex;align-items:center;gap:8px;
+  padding:16px 0;font-size:12.5px;color:var(--text-2);
+}
+.usage-error{color:var(--bad)}
+
+.usage-cards{
+  display:grid;gap:10px;margin-bottom:18px;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+}
+.usage-cards-4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.usage-map{
+  height:clamp(340px,62vh,680px);width:100%;
+  border:1px solid var(--border-lt);border-radius:8px;
+  background:var(--surface);overflow:hidden;
+}
+/* jsvectormap adds .jvm-container to this very element, and its own stylesheet
+   sets height:100% — which collapses to nothing against an auto-height parent and
+   left the map about 170px tall. This compound selector outranks it. */
+.usage-map.jvm-container{height:clamp(340px,62vh,680px)}
+.usage-country-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.usage-country{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:3px 9px;border:1px solid var(--border-lt);border-radius:12px;
+  background:var(--bg);font-size:11.5px;color:var(--text-2);
+}
+.usage-country-n{font-weight:700;color:var(--purple)}
+.ack-contact{margin-top:12px}
+.usage-card{
+  padding:12px 14px;border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);
+}
+.usage-card-v{font-size:22px;font-weight:700;letter-spacing:-0.02em;color:var(--text)}
+.usage-card-l{margin-top:1px;font-size:12px;font-weight:600;color:var(--text)}
+.usage-card-h{margin-top:2px;font-size:10.5px;color:var(--text-3);line-height:1.35}
+
+.usage-panel{padding:14px 16px;margin-bottom:14px}
+.usage-panel h2{
+  margin:0 0 10px;font-size:11px;font-weight:700;color:var(--purple);
+  text-transform:uppercase;letter-spacing:.05em;
+}
+.usage-two-col{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.usage-num{text-align:right}
+
+.usage-bars{display:flex;align-items:flex-end;gap:10px;height:168px;overflow-x:auto}
+.usage-bar-col{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:44px;flex:1}
+.usage-bar-wrap{display:flex;align-items:flex-end;width:100%;height:118px}
+.usage-bar{
+  width:100%;border-radius:4px 4px 0 0;
+  background:linear-gradient(180deg,var(--purple) 0%,var(--teal) 100%);
+  opacity:.85;
+}
+.usage-bar-n{font-size:10.5px;font-weight:600;color:var(--text-2)}
+.usage-bar-x{font-size:10px;color:var(--text-3);white-space:nowrap}
+.usage-note{margin:10px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.4}
+.usage-privacy{margin:6px 0 0;font-size:11px;color:var(--text-3);line-height:1.5}
+.usage-privacy a{color:var(--purple);font-weight:600;text-decoration:none}
+.usage-privacy a:hover{text-decoration:underline}
+
+.ack-panel{padding:16px 18px;margin-bottom:14px}
+.ack-panel h2{
+  margin:0 0 8px;font-size:11px;font-weight:700;color:var(--purple);
+  text-transform:uppercase;letter-spacing:.05em;
+}
+.ack-lead{margin:0;font-size:12.5px;color:var(--text-2);line-height:1.6;max-width:760px}
+.ack-list{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
+.ack-list li{
+  padding:8px 11px;border:1px solid var(--border-lt);border-radius:6px;background:var(--bg);
+}
+.ack-name{display:block;font-size:12.5px;font-weight:600;color:var(--text)}
+.ack-aff{display:block;margin-top:1px;font-size:11px;color:var(--text-2)}
+.ack-note{display:block;margin-top:3px;font-size:11px;color:var(--text-3);line-height:1.45}
+.ack-empty{
+  margin:12px 0 0;padding:11px 13px;border-left:3px solid var(--border);
+  border-radius:0 6px 6px 0;background:var(--bg);
+  font-size:11.5px;color:var(--text-2);line-height:1.5;
+}
+.ack-cta{margin:12px 0 0;font-size:11.5px;color:var(--text-2)}
+.ack-cta a,.ack-empty a{color:var(--purple);font-weight:600;text-decoration:none}
+.ack-cta a:hover{text-decoration:underline}
+
+@media(max-width:768px){
+  .usage-body,.ack-body{padding:16px}
+  .usage-two-col{grid-template-columns:1fr}
 }

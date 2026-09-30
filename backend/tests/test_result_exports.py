@@ -708,10 +708,27 @@ class ResultExportEndpointTests(unittest.TestCase):
         self.assertEqual(openai_run_one["note"].tolist(), ["oa1", "ob1"])
         self.assertEqual(
             list(agreement.columns),
-            ["model_a", "model_b", "variable", "agreement_rate", "cohens_kappa", "paired_n"],
+            [
+                "comparison",
+                "model",
+                "coder_a",
+                "coder_b",
+                "run_pairs_averaged",
+                "variable",
+                "agreement_rate",
+                "cohens_kappa",
+                "gwets_ac1",
+                "paired_n",
+            ],
         )
-        self.assertEqual(set(agreement["model_a"]), {"openai/model"})
-        self.assertEqual(set(agreement["model_b"]), {"gemini/model"})
+        # Both models ran twice, so the CSV carries one averaged row per model and
+        # the comparison between the two models.
+        within = agreement[agreement["comparison"] == "within-model"]
+        between = agreement[agreement["comparison"] == "between-models"]
+        self.assertEqual(set(within["model"]), {"openai/model", "gemini/model"})
+        self.assertEqual(set(within["run_pairs_averaged"]), {1})
+        self.assertEqual(set(between["coder_a"]), {"openai/model"})
+        self.assertEqual(set(between["coder_b"]), {"gemini/model"})
         self.assertIn("cooperation", set(agreement["variable"]))
         self.assertNotIn("AVERAGE", set(agreement["variable"]))
 
@@ -811,12 +828,18 @@ class ResultExportEndpointTests(unittest.TestCase):
             self.assertEqual(
                 sorted(archive.namelist()),
                 sorted([
+                    # One model, but it ran twice, so its two runs can be compared
+                    # against each other even though there is no second model.
+                    "inter_coder_agreement.csv",
                     "overall/aggregated_results.csv",
                     "models/openai_model/aggregated_results.csv",
                     "models/openai_model/runs/run1.csv",
                     "models/openai_model/runs/run2.csv",
                 ]),
             )
+            agreement = pd.read_csv(io.BytesIO(archive.read("inter_coder_agreement.csv")))
+            self.assertEqual(set(agreement["comparison"]), {"within-model"})
+            self.assertEqual(set(agreement["model"]), {"openai/model"})
 
     def test_detailed_download_is_restricted_to_coding_result_artifacts(self):
         unrelated = os.path.join(self.temp_dir.name, "unrelated.csv")

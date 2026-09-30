@@ -9,6 +9,9 @@ import CatDocumentationPaper from "@/app/tools/CatDocumentationPaper";
 import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
+import MenuBar from "@/app/tools/MenuBar";
+import UsageStatistics from "@/app/tools/UsageStatistics";
+import Acknowledgements from "@/app/tools/Acknowledgements";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
 import { gzipFileInit, gzipJsonInit, detectFirewallBlock, firewallBlockMessage, firewallErrorFromText } from "@/lib/gzipRequest";
 import { RowSelectionMode, parseRowSpec, randomIndices, percentToCount } from "@/lib/rowSelection";
@@ -615,6 +618,7 @@ interface InterCoderAgreementVariable {
   variable: string;
   agreement_rate: number | null;
   cohens_kappa: number | null;
+  gwets_ac1: number | null;
   n: number;
 }
 
@@ -624,12 +628,49 @@ interface InterCoderAgreementPair {
   variables: InterCoderAgreementVariable[];
 }
 
+/** One model's repeated runs, averaged over every pair of its runs. */
+interface InterCoderAgreementWithinModel {
+  model: string;
+  run_count: number;
+  runs: string[];
+  /** How many run pairs were averaged into the rows below. */
+  pair_count: number;
+  variables: InterCoderAgreementVariable[];
+}
+
 interface InterCoderAgreementReport {
+  /** True when two or more models ran, so they can be compared with each other. */
   eligible: boolean;
+  /** True when at least one model ran more than once. */
+  within_eligible: boolean;
+  within_models: InterCoderAgreementWithinModel[];
   model_count: number;
   models: string[];
   numeric_variables: string[];
+  /** Between-model comparisons, on each model's aggregated values. */
   pairs: InterCoderAgreementPair[];
+}
+
+/** The agreement/kappa table shared by both comparisons. */
+function AgreementTable({ rows }: { rows: InterCoderAgreementVariable[] }) {
+  return (
+    <div className="table-wrap agreement-table-wrap">
+      <table className="tbl tbl-compact agreement-table">
+        <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen&apos;s κ</th><th>AC1</th><th>N</th></tr></thead>
+        <tbody>
+          {rows.map((metric) => (
+            <tr key={metric.variable}>
+              <td>{metric.variable}</td>
+              <td>{metric.agreement_rate == null ? "—" : `${metric.agreement_rate.toFixed(1)}%`}</td>
+              <td>{metric.cohens_kappa == null ? "N/A" : metric.cohens_kappa.toFixed(3)}</td>
+              <td>{metric.gwets_ac1 == null ? "N/A" : metric.gwets_ac1.toFixed(3)}</td>
+              <td>{metric.n}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 interface ValidationIssue {
@@ -710,6 +751,9 @@ function validateCodedRows(rows: CodedRow[], vars: ExpandedVar[]): ValidationRep
 const PROVIDERS: { value: string; label: string; models: { value: string; label: string; noTemperature?: boolean; noTopP?: boolean; temperatureMax?: number }[] }[] = [
   {
     value: "openai", label: "OpenAI", models: [
+      { value: "gpt-6-astra", label: "GPT-6 Astra", noTemperature: true, noTopP: true },
+      { value: "gpt-6.1-sol", label: "GPT-6.1 Sol", noTemperature: true, noTopP: true },
+      { value: "gpt-6-luna", label: "GPT-6 Luna", noTemperature: true, noTopP: true },
       { value: "gpt-5.6-sol", label: "GPT-5.6 Sol", noTemperature: true, noTopP: true },
       { value: "gpt-5.6-terra", label: "GPT-5.6 Terra", noTemperature: true, noTopP: true },
       { value: "gpt-5.6-luna", label: "GPT-5.6 Luna", noTemperature: true, noTopP: true },
@@ -720,6 +764,7 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
   },
   {
     value: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
       { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
       { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
       { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
@@ -740,6 +785,7 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
   },
   {
     value: "anthropic", label: "Anthropic (Claude)", models: [
+      { value: "claude-fable-5-1", label: "Claude Fable 5.1", noTemperature: true, noTopP: true },
       { value: "claude-fable-5", label: "Claude Fable 5", noTemperature: true, noTopP: true },
       { value: "claude-opus-5", label: "Claude Opus 5", noTemperature: true, noTopP: true },
       { value: "claude-sonnet-5", label: "Claude Sonnet 5", noTemperature: true, noTopP: true },
@@ -748,6 +794,8 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
   },
   {
     value: "xai", label: "xAI (Grok)", models: [
+      { value: "grok-4.7", label: "Grok 4.7" },
+      { value: "grok-4.6", label: "Grok 4.6" },
       { value: "grok-4.5", label: "Grok 4.5" },
       { value: "grok-4.3", label: "Grok 4.3" },
     ],
@@ -760,6 +808,9 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
 const PDF_MODELS: { provider: string; label: string; models: { value: string; label: string }[] }[] = [
   {
     provider: "openai", label: "OpenAI", models: [
+      { value: "gpt-6-astra", label: "GPT-6 Astra" },
+      { value: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
+      { value: "gpt-6-luna", label: "GPT-6 Luna" },
       { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
       { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
       { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
@@ -768,6 +819,7 @@ const PDF_MODELS: { provider: string; label: string; models: { value: string; la
   },
   {
     provider: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
       { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
       { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
       { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
@@ -782,6 +834,7 @@ const PDF_MODELS: { provider: string; label: string; models: { value: string; la
   },
   {
     provider: "anthropic", label: "Anthropic (Claude)", models: [
+      { value: "claude-fable-5-1", label: "Claude Fable 5.1" },
       { value: "claude-fable-5", label: "Claude Fable 5" },
       { value: "claude-opus-5", label: "Claude Opus 5" },
       { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
@@ -1006,7 +1059,7 @@ function buildSlotPayload(slot: ModelSlot) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type ActiveTool = "coding" | "instructions" | "documentation" | "versions" | "contact" | "privacy";
+type ActiveTool = "coding" | "instructions" | "documentation" | "versions" | "contact" | "privacy" | "usage" | "acknowledgements";
 
 const TOOL_PATHS: Record<ActiveTool, string> = {
   coding: "/coding",
@@ -1015,6 +1068,8 @@ const TOOL_PATHS: Record<ActiveTool, string> = {
   versions: "/versions",
   contact: "/contact",
   privacy: "/privacy",
+  usage: "/usage",
+  acknowledgements: "/acknowledgements",
 };
 
 function toolForPath(pathname: string): ActiveTool {
@@ -1023,6 +1078,8 @@ function toolForPath(pathname: string): ActiveTool {
   if (pathname.startsWith("/versions")) return "versions";
   if (pathname.startsWith("/contact")) return "contact";
   if (pathname.startsWith("/privacy")) return "privacy";
+  if (pathname.startsWith("/usage")) return "usage";
+  if (pathname.startsWith("/acknowledgements")) return "acknowledgements";
   return "coding";
 }
 
@@ -1556,7 +1613,9 @@ export default function CatApp() {
   }, [runComplete]);
 
   useEffect(() => {
-    if (!runComplete || !resultExportConfig || resultExportConfig.models.length < 2) {
+    const agreementPossible = !!resultExportConfig
+      && (resultExportConfig.models.length >= 2 || resultExportConfig.runsPerModel >= 2);
+    if (!runComplete || !agreementPossible) {
       setAgreementReport(null);
       setAgreementLoading(false);
       setAgreementError("");
@@ -2375,6 +2434,7 @@ export default function CatApp() {
     ...(codebookSaveAttempted ? collectCodebookIssues() : []),
   ].filter((issue, index, all) => all.findIndex((candidate) => candidate.key === issue.key) === index);
   const panelHasSetupIssue = (panel: SetupIssue["panel"]) => setupIssues.some((issue) => issue.panel === panel);
+  const datasetLoaded = !!uploadResult && uploadAvailability === "ready";
   const setupIssueByKey = (key: string) => setupIssues.find((issue) => issue.key === key);
   const codebookEditorIssueByKey = (key: string) => visibleCodebookIssues.find((issue) => issue.key === key);
   const codebookEntryIssues = (index: number) => visibleCodebookIssues.filter((issue) => issue.codebookIndex === index);
@@ -3167,25 +3227,42 @@ ${blocks}
       const vals = TYPE_HAS_VALUES(e.type) ? e.values.filter((v) => v.value.trim()).map((v) => v.value).join(", ") : "—";
       return `<tr><td>${htmlEsc(e.label)}</td><td>${htmlEsc(e.type)}</td><td>${e.level === "sender" ? "per sender" : "per episode"}</td><td>${e.type === "text" ? "Not aggregated" : e.aggregation === "mean" ? "Average (mean)" : "Majority vote (mode)"}</td><td>${htmlEsc(vals)}</td></tr>`;
     });
-    const agreementSection = agreementReport?.eligible
-      ? `<h2>Inter-Coder Agreement</h2>
-        ${agreementReport.pairs.length === 0 || agreementReport.numeric_variables.length === 0
-          ? `<p class="muted">No non-text aggregate output columns are available for agreement analysis.</p>`
-          : agreementReport.pairs.map((pair) => `<div class="agreement-report-pair">
-              <h3>${htmlEsc(pair.model_a)} vs ${htmlEsc(pair.model_b)}</h3>
-              <table>
-                <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen's κ</th><th>N</th></tr></thead>
+    const agreementMetricTable = (rows: InterCoderAgreementVariable[]) => `<table>
+                <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen's κ</th><th>AC1</th><th>N</th></tr></thead>
                 <tbody>
-                  ${pair.variables.map((metric) => `<tr>
+                  ${rows.map((metric) => `<tr>
                     <td>${htmlEsc(metric.variable)}</td>
                     <td>${metric.agreement_rate == null ? "—" : `${metric.agreement_rate.toFixed(1)}%`}</td>
                     <td>${metric.cohens_kappa == null ? "N/A" : metric.cohens_kappa.toFixed(3)}</td>
+                    <td>${metric.gwets_ac1 == null ? "N/A" : metric.gwets_ac1.toFixed(3)}</td>
                     <td>${metric.n}</td>
                   </tr>`).join("")}
                 </tbody>
-              </table>
-            </div>`).join("")}
-        <p class="note">Runs are aggregated within each model before pairwise comparison. Agreement is the exact-match rate. Cohen's κ is unweighted and treats each distinct numeric result as a nominal coded value. N is the number of episodes with nonmissing values from both models. κ is reported as N/A when expected agreement is 100%.</p>`
+              </table>`;
+    const hasAgreement = !!agreementReport
+      && agreementReport.numeric_variables.length > 0
+      && (agreementReport.within_models.length > 0 || agreementReport.pairs.length > 0);
+    const withinSection = agreementReport && agreementReport.within_models.length > 0
+      ? `<h2>Agreement within each LLM</h2>
+        <p class="muted">How consistently one model repeated itself across its own runs.</p>
+        ${agreementReport.within_models.map((model) => `<div class="agreement-report-pair">
+              <h3>${htmlEsc(model.model)} — ${model.run_count} runs${model.pair_count > 1
+                ? `, averaged over ${model.pair_count} run pairs`
+                : ""}</h3>
+              ${agreementMetricTable(model.variables)}
+            </div>`).join("")}`
+      : "";
+    const betweenSection = agreementReport && agreementReport.pairs.length > 0
+      ? `<h2>Agreement between LLMs</h2>
+        <p class="muted">Each model's runs are aggregated first, then the models are compared.</p>
+        ${agreementReport.pairs.map((pair) => `<div class="agreement-report-pair">
+              <h3>${htmlEsc(pair.model_a)} vs ${htmlEsc(pair.model_b)}</h3>
+              ${agreementMetricTable(pair.variables)}
+            </div>`).join("")}`
+      : "";
+    const agreementSection = hasAgreement
+      ? `${withinSection}${betweenSection}
+        <p class="note"><strong>Agreement</strong> — exact-match rate. <strong>Cohen's κ</strong> — agreement corrected for chance. <strong>AC1</strong> — Gwet's chance-corrected agreement, which stays stable when one category dominates. <strong>N</strong> — episodes scored by both coders.</p>`
       : "";
 
     const kv = (k: string, v: string) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`;
@@ -3390,6 +3467,28 @@ ${agreementSection}
 
   // ── Reset ─────────────────────────────────────────────────────────────────
 
+  // Remove the loaded dataset and the mapping that describes it, leaving the
+  // codebook, instructions, and model setup alone — the usual reason to clear is
+  // swapping in a different file for the same study.
+  const handleClearDataset = () => {
+    uploadRequestRef.current?.controller.abort();
+    uploadRequestRef.current = null;
+    uploadPreflightRef.current = null;
+    restorePromiseRef.current = null;
+    liveUploadIdRef.current = null;
+    void clearStoredUpload().catch(() => {});
+    invalidateRunArtifacts();
+    resetMapping();
+    setUploadResult(null); setUploadMeta(null); setUploadAvailability("none");
+    setUploading(false); setUploadError(""); setUploadNotice(""); setDragOver(false);
+    setContextConflictAlert(null);
+    setSenderVerificationSignature("");
+    // Row numbers refer to the file that just went away.
+    setRowSelectionMode("all");
+    setRowSelectionCount(""); setRowSelectionPercent(""); setRowSelectionSpec("");
+    setSetupIssues([]);
+  };
+
   const handleReset = () => {
     if (tourOpen) return;
     if (resultDownloadKind) {
@@ -3473,16 +3572,9 @@ ${agreementSection}
           <Link href="/coding" className="topbar-title topbar-title-link">
             CAT — Communication Annotation Tool
           </Link>
-          <span className="topbar-badge">v1.2</span>
+          <span className="topbar-badge">v1.3</span>
           <div className="topbar-sep" />
-          <div className="topbar-tabs">
-            <Link href="/coding" className={`topbar-tab ${activeTool === "coding" ? "active" : ""}`}>Coding</Link>
-            <Link href="/learn-cat" className={`topbar-tab ${activeTool === "instructions" ? "active" : ""}`}>Learn CAT</Link>
-            <Link href="/documentation" className={`topbar-tab ${activeTool === "documentation" ? "active" : ""}`}>Documentation</Link>
-            <Link href="/versions" className={`topbar-tab ${activeTool === "versions" ? "active" : ""}`}>Versions</Link>
-            <Link href="/contact" className={`topbar-tab ${activeTool === "contact" ? "active" : ""}`}>Contact Us</Link>
-            <Link href="/privacy" className={`topbar-tab ${activeTool === "privacy" ? "active" : ""}`}>Privacy</Link>
-          </div>
+          <MenuBar pathname={pathname} />
         </div>
         <div className="topbar-right">
           <button className="btn btn-outline btn-sm topbar-reset-btn" onClick={handleReset}>Reset</button>
@@ -3492,19 +3584,11 @@ ${agreementSection}
 
       <div className="layout">
         <main className="main">
-          <div className={`tool-page ${activeTool === "coding" ? "active" : ""}`}>
-            <div className="tool-header">
-              <div>
-                <h1>LLM Coding</h1>
-                <p className="tool-desc">Upload data, configure codebook variables, and code with one or more LLMs.</p>
-                <div className="tool-citation-note">
-                  <strong>Please remember to cite our methodological paper if you use this tool:</strong>
-                  <p>
-                    <span className="citation-balanced-line">Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication</span>
-                    <span className="citation-balanced-line">content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a></span>
-                  </p>
-                </div>
-              </div>
+          <div className={`tool-page tool-page-fill ${activeTool === "coding" ? "active" : ""}`}>
+            <div className="tool-header tool-header-slim">
+              <p className="tool-citation-note">
+                <strong>Please cite:</strong> Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a>
+              </p>
             </div>
 
             <div className={`pipeline-layout split layout-${layoutMode}`} style={{ display: "flex", gap: 0 }}>
@@ -3535,9 +3619,9 @@ ${agreementSection}
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
                       <div
-                        className={`dropzone${dragOver ? " drag-active" : ""}${setupIssueByKey("upload") ? " field-invalid" : ""}`}
+                        className={`dropzone${dragOver ? " drag-active" : ""}${datasetLoaded ? " dz-loaded" : ""}${setupIssueByKey("upload") ? " field-invalid" : ""}`}
                         aria-disabled={uploading || uploadAvailability === "restoring"}
-                        onClick={() => { if (!uploading && uploadAvailability !== "restoring") fileRef.current?.click(); }}
+                        onClick={() => { if (!datasetLoaded && !uploading && uploadAvailability !== "restoring") fileRef.current?.click(); }}
                         onDrop={(e) => {
                           setDragOver(false);
                           if (!uploading && uploadAvailability !== "restoring") onDrop(e);
@@ -3549,18 +3633,39 @@ ${agreementSection}
                         }}
                         onDragLeave={() => setDragOver(false)}
                       >
-                        <div className="dz-icon">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="28" height="28">
-                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-                          </svg>
-                        </div>
-                        <p className="dz-text">
-                          {uploadAvailability === "restoring"
-                            ? <><span className="spinner" /> Restoring saved dataset...</>
-                            : uploading
-                              ? <><span className="spinner" /> Uploading...</>
-                              : "Drop a CSV or Excel file here, or click to browse"}
-                        </p>
+                        {datasetLoaded ? (
+                          <div className="dz-file">
+                            <svg className="dz-file-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                            </svg>
+                            <span className="dz-file-info">
+                              <span className="dz-file-name">{uploadResult!.file_name}</span>
+                              <span className="dz-file-meta">{uploadResult!.row_count} rows · {uploadResult!.columns.length} columns</span>
+                            </span>
+                            <button
+                              type="button"
+                              className="dz-file-clear"
+                              title="Remove this dataset and choose another"
+                              aria-label="Remove dataset"
+                              onClick={(e) => { e.stopPropagation(); handleClearDataset(); }}
+                            >×</button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="dz-icon">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="28" height="28">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                              </svg>
+                            </div>
+                            <p className="dz-text">
+                              {uploadAvailability === "restoring"
+                                ? <><span className="spinner" /> Restoring saved dataset...</>
+                                : uploading
+                                  ? <><span className="spinner" /> Uploading...</>
+                                  : "Drop a CSV or Excel file here, or click to browse"}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="episode-def">
                         <span className="episode-def-term">Communication episode:</span>
@@ -3597,12 +3702,6 @@ ${agreementSection}
                       {uploadNotice && <p className="hint">{uploadNotice}</p>}
                       {uploadResult && (
                         <div className="mt-12" id="tour-episode-preview">
-                          <div className="file-chip">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
-                            {uploadResult.file_name}
-                            <span className="chip-meta">{uploadResult.row_count} rows · {uploadResult.columns.length} cols</span>
-                          </div>
-
                           {/* Rows to code — subset the dataset before mapping/coding */}
                           <div className={`row-select${rowSelectionMode !== "all" && rowSelection.error ? " field-invalid" : ""}`}>
                             <div className="row-select-head">
@@ -3870,8 +3969,11 @@ ${agreementSection}
                       <div className="f" id="tour-experiment-instructions">
                         <div className="ta-label-row">
                           <label>Describe the experiment context</label>
-                          <button id="tour-pdf-import" className="btn btn-outline btn-xs" type="button" onClick={openPdfModal} title="Convert a PDF of the instructions (including figures and tables) into text">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 5, verticalAlign: "-2px" }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                          <button id="tour-pdf-import" className="btn btn-sm btn-pdf-import" type="button" onClick={openPdfModal} title="Convert a PDF of the instructions (including figures and tables) into text">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+                              <path d="M12 18v-6M9.5 14.5 12 12l2.5 2.5" />
+                            </svg>
                             Import from PDF
                           </button>
                         </div>
@@ -3903,11 +4005,6 @@ ${agreementSection}
                       <svg className="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6l4 4 4-4" /></svg>
                     </button>
                     <div className="panel-content-wrap"><div className="panel-content"><div className="panel-content-inner">
-
-                      <div className="model-execution-note" id="tour-model-execution">
-                        <strong>Browser and package execution differ.</strong>
-                        <span><strong>Run Coding</strong> uses all models and runs configured below and requires their API keys. For package generation, CAT does not save an API key or the configured tuning settings; the downloaded package records only the first selected provider and model and makes one call per episode after the local script obtains a key at runtime.</span>
-                      </div>
 
                       <div className="model-slots" id="tour-model-slots">
                         {modelSlots.map((slot, idx) => {
@@ -4053,28 +4150,6 @@ ${agreementSection}
 
                 </div>
 
-                {/* Run bar */}
-                <div id="coding-run-bar" className="run-bar">
-                  {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
-                  {setupIssues.length > 0 && (
-                    <span className="setup-error-summary" role="alert">
-                      Fix {setupIssues.length} setup issue{setupIssues.length === 1 ? "" : "s"} highlighted above.
-                    </span>
-                  )}
-                  <button className="btn btn-outline btn-sm" disabled={generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
-                    {generating ? <><span className="spinner" /> Generating</> : "Generate Package"}
-                  </button>
-                  {running ? (
-                    <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
-                  ) : (
-                    <button className="btn btn-run" disabled={generating || resultDownloadKind !== null} onClick={handleRun}>
-                      Run Coding
-                      {modelSlots.length * runsPerModel > 1 && (
-                        <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
-                      )}
-                    </button>
-                  )}
-                </div>
               </div>
               {/* Layout toggle rail — left collapses, right expands */}
               <div className="layout-rail" style={tourOpen ? { display: "none" } : undefined}>
@@ -4216,55 +4291,6 @@ ${agreementSection}
                     )}
                     {runComplete && !validationReport && <div className="enc-complete-bar"><div>Validating results...</div></div>}
 
-                    {runComplete && !running && resultExportConfig && resultExportConfig.models.length >= 2 && (
-                      <div className="res-section mt-12 agreement-card">
-                        <div className="res-section-h">Inter-Coder Agreement</div>
-                        {agreementLoading && (
-                          <div className="agreement-status"><span className="spinner" /> Aggregating runs within each model and calculating pairwise agreement...</div>
-                        )}
-                        {!agreementLoading && agreementError && (
-                          <div className="agreement-status agreement-error">
-                            <span>{agreementError}</span>
-                            <button className="btn btn-outline btn-xs" onClick={() => setAgreementRequestVersion((value) => value + 1)}>Retry</button>
-                          </div>
-                        )}
-                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length === 0 && (
-                          <div className="agreement-status">No non-text aggregate output columns are available for agreement analysis.</div>
-                        )}
-                        {!agreementLoading && agreementReport && !agreementReport.eligible && (
-                          <div className="agreement-status">At least two distinct models are required for inter-coder agreement.</div>
-                        )}
-                        {!agreementLoading && agreementReport?.eligible && agreementReport.numeric_variables.length > 0 && agreementReport.pairs.length > 0 && (
-                          <div className="agreement-pairs">
-                            {agreementReport.pairs.map((pair) => (
-                              <section className="agreement-pair" key={`${pair.model_a}-${pair.model_b}`}>
-                                <div className="agreement-pair-header">
-                                  <span>{pair.model_a} vs {pair.model_b}</span>
-                                  <span className="agreement-summary-metrics">{pair.variables.length} variable{pair.variables.length === 1 ? "" : "s"}</span>
-                                </div>
-                                <div className="table-wrap agreement-table-wrap">
-                                  <table className="tbl tbl-compact agreement-table">
-                                    <thead><tr><th>Variable</th><th>Agreement</th><th>Cohen&apos;s κ</th><th>N</th></tr></thead>
-                                    <tbody>
-                                      {pair.variables.map((metric) => (
-                                        <tr key={metric.variable}>
-                                          <td>{metric.variable}</td>
-                                          <td>{metric.agreement_rate == null ? "—" : `${metric.agreement_rate.toFixed(1)}%`}</td>
-                                          <td>{metric.cohens_kappa == null ? "N/A" : metric.cohens_kappa.toFixed(3)}</td>
-                                          <td>{metric.n}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </section>
-                            ))}
-                            <p className="agreement-note">Runs are aggregated within each model before pairwise comparison. Agreement is the exact-match rate. Cohen&apos;s κ is unweighted and treats each distinct numeric result as a nominal coded value. N is the number of episodes with nonmissing values from both models. κ is N/A when expected agreement is 100%.</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     {runComplete && validationReport && (
                       <div className="res-section mt-12 results-download-card" id="tour-result-downloads">
                         <div className="res-section-h">Download Results</div>
@@ -4278,7 +4304,7 @@ ${agreementSection}
                             <div className="results-download-title">Complete Results</div>
                             <p className="results-download-helper">
                               {aggregationActive
-                                ? "Downloads one ZIP containing overall aggregates, text responses when present, per-LLM aggregates, every original LLM/run result, and inter-coder agreement when two or more models were used."
+                                ? "Downloads one ZIP containing overall aggregates, text responses when present, per-LLM aggregates, every original LLM/run result, and coder agreement when a model ran more than once or two or more models were used."
                                 : "Downloads the coded dataset with every original row and column, including all coded variable types."}
                             </p>
                           </div>
@@ -4301,13 +4327,74 @@ ${agreementSection}
                       <div className="res-section mt-12 run-summary-cta">
                         <div>
                           <div className="run-summary-title">Run Summary</div>
-                          <div className="run-summary-sub">Dataset, models, configuration, timing, results, and inter-coder agreement when applicable — save as PDF.</div>
+                          <div className="run-summary-sub">Dataset, models, configuration, timing, results, and coder agreement when applicable — save as PDF.</div>
                         </div>
                         <button
                           className="btn btn-outline btn-sm"
                           disabled={agreementLoading}
                           onClick={handleRunSummary}
                         >↓ Download Summary (PDF)</button>
+                      </div>
+                    )}
+
+                    {runComplete && !running && resultExportConfig && (resultExportConfig.models.length >= 2 || resultExportConfig.runsPerModel >= 2) && (
+                      <div className="res-section mt-12 agreement-card">
+                        <div className="res-section-h">Coder Agreement</div>
+                        {agreementLoading && (
+                          <div className="agreement-status"><span className="spinner" /> Comparing runs and models...</div>
+                        )}
+                        {!agreementLoading && agreementError && (
+                          <div className="agreement-status agreement-error">
+                            <span>{agreementError}</span>
+                            <button className="btn btn-outline btn-xs" onClick={() => setAgreementRequestVersion((value) => value + 1)}>Retry</button>
+                          </div>
+                        )}
+                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length === 0 && (
+                          <div className="agreement-status">No non-text aggregate output columns are available for agreement analysis.</div>
+                        )}
+                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length > 0 && !agreementReport.within_eligible && !agreementReport.eligible && (
+                          <div className="agreement-status">Agreement needs either two or more LLMs, or one LLM run more than once.</div>
+                        )}
+                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length > 0 && agreementReport.within_models.length > 0 && (
+                          <div className="agreement-group">
+                            <div className="agreement-group-h">
+                              <span>Within each LLM</span>
+                              <span className="agreement-group-sub">how consistently one model repeated itself across its own runs</span>
+                            </div>
+                            {agreementReport.within_models.map((model) => (
+                              <section className="agreement-pair" key={model.model}>
+                                <div className="agreement-pair-header">
+                                  <span>{model.model}</span>
+                                  <span className="agreement-summary-metrics">
+                                    {model.run_count} runs
+                                    {model.pair_count > 1 && ` · averaged over ${model.pair_count} run pairs`}
+                                  </span>
+                                </div>
+                                <AgreementTable rows={model.variables} />
+                              </section>
+                            ))}
+                          </div>
+                        )}
+                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length > 0 && agreementReport.pairs.length > 0 && (
+                          <div className="agreement-group">
+                            <div className="agreement-group-h">
+                              <span>Between LLMs</span>
+                              <span className="agreement-group-sub">each model&apos;s runs aggregated first, then the models compared</span>
+                            </div>
+                            {agreementReport.pairs.map((pair) => (
+                              <section className="agreement-pair" key={`${pair.model_a}-${pair.model_b}`}>
+                                <div className="agreement-pair-header">
+                                  <span>{pair.model_a} vs {pair.model_b}</span>
+                                  <span className="agreement-summary-metrics">{pair.variables.length} variable{pair.variables.length === 1 ? "" : "s"}</span>
+                                </div>
+                                <AgreementTable rows={pair.variables} />
+                              </section>
+                            ))}
+                          </div>
+                        )}
+                        {!agreementLoading && agreementReport && agreementReport.numeric_variables.length > 0 && (agreementReport.within_models.length > 0 || agreementReport.pairs.length > 0) && (
+                          <p className="agreement-note"><strong>Agreement</strong> — exact-match rate. <strong>Cohen&apos;s κ</strong> — agreement corrected for chance. <strong>AC1</strong> — Gwet&apos;s chance-corrected agreement, which stays stable when one category dominates. <strong>N</strong> — episodes scored by both coders.</p>
+                        )}
                       </div>
                     )}
 
@@ -4375,9 +4462,54 @@ ${agreementSection}
                 </>)}
               </div>
             </div>
+
+            {/* Run bar */}
+            <div id="coding-run-bar" className="run-bar">
+              <div className="run-bar-summary">
+                {datasetLoaded && (
+                  <span className="run-bar-scope">
+                    <strong>{uploadResult!.file_name}</strong>
+                    <span className="run-bar-dot">·</span>
+                    {effectiveRowCount} of {totalSourceRows} rows
+                    <span className="run-bar-dot">·</span>
+                    {modelSlots.length} model{modelSlots.length !== 1 ? "s" : ""} × {runsPerModel} run{runsPerModel !== 1 ? "s" : ""}
+                    <span className="run-bar-dot">·</span>
+                    {effectiveRowCount * modelSlots.length * runsPerModel} calls
+                  </span>
+                )}
+              </div>
+              {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
+              {setupIssues.length > 0 && (
+                <span className="setup-error-summary" role="alert">
+                  Fix {setupIssues.length} setup issue{setupIssues.length === 1 ? "" : "s"} highlighted above.
+                </span>
+              )}
+              <span id="tour-model-execution" className="run-bar-help">
+                <HelpTip
+                  placement="top"
+                  label="What's the difference?"
+                  text={<><strong>Run Coding</strong> uses every model and run configured in step 4, and needs an API key for each. <strong>Generate Package</strong> saves no API key and no tuning settings: the downloaded script records only the first selected provider and model, makes one call per episode, and asks for a key when you run it locally.</>}
+                />
+              </span>
+              <button className="btn btn-outline btn-sm" disabled={generating || running || resultDownloadKind !== null} onClick={handleDownloadPackage} title="No API key is required; the local script requests it when run.">
+                {generating ? <><span className="spinner" /> Generating</> : "Generate Package"}
+              </button>
+              {running ? (
+                <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
+              ) : (
+                <button className="btn btn-run" disabled={generating || resultDownloadKind !== null} onClick={handleRun}>
+                  Run Coding
+                  {modelSlots.length * runsPerModel > 1 && (
+                    <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
           {activeTool === "instructions" && <Instructions />}
+          {activeTool === "usage" && <UsageStatistics />}
+          {activeTool === "acknowledgements" && <Acknowledgements />}
 
           {activeTool === "documentation" && (
             <div className="tool-page active">
@@ -4445,11 +4577,29 @@ ${agreementSection}
                       <h2 id="release-history-title">CAT Releases</h2>
                       <p>Features, fixes, and workflow improvements by release.</p>
                     </div>
-                    <span className="release-current-badge">Current · v1.2</span>
+                    <span className="release-current-badge">Current · v1.3</span>
                   </div>
 
                   <div className="release-timeline">
                     <article className="release-entry current">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.3</h3>
+                          <time dateTime="2026-09-30">September 30, 2026</time>
+                        </div>
+                        <p className="release-summary">Coder agreement statistics, public usage figures, and a clearer coding workspace.</p>
+                        <ul>
+                          <li>Brought back <strong>agreement statistics</strong> in the results panel: exact agreement, Cohen&apos;s κ, Gwet&apos;s AC1, and N — reported both <strong>within each LLM</strong> (comparing its repeated runs against each other, so a single model run more than once now yields a reliability check) and <strong>between LLMs</strong>. They appear below the downloads, in the run summary PDF, and in the exported agreement CSV.</li>
+                          <li>Reorganised navigation into a <strong>menu bar</strong>, and added two public pages: <strong>Usage Statistics</strong>, with live figures and a world map of where CAT is used, and <strong>Acknowledgements</strong>, crediting the researchers whose feedback shaped the tool.</li>
+                          <li>Added the latest models from every provider, including OpenAI GPT-6, Gemini 3.8 Flash, Claude Fable 5.1, and Grok 4.7. Existing choices are unchanged, so saved setups keep working.</li>
+                          <li>Reworked the coding workspace: a slimmer top bar, a run bar pinned across the bottom that shows what is about to run and explains how <strong>Run Coding</strong> and <strong>Generate Package</strong> differ, an upload box that shows the loaded dataset with a button to swap it out, and a more visible <strong>Import from PDF</strong> button.</li>
+                          <li>Coding runs and package downloads are now counted on the server, so the laboratory can see real usage even when a visitor declines optional analytics.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
                       <div className="release-marker" aria-hidden="true" />
                       <div className="release-entry-body">
                         <div className="release-entry-title">
