@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.9",
+        "date": "2026-09-30",
+        "title": "Hotfix: backend stability",
+        "notes": "Admin stats now compute off the event loop (bounded), and the log buffer no longer floods SQL logs. Fixes backend timeouts / admin 504s.",
+    },
+    {
         "version": "1.2.8",
         "date": "2026-09-30",
         "title": "Admin errors view + live server logs",
