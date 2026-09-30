@@ -46,10 +46,14 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 export default function MenuBar({ pathname }: { pathname: string }) {
-  const [openLabel, setOpenLabel] = useState<string | null>(null);
+  // The open menu is remembered together with the page it was opened on, so a
+  // route change closes it by derivation rather than by a setState in an effect
+  // (which would cascade an extra render on every navigation).
+  const [open, setOpen] = useState<{ label: string; path: string } | null>(null);
+  const openLabel = open && open.path === pathname ? open.label : null;
   const barRef = useRef<HTMLDivElement>(null);
 
-  const close = useCallback(() => setOpenLabel(null), []);
+  const close = useCallback(() => setOpen(null), []);
 
   // Close on an outside click or Escape, the way a real menu bar behaves.
   useEffect(() => {
@@ -68,9 +72,6 @@ export default function MenuBar({ pathname }: { pathname: string }) {
     };
   }, [openLabel, close]);
 
-  // Route changes come from clicking an item, so the menu should not linger.
-  useEffect(() => { close(); }, [pathname, close]);
-
   return (
     <div className="topbar-menu" ref={barRef}>
       <Link
@@ -80,25 +81,25 @@ export default function MenuBar({ pathname }: { pathname: string }) {
         Coding
       </Link>
       {MENU_GROUPS.map((group) => {
-        const open = openLabel === group.label;
+        const isOpen = openLabel === group.label;
         const groupActive = group.items.some((item) => isActive(pathname, item.href));
         return (
           <div className="topbar-menu-group" key={group.label}>
             <button
               type="button"
-              className={`topbar-tab topbar-menu-btn ${groupActive ? "active" : ""} ${open ? "open" : ""}`}
-              aria-expanded={open}
+              className={`topbar-tab topbar-menu-btn ${groupActive ? "active" : ""} ${isOpen ? "open" : ""}`}
+              aria-expanded={isOpen}
               aria-haspopup="true"
-              onClick={() => setOpenLabel(open ? null : group.label)}
+              onClick={() => setOpen(isOpen ? null : { label: group.label, path: pathname })}
               // Once one menu is open, sliding across the bar switches menus.
-              onPointerEnter={() => { if (openLabel) setOpenLabel(group.label); }}
+              onPointerEnter={() => { if (openLabel) setOpen({ label: group.label, path: pathname }); }}
             >
               {group.label}
               <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true">
                 <path d="M1 3l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
               </svg>
             </button>
-            {open && (
+            {isOpen && (
               <div className="topbar-dropdown" role="menu">
                 {group.items.map((item) => (
                   <Link
