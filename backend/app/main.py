@@ -17,6 +17,8 @@ async def lifespan(app: FastAPI):
     import asyncio
     from app.models.database import init_db, engine
     from app.routes.coding import sweep_temp_files
+    from app.logbuffer import install_log_buffer
+    install_log_buffer()  # capture recent server logs for the admin "Server logs" view
     await init_db()
     print(f"CAT (Communication Annotation Tool) API started — database: {engine.dialect.name} @ {engine.url.host}")
 

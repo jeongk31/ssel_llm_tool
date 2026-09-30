@@ -141,6 +141,8 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
     status = str(payload.get("status", ""))[:20]
     if event == "run":
         status = "started"
+    raw_samples = payload.get("error_sample") if isinstance(payload.get("error_sample"), list) else []
+    error_sample = [str(s)[:300] for s in raw_samples][:10]
     ev = UsageEvent(
         event=event,
         session_id=str(payload.get("session_id", ""))[:64],
@@ -149,6 +151,7 @@ async def track(request: Request, payload: dict, db: AsyncSession = Depends(get_
         episodes_coded=_int(payload.get("episodes_coded")),
         error_count=_int(payload.get("error_count")),
         duration_ms=_int(payload.get("duration_ms")),
+        error_sample=error_sample,
         providers=[str(p)[:40] for p in providers][:20],
         models=[str(m)[:80] for m in models][:20],
         num_models=_int(payload.get("num_models")),
@@ -240,6 +243,7 @@ async def _compute_stats(db: AsyncSession) -> dict:
             "episodes_coded": int(outcome.episodes_coded or 0) if outcome else None,
             "error_count": int(outcome.error_count or 0) if outcome else None,
             "duration_ms": int(outcome.duration_ms or 0) if outcome else None,
+            "error_sample": (outcome.error_sample or []) if outcome else [],
         })
     runs.sort(key=lambda x: x["ts"], reverse=True)
 
@@ -383,6 +387,19 @@ async def dashboard(db: AsyncSession = Depends(get_db), _: bool = Depends(requir
 @admin_router.get("/admin", response_class=HTMLResponse)
 async def admin(db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
     return HTMLResponse(_render_admin(await _admin_payload(db)))
+
+
+@admin_router.get("/admin/data")
+async def admin_data(db: AsyncSession = Depends(get_db), _: bool = Depends(require_admin)):
+    """JSON payload for the admin's live auto-refresh (same data as the page)."""
+    return await _admin_payload(db)
+
+
+@admin_router.get("/admin/logs")
+async def admin_logs(after: int = 0, _: bool = Depends(require_admin)):
+    """Recent backend server-log lines (in-memory ring buffer) for live tailing."""
+    from app.logbuffer import recent_logs
+    return recent_logs(after_seq=after)
 
 
 class _StatusUpdate(BaseModel):
