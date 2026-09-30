@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.3.1",
+        "date": "2026-09-30",
+        "title": "Clearer usage map",
+        "notes": "Every country that has used CAT is now filled with a single purple on both the public and admin maps, instead of being shaded by volume, so quieter countries are as visible as busy ones.",
+    },
+    {
         "version": "1.3.0",
         "date": "2026-09-30",
         "title": "Coder agreement, usage statistics, and a clearer workspace",
