@@ -2657,6 +2657,11 @@ export default function CatApp() {
     let outcomeErrors = 0;
     let outcomeCompleted = false;
     let outcomeStopped = false;
+    const outcomeErrorSamples: string[] = [];
+    const noteError = (msg: string) => {
+      outcomeErrors += 1;
+      if (outcomeErrorSamples.length < 10) outcomeErrorSamples.push(String(msg).slice(0, 300));
+    };
 
     let stage: "preflight" | "script" | "validation" | "stream" = "preflight";
     try {
@@ -2789,7 +2794,7 @@ export default function CatApp() {
                     ? `Episode ${row.index + 1}: ${issue.value}`
                     : `Episode ${row.index + 1}: ${issue.variable} ${issue.issueType === "not_numeric" ? "not numeric" : "out of range"} (got "${String(issue.value)}")`;
                   setRunErrors((prev) => [...prev, detail]);
-                  outcomeErrors += 1;
+                  noteError(detail);
                   log("warn", detail);
                 }
               } else if (msg.type === "error" && isRestorableUploadCode(msg.code)) {
@@ -2797,12 +2802,12 @@ export default function CatApp() {
               } else if (msg.type === "error" && msg.index !== undefined) {
                 const message = msg.message ?? "Coding failed";
                 setRunErrors((prev) => [...prev, message]);
-                outcomeErrors += 1;
+                noteError(message);
                 log("error", message);
               } else if (msg.type === "error") {
                 const message = msg.message ?? "Coding failed";
                 setRunError(message);
-                outcomeErrors += 1;
+                noteError(message);
                 log("error", `Fatal: ${message}`);
               } else if (msg.type === "complete") {
                 setRunComplete({
@@ -2828,7 +2833,7 @@ export default function CatApp() {
       if (isAbortError(e)) outcomeStopped = true;
       if (isAbortError(e) || !isCurrentRunAction(action)) return;
       const message = e instanceof Error ? e.message : "Coding failed";
-      outcomeErrors += 1;
+      noteError(message);
       if (stage === "preflight") {
         setGenerateError(message);
       } else if (stage === "script") {
@@ -2851,6 +2856,7 @@ export default function CatApp() {
           episodes_coded: outcomeCoded,
           error_count: outcomeErrors,
           duration_ms: Date.now() - runStartMs,
+          error_sample: outcomeErrorSamples,
         });
       }
       finishRunAction(action);

@@ -87,6 +87,7 @@ def _migrate_usage_events(conn):
         "user_agent": "TEXT", "referer": "TEXT",
         "run_id": "VARCHAR(64)", "status": "VARCHAR(20)",
         "episodes_coded": "INTEGER", "error_count": "INTEGER", "duration_ms": "INTEGER",
+        "error_sample": "TEXT",
     }
     for col, ddl in adds.items():
         if col not in existing:
@@ -112,6 +113,9 @@ class UsageEvent(Base):
     episodes_coded = Column(Integer, default=0)
     error_count = Column(Integer, default=0)
     duration_ms = Column(Integer, default=0)
+    # A small, truncated sample of error messages from a run (for the admin
+    # Errors view). Never contains raw uploaded participant data.
+    error_sample = Column(JSONField, default=[])
     providers = Column(JSONField, default=[])
     models = Column(JSONField, default=[])
     num_models = Column(Integer, default=0)

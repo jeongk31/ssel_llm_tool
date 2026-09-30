@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.2.8",
+        "date": "2026-09-30",
+        "title": "Admin errors view + live server logs",
+        "notes": "Capture run error messages, add an Errors view, a live backend-log tail, and admin auto-refresh.",
+    },
+    {
         "version": "1.2.7",
         "date": "2026-09-29",
         "title": "Firewall: base64-safe request encoding",
