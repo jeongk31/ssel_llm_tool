@@ -13,6 +13,20 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.0",
+        "date": "2026-10-01",
+        "title": "Runs that survive a dropped connection",
+        "notes": (
+            "A coding run can now be carried out on CAT's server instead of inside the "
+            "browser's connection, so losing the network no longer destroys the work. Such a "
+            "run gets its own link showing live progress, a time estimate from its own "
+            "measured rate, and the results to download; the link lasts 48 hours and is "
+            "emailed when the run finishes if an address was given. Opt-in: the browser path "
+            "is unchanged. API keys are still never stored, and the email carries the link "
+            "rather than the results."
+        ),
+    },
+    {
         "version": "1.3.1",
         "date": "2026-09-30",
         "title": "Clearer usage map",

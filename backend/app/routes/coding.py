@@ -15,14 +15,18 @@ from typing import Any, Literal
 import pandas as pd
 from urllib.parse import unquote
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import StreamingResponse, Response, JSONResponse
+from fastapi import APIRouter, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Request, Depends
+from fastapi.responses import StreamingResponse, Response, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import settings
+from app.models.database import get_db
 from app.ratelimit import limiter
 from app.streaming import with_keepalive
 from app.usage import RunTracker, track_package_download
+from app import jobs
 from app.services.script_generator import generate_coding_script
 from app.services.coding_runner import (
     DETAIL_EPISODE_INDEX_COLUMN,
@@ -399,8 +403,17 @@ def _cleanup_file_id(file_id: str) -> None:
         _remove_temp_dir(upload_dir)
 
 
-def sweep_temp_files(max_age_seconds: int = _TEMP_TTL_SECONDS) -> None:
-    """Delete CAT temp dirs older than the TTL (24h backstop) and prune the store."""
+def sweep_temp_files(
+    max_age_seconds: int = _TEMP_TTL_SECONDS,
+    protected: set[str] | None = None,
+) -> None:
+    """Delete CAT temp dirs older than the TTL (24h backstop) and prune the store.
+
+    ``protected`` holds directories a server-side run link still points at. Those
+    links outlive the upload TTL, so without this the sweeper would delete the
+    results from under a link that is still valid.
+    """
+    protected = protected or set()
     now = time.time()
     expired_ids = [
         file_id
@@ -415,6 +428,8 @@ def sweep_temp_files(max_age_seconds: int = _TEMP_TTL_SECONDS) -> None:
             if not any(name.startswith(p) for p in _TEMP_PREFIXES):
                 continue
             full = os.path.join(tmp_root, name)
+            if os.path.realpath(full) in protected:
+                continue
             try:
                 if os.path.isdir(full) and now - os.path.getmtime(full) >= max_age_seconds:
                     shutil.rmtree(full, ignore_errors=True)
@@ -1015,6 +1030,86 @@ async def run_coding_stream(request: Request, config: dict):
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@router.get("/coding/capabilities")
+@limiter.limit("120/minute")
+async def coding_capabilities(request: Request):
+    """What this deployment can actually do, so the UI promises nothing it cannot.
+
+    Without a mail relay the server-side run still works and its link still
+    works; only the notification is unavailable, and the interface should say so
+    rather than ask for an address and then stay silent.
+    """
+    return {"email_notifications": settings.mail_configured}
+
+
+class StartJobRequest(BaseModel):
+    """A server-side run: the same config as run-stream, plus where to write."""
+    config: dict
+    email: str = ""
+
+
+@router.post("/coding/jobs")
+@limiter.limit("10/minute")
+async def start_coding_job(request: Request, req: StartJobRequest):
+    """Start a coding run that keeps going after the browser disconnects.
+
+    Opt-in only. The browser path is untouched: this exists so a dropped
+    connection no longer destroys an hour of coding.
+    """
+    config = req.config or {}
+    try:
+        file_info = resolve_uploaded_file(config.get("file_id"))
+    except UploadResolutionError as exc:
+        return _upload_error_response(exc)
+
+    email = (req.email or "").strip()[:200]
+    if email and ("@" not in email or " " in email):
+        raise HTTPException(400, "Enter a valid email address, or leave it blank.")
+
+    return await jobs.start(config, file_info, email=email)
+
+
+@router.get("/coding/jobs/{token}")
+@limiter.limit("240/minute")
+async def coding_job_status(request: Request, token: str, db: AsyncSession = Depends(get_db)):
+    """Progress for one run. Polled by the run's page; the token is the key."""
+    job = await jobs.get_job(db, token)
+    if not job:
+        raise HTTPException(404, "This run link is not valid, or it has expired.")
+    return jobs.job_payload(job)
+
+
+@router.post("/coding/jobs/{token}/stop")
+@limiter.limit("30/minute")
+async def stop_coding_job(request: Request, token: str, db: AsyncSession = Depends(get_db)):
+    """Ask a running job to stop at the next episode boundary."""
+    job = await jobs.get_job(db, token)
+    if not job:
+        raise HTTPException(404, "This run link is not valid, or it has expired.")
+    if job.status in ("queued", "running"):
+        jobs.request_stop(token)
+    return {"ok": True}
+
+
+@router.get("/coding/jobs/{token}/download")
+@limiter.limit("60/minute")
+async def download_coding_job(request: Request, token: str, db: AsyncSession = Depends(get_db)):
+    """The finished results, fetched by token so no server path is exposed."""
+    job = await jobs.get_job(db, token)
+    if not job:
+        raise HTTPException(404, "This run link is not valid, or it has expired.")
+    if job.status != "completed" or not job.result_path:
+        raise HTTPException(409, "This run has no results to download.")
+    path = _resolve_coding_result_path(job.result_path)
+    stem = _safe_result_component((job.file_name or "results").rsplit(".", 1)[0]) or "results"
+    return FileResponse(
+        path,
+        media_type="text/csv",
+        filename=f"cat_{stem}_coded.csv",
+        headers={"Cache-Control": "no-store"},
     )
 
 

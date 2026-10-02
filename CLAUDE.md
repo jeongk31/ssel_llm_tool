@@ -59,6 +59,25 @@ obvious from the code alone. Applies to any AI assistant or human contributor.
   If that changes, update the privacy notice (`tools/PrivacyNotice.tsx`) and the consent
   dialog copy in the same PR.
 
+## Server-side coding runs (`app/jobs.py`)
+
+- A run started through `POST /coding/jobs` finishes on the server rather than inside the
+  request. Keep these invariants:
+  - **The API key is never persisted.** It lives in the running task's frame only. A restart
+    therefore cannot resume a run; `mark_interrupted_on_boot()` marks such rows `interrupted`
+    so nobody waits for an email that will never come.
+  - **No participant data in `coding_jobs`.** Counters and model names only — coded rows stay
+    in the temp directory the run writes.
+  - **The token is the credential.** Anyone with `/runs/<token>` can download the results, so
+    it must stay unguessable and expire with the data (`run_link_ttl_hours`, 48h).
+- The temp sweeper must keep directories a live run link still points at: that is what
+  `sweep_temp_files(protected=...)` and `jobs.live_result_dirs()` are for. Uploads expire in
+  24h, run links in 48h, so without this the results vanish from under a valid link.
+- **Mail is optional.** With no `SMTP_HOST` set, `send_run_finished` returns `"skipped"` and the
+  run is unaffected. Never let a notification failure fail a run.
+- Email carries the link, never the results: attachments would move coded participant
+  communication off the server permanently, where the 48-hour expiry means nothing.
+
 ## Other
 
 - No SQLite fallback: the backend requires a real `DATABASE_URL` (PostgreSQL). Only usage

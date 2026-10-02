@@ -153,6 +153,48 @@ class ContactMessage(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class CodingJob(Base):
+    """A coding run that executes on the server, independent of the browser.
+
+    Metadata only. The dataset, the coded rows, and the API key never appear
+    here: results stay in the temp directory the run wrote them to, and the key
+    lives only in the running task's memory. ``token`` is the capability that
+    guards the run's page — whoever holds the link can watch the run and
+    download its results until ``expires_at``.
+    """
+    __tablename__ = "coding_jobs"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    token = Column(String(64), unique=True, index=True)
+    # queued | running | completed | failed | stopped | interrupted
+    status = Column(String(20), default="queued")
+
+    # Progress, updated as the run proceeds.
+    total_episodes = Column(Integer, default=0)
+    current_episode = Column(Integer, default=0)
+    episodes_coded = Column(Integer, default=0)
+    error_count = Column(Integer, default=0)
+    error_sample = Column(JSONField, default=[])
+    message = Column(Text)
+
+    # What was run, for the results page header. Never the dataset itself.
+    file_name = Column(String(255))
+    models = Column(JSONField, default=[])
+    runs_per_model = Column(Integer, default=1)
+
+    # Where the finished results live on disk.
+    result_path = Column(Text)
+
+    # Notification. Cleared once the run expires along with everything else.
+    email = Column(String(200))
+    email_status = Column(String(20))  # sent | failed | skipped
+
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime)
+
+
 class ErrorLog(Base):
     """Server-side errors (unhandled exceptions), so the admin can see any error
     that happens anywhere on the backend. Bounded by a periodic trim; contains no

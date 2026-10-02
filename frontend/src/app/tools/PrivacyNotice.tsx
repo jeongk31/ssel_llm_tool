@@ -88,6 +88,27 @@ export default function PrivacyNotice({ onChangeAnalyticsChoice }: PrivacyNotice
             and dataset locally so work can be restored; resetting the project clears that browser copy.
           </p>
 
+          <h2>Runs carried out on the server</h2>
+          <p>
+            A coding run normally happens inside your browser&apos;s connection, and ends if that
+            connection ends. You may instead ask CAT to carry the run out on its server, which is
+            the only way a dropped connection does not lose the work. If you do, CAT records the
+            run&apos;s progress, the selected model names, counts describing the task, the
+            outcome, and short truncated samples of any error messages. Your API key is used for
+            the run and is never written to the database, to disk, or to logs.
+          </p>
+          <p>
+            The run gets its own unguessable link. Anyone holding that link can see the run&apos;s
+            progress and download its results, so treat the link as you would the data itself. The
+            results and the link stop working 48 hours after the run starts, at which point the
+            results are deleted from the server.
+          </p>
+          <p>
+            If you supply an email address, it is stored with that run so CAT can send you the
+            link when the run finishes, and it is deleted together with the run. The message
+            contains the link only — never the coded results or any dataset content.
+          </p>
+
           <h2>Contact messages and retention</h2>
           <p>
             Contact-form submissions contain the name, email address, title, message, status, and time
