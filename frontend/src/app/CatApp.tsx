@@ -10,6 +10,7 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import MenuBar from "@/app/tools/MenuBar";
+import RunProgress from "@/app/tools/RunProgress";
 import UsageStatistics from "@/app/tools/UsageStatistics";
 import Acknowledgements from "@/app/tools/Acknowledgements";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -1059,7 +1060,7 @@ function buildSlotPayload(slot: ModelSlot) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type ActiveTool = "coding" | "instructions" | "documentation" | "versions" | "contact" | "privacy" | "usage" | "acknowledgements";
+type ActiveTool = "coding" | "instructions" | "documentation" | "versions" | "contact" | "privacy" | "usage" | "acknowledgements" | "run";
 
 const TOOL_PATHS: Record<ActiveTool, string> = {
   coding: "/coding",
@@ -1070,6 +1071,8 @@ const TOOL_PATHS: Record<ActiveTool, string> = {
   privacy: "/privacy",
   usage: "/usage",
   acknowledgements: "/acknowledgements",
+  // Each server-side run has its own link; this is only the prefix.
+  run: "/runs",
 };
 
 function toolForPath(pathname: string): ActiveTool {
@@ -1080,6 +1083,7 @@ function toolForPath(pathname: string): ActiveTool {
   if (pathname.startsWith("/privacy")) return "privacy";
   if (pathname.startsWith("/usage")) return "usage";
   if (pathname.startsWith("/acknowledgements")) return "acknowledgements";
+  if (pathname.startsWith("/runs/")) return "run";
   return "coding";
 }
 
@@ -1317,6 +1321,18 @@ export default function CatApp() {
   const [runStartedAt, setRunStartedAt] = useState<string | null>(null);
   const [runFinishedAt, setRunFinishedAt] = useState<string | null>(null);
   const [runError, setRunError] = useState("");
+  // Opt-in: let the run finish on the server and be emailed, so a dropped
+  // connection no longer destroys it. Off by default — the browser path is
+  // unchanged for everyone who does not ask for this.
+  const [runOnServer, setRunOnServer] = useState(false);
+  const [resultEmail, setResultEmail] = useState("");
+  const [serverRunToken, setServerRunToken] = useState("");
+  const [serverRunError, setServerRunError] = useState("");
+  const [startingServerRun, setStartingServerRun] = useState(false);
+  // Whether this deployment can actually send mail. Until the relay exists the
+  // run still works and the link still works, so the option stays — it just does
+  // not ask for an address it would never use.
+  const [emailNotifications, setEmailNotifications] = useState(false);
   const runAbortRef = useRef<AbortController | null>(null);
   const runActionGenerationRef = useRef(0);
   const runActionRef = useRef<{ token: number; controller: AbortController } | null>(null);
@@ -1419,6 +1435,28 @@ export default function CatApp() {
       fetch("/api/analytics/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
     } catch {}
   };
+
+  // A server-side run outlives this tab, so offer it back on return. This is what
+  // makes the feature work even when mail is unavailable or never requested.
+  const [rememberedRun, setRememberedRun] = useState("");
+  useEffect(() => {
+    try {
+      setRememberedRun(localStorage.getItem("cat_last_server_run") || "");
+    } catch { /* private window */ }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch("/api/coding/capabilities", { signal: controller.signal });
+        if (!response.ok) return;
+        const caps = (await response.json()) as { email_notifications?: boolean };
+        setEmailNotifications(!!caps.email_notifications);
+      } catch { /* assume no mail; the run and its link work either way */ }
+    })();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     try {
@@ -2435,6 +2473,10 @@ export default function CatApp() {
   ].filter((issue, index, all) => all.findIndex((candidate) => candidate.key === issue.key) === index);
   const panelHasSetupIssue = (panel: SetupIssue["panel"]) => setupIssues.some((issue) => issue.panel === panel);
   const datasetLoaded = !!uploadResult && uploadAvailability === "ready";
+  // The token in /runs/<token>, when someone opens a run link directly.
+  const linkedRunToken = pathname.startsWith("/runs/")
+    ? decodeURIComponent(pathname.slice("/runs/".length).split("/")[0])
+    : "";
   const setupIssueByKey = (key: string) => setupIssues.find((issue) => issue.key === key);
   const codebookEditorIssueByKey = (key: string) => visibleCodebookIssues.find((issue) => issue.key === key);
   const codebookEntryIssues = (index: number) => visibleCodebookIssues.filter((issue) => issue.codebookIndex === index);
@@ -2681,6 +2723,68 @@ export default function CatApp() {
   };
 
   // ── Run coding ────────────────────────────────────────────────────────────
+
+  // Start the run on the server instead of inside this connection. Returns as
+  // soon as the job exists; from then on the results panel watches it by token,
+  // and the run survives this tab closing.
+  const handleRunOnServer = async () => {
+    const issues = showSetupValidation("run");
+    if (issues.length > 0) return;
+    if (!uploadResult || resultDownloadKind || startingServerRun) return;
+    setSetupIssues([]);
+    setServerRunError("");
+    setStartingServerRun(true);
+    try {
+      const readyUpload = await withReadyUpload(
+        async (upload) => upload,
+        { recovery: { used: false } },
+      );
+      const init = await gzipJsonInit({
+        config: {
+          file_id: readyUpload.file_id,
+          file_name: readyUpload.file_name,
+          message_column: messageColumn,
+          identifier_columns: identifierColumns,
+          identity_column: identityColumn || null,
+          order_column: orderColumn || null,
+          order_direction: orderDirection,
+          experiment_instructions: experimentInstructions,
+          empty_message_handling: emptyMessageHandling,
+          codebook,
+          participants,
+          context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+          model_slots: modelSlots.map(buildSlotPayload),
+          runs_per_model: runsPerModel,
+          source_rows: selectedSourceIndices,
+          row_indices: null,
+        },
+        email: resultEmail.trim(),
+      });
+      const response = await fetch("/api/coding/jobs", {
+        method: "POST",
+        headers: init.headers,
+        body: init.body,
+      });
+      const raw = await response.text();
+      const firewall = firewallErrorFromText(raw);
+      if (firewall) throw firewall;
+      if (!response.ok) {
+        let detail = response.statusText;
+        try { detail = (JSON.parse(raw) as { detail?: string }).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      const job = JSON.parse(raw) as { token: string };
+      setServerRunToken(job.token);
+      setRightView("run");
+      // Remembered so reopening CAT offers the run back even if the email never
+      // arrives or was never requested.
+      try { localStorage.setItem("cat_last_server_run", job.token); } catch {}
+    } catch (e: unknown) {
+      setServerRunError(e instanceof Error ? e.message : "Could not start the run on the server.");
+    } finally {
+      setStartingServerRun(false);
+    }
+  };
 
   const handleRun = async () => {
     const issues = showSetupValidation("run");
@@ -3572,7 +3676,7 @@ ${agreementSection}
           <Link href="/coding" className="topbar-title topbar-title-link">
             CAT — Communication Annotation Tool
           </Link>
-          <span className="topbar-badge">v1.3</span>
+          <span className="topbar-badge">v1.4</span>
           <div className="topbar-sep" />
           <MenuBar pathname={pathname} />
         </div>
@@ -3585,6 +3689,19 @@ ${agreementSection}
       <div className="layout">
         <main className="main">
           <div className={`tool-page tool-page-fill ${activeTool === "coding" ? "active" : ""}`}>
+            {rememberedRun && rememberedRun !== serverRunToken && (
+              <div className="resume-run-bar">
+                <span>You have a coding run on the server.</span>
+                <a className="btn btn-outline btn-xs" href={`/runs/${rememberedRun}`}>Open it</a>
+                <button
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => {
+                    try { localStorage.removeItem("cat_last_server_run"); } catch {}
+                    setRememberedRun("");
+                  }}
+                >Dismiss</button>
+              </div>
+            )}
             <div className="tool-header tool-header-slim">
               <p className="tool-citation-note">
                 <strong>Please cite:</strong> Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a>
@@ -4145,6 +4262,55 @@ ${agreementSection}
                           {modelSlots.length * runsPerModel > 1 && <span className="enc-voting-agg">Aggregated per codebook variable</span>}
                         </div>
                       </div>
+
+                      <div className="server-run-opt">
+                        <label className="server-run-toggle">
+                          <input
+                            type="checkbox"
+                            checked={runOnServer}
+                            onChange={(e) => setRunOnServer(e.target.checked)}
+                          />
+                          <span className="server-run-copy">
+                            <strong>
+                              {emailNotifications
+                                ? "Run on CAT\u2019s server and email me the link"
+                                : "Run on CAT\u2019s server"}
+                            </strong>
+                            <span className="server-run-hint">
+                              Coding keeps going even if your connection drops or you close this tab.
+                              You get a page showing the progress and the results
+                              {emailNotifications
+                                ? ", and we email you the link when the run finishes."
+                                : ". Keep the link — email notifications are not available on this server yet."}
+                            </span>
+                          </span>
+                        </label>
+                        {runOnServer && emailNotifications && (
+                          <>
+                            <input
+                              type="email"
+                              className="server-run-email"
+                              placeholder="you@university.edu"
+                              value={resultEmail}
+                              onChange={(e) => setResultEmail(e.target.value)}
+                              aria-label="Email address for the results link"
+                            />
+                            <p className="server-run-note">
+                              Your API key is used for the run and never stored. Results stay on the
+                              server for 48 hours and are then deleted. The email contains the link,
+                              never the data — and anyone holding that link can download the results.
+                            </p>
+                          </>
+                        )}
+                        {runOnServer && !emailNotifications && (
+                          <p className="server-run-note">
+                            Your API key is used for the run and never stored. Results stay on the
+                            server for 48 hours and are then deleted. Anyone holding the run link can
+                            download the results, so keep it to yourself.
+                          </p>
+                        )}
+                        {serverRunError && <p className="enc-error">{serverRunError}</p>}
+                      </div>
                     </div></div></div>
                   </div>
 
@@ -4182,7 +4348,15 @@ ${agreementSection}
                 )}
 
                 {/* Run view */}
-                {rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
+                {rightView === "run" && serverRunToken ? (
+                  <div className="tab-pane">
+                    <RunProgress token={serverRunToken} />
+                    <p className="job-note">
+                      This run continues on the server even if you close CAT. Its own
+                      link: <a href={`/runs/${serverRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{serverRunToken.slice(0, 8)}…</a>
+                    </p>
+                  </div>
+                ) : rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
                   <div className="tab-pane">
                     {(runProgress || running) && (
                       <div className="enc-progress-wrap">
@@ -4497,8 +4671,12 @@ ${agreementSection}
               {running ? (
                 <button className="btn btn-sm btn-stop" onClick={handleStop}>Stop</button>
               ) : (
-                <button className="btn btn-run" disabled={generating || resultDownloadKind !== null} onClick={handleRun}>
-                  Run Coding
+                <button
+                  className="btn btn-run"
+                  disabled={generating || resultDownloadKind !== null || startingServerRun}
+                  onClick={runOnServer ? handleRunOnServer : handleRun}
+                >
+                  {startingServerRun ? <><span className="spinner" /> Starting</> : "Run Coding"}
                   {modelSlots.length * runsPerModel > 1 && (
                     <span className="run-calls-hint">({modelSlots.length}×{runsPerModel})</span>
                   )}
@@ -4508,6 +4686,19 @@ ${agreementSection}
           </div>
 
           {activeTool === "instructions" && <Instructions />}
+          {activeTool === "run" && (
+            <div className="tool-page active">
+              <div className="tool-header">
+                <div>
+                  <h1>Coding run</h1>
+                  <p className="tool-desc">This run is being carried out on CAT&apos;s server. You can close this page and come back to it.</p>
+                </div>
+              </div>
+              <div className="tool-body usage-body">
+                <RunProgress token={linkedRunToken} />
+              </div>
+            </div>
+          )}
           {activeTool === "usage" && <UsageStatistics />}
           {activeTool === "acknowledgements" && <Acknowledgements />}
 
@@ -4577,11 +4768,28 @@ ${agreementSection}
                       <h2 id="release-history-title">CAT Releases</h2>
                       <p>Features, fixes, and workflow improvements by release.</p>
                     </div>
-                    <span className="release-current-badge">Current · v1.3</span>
+                    <span className="release-current-badge">Current · v1.4</span>
                   </div>
 
                   <div className="release-timeline">
                     <article className="release-entry current">
+                      <div className="release-marker" aria-hidden="true" />
+                      <div className="release-entry-body">
+                        <div className="release-entry-title">
+                          <h3>CAT v1.4</h3>
+                          <time dateTime="2026-10-01">October 1, 2026</time>
+                        </div>
+                        <p className="release-summary">Coding runs that survive a dropped connection.</p>
+                        <ul>
+                          <li>A run can now be carried out on <strong>CAT&apos;s server</strong> instead of inside your browser&apos;s connection, so losing the network or closing the tab no longer destroys the work. Tick the option in Step 4 before pressing Run Coding.</li>
+                          <li>Such a run gets <strong>its own link</strong> showing live progress, how long it has been running, and an estimate of the time remaining based on the rate the run is actually achieving. The results can be downloaded from the same page.</li>
+                          <li>Give an email address and CAT <strong>sends you that link</strong> when the run finishes. The message contains the link, never the data. Results and the link remain available for 48 hours, then the results are deleted from the server.</li>
+                          <li>Your API key is used for the run and is still never stored. Running in the browser is unchanged for anyone who does not opt in.</li>
+                        </ul>
+                      </div>
+                    </article>
+
+                    <article className="release-entry">
                       <div className="release-marker" aria-hidden="true" />
                       <div className="release-entry-body">
                         <div className="release-entry-title">

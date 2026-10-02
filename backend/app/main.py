@@ -17,13 +17,20 @@ async def lifespan(app: FastAPI):
     import asyncio
     from app.models.database import init_db, engine
     from app.routes.coding import sweep_temp_files
+    from app import jobs
     await init_db()
+    # Server-side runs hold their API key in memory, so none can survive this
+    # process. Reconcile any row still claiming to run before serving traffic.
+    await jobs.mark_interrupted_on_boot()
     print(f"CAT (Communication Annotation Tool) API started — database: {engine.dialect.name} @ {engine.url.host}")
 
     async def _temp_sweeper():
         while True:
             try:
-                sweep_temp_files()
+                # Run links outlive the 24h upload TTL, so results still reachable
+                # from a live link are kept until the link itself expires.
+                sweep_temp_files(protected=await jobs.live_result_dirs())
+                await jobs.purge_expired()
             except Exception as e:
                 print(f"temp sweep error: {e}")
             await asyncio.sleep(3600)  # hourly; deletes working files older than 24h

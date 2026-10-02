@@ -1845,6 +1845,10 @@ input[type="range"]::-webkit-slider-thumb{
   width:240px;max-width:calc(100vw - 24px);
   background:var(--text);color:var(--surface);
   font-size:11px;font-weight:400;line-height:1.45;text-align:left;
+  /* The bubble is a child of the trigger, so it inherits from it. A labelled
+     trigger sets white-space:nowrap to keep its own text on one line, which
+     otherwise runs the tooltip off the screen in a single row. */
+  white-space:normal;overflow-wrap:anywhere;
   padding:8px 10px;border-radius:8px;z-index:2200;
   box-shadow:0 8px 24px rgba(0,0,0,.28);pointer-events:none;
   animation:tourCardIn .12s ease;
@@ -2754,4 +2758,55 @@ textarea.ta-fit{
 @media(max-width:768px){
   .usage-body,.ack-body{padding:16px}
   .usage-two-col{grid-template-columns:1fr}
+}
+
+/* ═══════════════════════════════════════════════════ */
+/* SERVER-SIDE CODING RUNS                             */
+/* ═══════════════════════════════════════════════════ */
+.server-run-opt{
+  margin-top:12px;padding:11px 13px;
+  border:1px solid var(--border-lt);border-radius:7px;background:var(--bg);
+}
+.server-run-toggle{display:flex;align-items:flex-start;gap:9px;cursor:pointer}
+.server-run-toggle input{margin-top:2px;flex-shrink:0}
+.server-run-copy{display:flex;flex-direction:column;gap:2px}
+.server-run-copy strong{font-size:12px;color:var(--text)}
+.server-run-hint{font-size:11px;color:var(--text-2);line-height:1.45}
+.server-run-email{
+  width:100%;margin-top:10px;padding:7px 10px;
+  border:1px solid var(--border);border-radius:var(--radius);
+  font-family:var(--sans);font-size:12px;background:var(--surface);color:var(--text);
+}
+.server-run-email:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(91,58,142,.14)}
+.server-run-note{margin:8px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.45}
+
+/* the run's live page — used both in the results panel and at /runs/<token> */
+.job-panel{
+  border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);padding:14px 16px;
+}
+.job-status{
+  display:flex;align-items:center;gap:8px;
+  padding:16px;font-size:12.5px;color:var(--text-2);
+}
+.job-error{color:var(--bad)}
+.job-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.job-state{font-size:13px;font-weight:700;color:var(--text)}
+.job-state-completed{color:var(--good)}
+.job-state-failed,.job-state-interrupted{color:var(--bad)}
+.job-sub{margin-top:2px;font-size:11.5px;color:var(--text-2)}
+.job-meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:11.5px;color:var(--text-2)}
+.job-meta-bad{color:var(--bad);font-weight:600}
+.job-message{margin:10px 0 0;font-size:12px;color:var(--text-2);line-height:1.5}
+.job-errors{margin-top:10px;font-size:11.5px}
+.job-errors summary{cursor:pointer;color:var(--bad);font-weight:600}
+.job-error-line{margin-top:5px;color:var(--text-2);line-height:1.45;word-break:break-word}
+.job-download{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+.job-expiry{font-size:11px;color:var(--text-3)}
+.job-note{margin:10px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.5}
+.job-note a{color:var(--purple);font-weight:600}
+.resume-run-bar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:7px 20px;font-size:11.5px;color:var(--text-2);
+  background:var(--purple-bg);border-bottom:1px solid var(--border-lt);
 }
