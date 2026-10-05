@@ -47,6 +47,21 @@ _ETA_MIN_SAMPLES = 5
 _MAX_ERROR_SAMPLES = 10
 
 
+# Notifications are sent detached: a relay that takes 20 seconds must not delay
+# the response that hands back the run link, nor the run itself.
+_notifications: set[asyncio.Task] = set()
+
+
+def _notify(coro) -> None:
+    try:
+        task = asyncio.create_task(coro)
+    except RuntimeError:
+        coro.close()
+        return
+    _notifications.add(task)
+    task.add_done_callback(_notifications.discard)
+
+
 def _semaphore() -> asyncio.Semaphore:
     global _slots
     if _slots is None:
@@ -155,6 +170,13 @@ async def start(config: dict, file_info: dict, *, email: str = "") -> dict:
     _tasks[token] = task
     task.add_done_callback(lambda _t: _tasks.pop(token, None))
 
+    if email:
+        # Sent now rather than when the worker picks the job up, so the link
+        # reaches them even if this process dies before the run begins.
+        from app.mailer import send_run_started
+
+        _notify(send_run_started(email, token))
+
     async with AsyncSessionLocal() as db:
         return job_payload(await get_job(db, token))
 
@@ -249,6 +271,7 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
 
         outcome = await send_run_finished(email, token, status, coded, total)
         await _save(job_id, email_status=outcome)
+        logger.info("job %s finish notification: %s", job_id, outcome)
 
     logger.info("job %s finished as %s in %.1fs", job_id, status, time.monotonic() - clock)
 

@@ -9,7 +9,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/tes
 
 from app import jobs
 from app.config import settings
-from app.mailer import run_link, send_run_finished
+from app.mailer import run_link, send_run_finished, send_run_started
 
 
 def job_row(**kwargs):
@@ -122,6 +122,38 @@ class MailerTests(unittest.TestCase):
              patch("app.mailer._send_sync", boom):
             outcome = asyncio.run(send_run_finished("someone@example.org", "abc", "completed", 5, 5))
         self.assertEqual(outcome, "failed")
+
+    def test_the_start_message_hands_over_the_link_immediately(self):
+        captured = {}
+
+        def capture(message):
+            captured["body"] = message.get_content()
+            captured["subject"] = message["Subject"]
+
+        with patch.object(settings, "smtp_host", "smtp.example.org"), \
+             patch.object(settings, "public_base_url", "https://example.org"), \
+             patch("app.mailer._send_sync", capture):
+            outcome = asyncio.run(send_run_started("someone@example.org", "abc"))
+
+        self.assertEqual(outcome, "sent")
+        self.assertIn("started", captured["subject"].lower())
+        # The point of the start message: they hold the link before anything can
+        # go wrong with their connection.
+        self.assertIn("https://example.org/runs/abc", captured["body"])
+        self.assertIn(str(settings.run_link_ttl_hours), captured["body"])
+
+    def test_the_start_message_is_skipped_when_mail_is_unconfigured(self):
+        with patch.object(settings, "smtp_host", ""):
+            self.assertEqual(asyncio.run(send_run_started("someone@example.org", "abc")), "skipped")
+
+    def test_a_relay_failure_at_start_does_not_raise(self):
+        def boom(_message):
+            raise OSError("relay refused")
+
+        with patch.object(settings, "smtp_host", "smtp.example.org"), \
+             patch.object(settings, "public_base_url", "https://example.org"), \
+             patch("app.mailer._send_sync", boom):
+            self.assertEqual(asyncio.run(send_run_started("someone@example.org", "abc")), "failed")
 
     def test_the_message_carries_a_link_and_never_the_results(self):
         captured = {}
