@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.3",
+        "date": "2026-10-05",
+        "title": "Server-side runs show the full results view",
+        "notes": "Starting a run on the server now opens the results column, and once it finishes the usual results view appears — live results, validation, coder agreement, downloads and the run summary — rather than progress alone. A run that cannot start also reports why in the run bar instead of failing silently.",
+    },
+    {
         "version": "1.4.2",
         "date": "2026-10-05",
         "title": "Server-side runs are protected by an access key",
