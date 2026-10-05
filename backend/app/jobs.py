@@ -22,6 +22,7 @@ Deliberate boundaries:
 """
 
 import asyncio
+import hashlib
 import logging
 import secrets
 import time
@@ -70,8 +71,37 @@ def _semaphore() -> asyncio.Semaphore:
 
 
 def new_token() -> str:
-    """The capability that guards a run's page. Must be unguessable."""
+    """Identifies a run. On its own this is not enough to open one."""
     return secrets.token_hex(16)
+
+
+# Deliberately excludes characters that are misread when typed from an email:
+# no O/0, I/1/l, or U/V confusion.
+_KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTWXYZ23456789"
+
+
+def new_access_key() -> str:
+    """The secret emailed alongside the link, in a form someone can retype.
+
+    The token travels in a URL, and URLs leak — browser history, screen shares,
+    a link pasted into a chat. Requiring a second value that never appears in the
+    address bar means a leaked URL alone opens nothing.
+    """
+    raw = "".join(secrets.choice(_KEY_ALPHABET) for _ in range(10))
+    return f"{raw[:5]}-{raw[5:]}"
+
+
+def hash_access_key(key: str) -> str:
+    """Only the hash is stored, so the table cannot give anyone's results away."""
+    return hashlib.sha256(key.strip().upper().encode("utf-8")).hexdigest()
+
+
+def access_key_matches(job, supplied: str) -> bool:
+    """Constant-time check. Jobs predating access keys stay open by their token."""
+    expected = getattr(job, "access_key_hash", "") or ""
+    if not expected:
+        return True
+    return secrets.compare_digest(expected, hash_access_key(supplied or ""))
 
 
 def expiry_from(moment: datetime) -> datetime:
@@ -149,10 +179,12 @@ async def start(config: dict, file_info: dict, *, email: str = "") -> dict:
     from app.models.database import AsyncSessionLocal, CodingJob
 
     token = new_token()
+    access_key = new_access_key()
     created = datetime.utcnow()
     slots = [s for s in (config.get("model_slots") or []) if isinstance(s, dict)]
     job = CodingJob(
         token=token,
+        access_key_hash=hash_access_key(access_key),
         status="queued",
         file_name=str(config.get("file_name") or file_info.get("file_name") or "")[:255],
         models=[str(s.get("model", ""))[:80] for s in slots][:20],
@@ -166,7 +198,7 @@ async def start(config: dict, file_info: dict, *, email: str = "") -> dict:
         await db.commit()
         job_id = job.id
 
-    task = asyncio.create_task(_run(job_id, token, config, file_info, email))
+    task = asyncio.create_task(_run(job_id, token, config, file_info, email, access_key))
     _tasks[token] = task
     task.add_done_callback(lambda _t: _tasks.pop(token, None))
 
@@ -175,13 +207,17 @@ async def start(config: dict, file_info: dict, *, email: str = "") -> dict:
         # reaches them even if this process dies before the run begins.
         from app.mailer import send_run_started
 
-        _notify(send_run_started(email, token))
+        _notify(send_run_started(email, token, access_key))
 
     async with AsyncSessionLocal() as db:
-        return job_payload(await get_job(db, token))
+        payload = job_payload(await get_job(db, token))
+    # Returned exactly once, to the browser that started the run, so it can store
+    # the key and show it. It is never retrievable from the job afterwards.
+    payload["access_key"] = access_key
+    return payload
 
 
-async def _run(job_id: str, token: str, config: dict, file_info: dict, email: str) -> None:
+async def _run(job_id: str, token: str, config: dict, file_info: dict, email: str, access_key: str = "") -> None:
     # Imported here: routes.coding imports this module for its endpoints.
     from app.routes.coding import _coding_updates
 
@@ -269,7 +305,7 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
     if email:
         from app.mailer import send_run_finished
 
-        outcome = await send_run_finished(email, token, status, coded, total)
+        outcome = await send_run_finished(email, token, status, coded, total, access_key)
         await _save(job_id, email_status=outcome)
         logger.info("job %s finish notification: %s", job_id, outcome)
 

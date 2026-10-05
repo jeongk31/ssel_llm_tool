@@ -41,6 +41,44 @@ class RunTokenTests(unittest.TestCase):
         )
 
 
+class AccessKeyTests(unittest.TestCase):
+    """The link travels in a URL and URLs leak, so the key is the thing that
+    actually protects a run's results."""
+
+    def test_keys_are_unguessable_and_do_not_repeat(self):
+        keys = {jobs.new_access_key() for _ in range(500)}
+        self.assertEqual(len(keys), 500)
+
+    def test_keys_avoid_characters_that_are_misread_when_retyped(self):
+        alphabet = set(jobs._KEY_ALPHABET)
+        for ambiguous in "O0I1lUV":
+            self.assertNotIn(ambiguous, alphabet, ambiguous)
+
+    def test_only_the_hash_is_ever_stored(self):
+        key = jobs.new_access_key()
+        stored = jobs.hash_access_key(key)
+        self.assertNotIn(key, stored)
+        self.assertEqual(len(stored), 64)
+
+    def test_the_right_key_opens_the_run(self):
+        key = jobs.new_access_key()
+        job = SimpleNamespace(access_key_hash=jobs.hash_access_key(key))
+        self.assertTrue(jobs.access_key_matches(job, key))
+
+    def test_case_and_surrounding_space_are_forgiven(self):
+        key = jobs.new_access_key()
+        job = SimpleNamespace(access_key_hash=jobs.hash_access_key(key))
+        self.assertTrue(jobs.access_key_matches(job, f"  {key.lower()} "))
+
+    def test_a_wrong_or_missing_key_does_not(self):
+        job = SimpleNamespace(access_key_hash=jobs.hash_access_key(jobs.new_access_key()))
+        self.assertFalse(jobs.access_key_matches(job, "AAAAA-BBBBB"))
+        self.assertFalse(jobs.access_key_matches(job, ""))
+
+    def test_runs_created_before_keys_existed_still_open(self):
+        self.assertTrue(jobs.access_key_matches(SimpleNamespace(access_key_hash=""), ""))
+
+
 class EtaTests(unittest.TestCase):
     """The estimate comes from the rate the run itself achieves, which works
     because the coding loop is sequential — one awaited call per episode."""
@@ -141,6 +179,19 @@ class MailerTests(unittest.TestCase):
         # go wrong with their connection.
         self.assertIn("https://example.org/runs/abc", captured["body"])
         self.assertIn(str(settings.run_link_ttl_hours), captured["body"])
+
+    def test_both_messages_carry_the_access_key(self):
+        for send, args in (
+            (send_run_started, ("someone@example.org", "abc", "MWN24-MMY3M")),
+            (send_run_finished, ("someone@example.org", "abc", "completed", 9, 10, "MWN24-MMY3M")),
+        ):
+            captured = {}
+            with patch.object(settings, "smtp_host", "smtp.example.org"), \
+                 patch.object(settings, "public_base_url", "https://example.org"), \
+                 patch("app.mailer._send_sync", lambda m: captured.update(body=m.get_content())):
+                self.assertEqual(asyncio.run(send(*args)), "sent")
+            self.assertIn("MWN24-MMY3M", captured["body"], send.__name__)
+            self.assertIn("https://example.org/runs/abc", captured["body"], send.__name__)
 
     def test_the_start_message_is_skipped_when_mail_is_unconfigured(self):
         with patch.object(settings, "smtp_host", ""):

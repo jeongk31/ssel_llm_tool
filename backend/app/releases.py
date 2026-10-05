@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.2",
+        "date": "2026-10-05",
+        "title": "Server-side runs are protected by an access key",
+        "notes": "Opening a server-side run now needs both its link and an access key emailed alongside it. The key is entered on the page and never appears in the web address, so a link on its own no longer exposes anyone's results. Only a hash of the key is stored.",
+    },
+    {
         "version": "1.4.1",
         "date": "2026-10-05",
         "title": "Email at the start of a run as well as the end",

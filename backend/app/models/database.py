@@ -66,6 +66,7 @@ async def init_db():
         await conn.run_sync(_drop_legacy_tables)
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_migrate_usage_events)
+        await conn.run_sync(_migrate_coding_jobs)
 
 
 def _drop_legacy_tables(conn):
@@ -92,6 +93,19 @@ def _migrate_usage_events(conn):
     for col, ddl in adds.items():
         if col not in existing:
             conn.exec_driver_sql(f"ALTER TABLE usage_events ADD COLUMN {col} {ddl}")
+
+
+def _migrate_coding_jobs(conn):
+    """Add any newly-introduced coding_jobs columns to an existing table."""
+    from sqlalchemy import inspect
+    insp = inspect(conn)
+    if "coding_jobs" not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns("coding_jobs")}
+    adds = {"access_key_hash": "VARCHAR(64)"}
+    for col, ddl in adds.items():
+        if col not in existing:
+            conn.exec_driver_sql(f"ALTER TABLE coding_jobs ADD COLUMN {col} {ddl}")
 
 
 async def get_db():
@@ -166,6 +180,9 @@ class CodingJob(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     token = Column(String(64), unique=True, index=True)
+    # SHA-256 of the access key that is emailed with the link. Only the hash is
+    # stored, so a copy of this table does not hand over anybody's results.
+    access_key_hash = Column(String(64))
     # queued | running | completed | failed | stopped | interrupted
     status = Column(String(20), default="queued")
 
