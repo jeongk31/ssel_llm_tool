@@ -10,7 +10,7 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import MenuBar from "@/app/tools/MenuBar";
-import RunProgress, { rememberRunKey } from "@/app/tools/RunProgress";
+import RunProgress, { rememberRunKey, type JobStatus } from "@/app/tools/RunProgress";
 import UsageStatistics from "@/app/tools/UsageStatistics";
 import Acknowledgements from "@/app/tools/Acknowledgements";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -2728,6 +2728,55 @@ export default function CatApp() {
   // Start the run on the server instead of inside this connection. Returns as
   // soon as the job exists; from then on the results panel watches it by token,
   // and the run survives this tab closing.
+  // A finished server-side run is pulled into the same state a browser run leaves
+  // behind, so the results panel below shows the ordinary view — live results,
+  // validation, agreement, downloads and the run summary — with no second
+  // implementation to keep in step.
+  const adoptServerRunResults = useCallback(async (job: JobStatus) => {
+    if (job.status !== "completed" || !job.result_path) return;
+    setRunFinishedAt(new Date().toISOString());
+    try {
+      const key = serverRunKey || (() => {
+        try { return localStorage.getItem(`cat_run_key_${job.token}`) || ""; } catch { return ""; }
+      })();
+      const response = await fetch(`/api/coding/jobs/${encodeURIComponent(job.token)}/rows`, {
+        headers: key ? { "X-CAT-Run-Key": key } : undefined,
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { rows?: CodedRow[] };
+        if (Array.isArray(data.rows)) setCodedRows(data.rows);
+      }
+    } catch { /* the progress panel still shows the outcome and the download */ }
+    setRunComplete({
+      total_rows: job.total,
+      coded_rows: job.episodes_coded,
+      file_path: job.result_path,
+    });
+  }, [serverRunKey]);
+
+  // Shown while a server-side run is going and kept afterwards, so the link, the
+  // access key and the server-side download stay reachable next to the ordinary
+  // results view.
+  const serverRunHeader = serverRunToken ? (
+    <>
+      <RunProgress token={serverRunToken} onFinished={adoptServerRunResults} />
+      <p className="job-note">
+        This run continues on the server even if you close CAT. Its own
+        link: <a href={`/runs/${serverRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{serverRunToken.slice(0, 8)}…</a>
+      </p>
+      {serverRunKey && (
+        <div className="job-key-callout">
+          <span>Access key for this run</span>
+          <code>{serverRunKey}</code>
+          <span className="job-key-note">
+            Needed to open the run on another device. We emailed it with the link,
+            and this browser already has it.
+          </span>
+        </div>
+      )}
+    </>
+  ) : null;
+
   const handleRunOnServer = async () => {
     const issues = showSetupValidation("run");
     if (issues.length > 0) return;
@@ -2738,10 +2787,12 @@ export default function CatApp() {
     const notifyEmail = resultEmail.trim();
     if (emailNotifications && !notifyEmail) {
       setServerRunError("Enter the email address we should send the link to.");
+      setOpenPanels((prev) => new Set(prev).add(4));
       return;
     }
     if (notifyEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifyEmail)) {
       setServerRunError("That does not look like a valid email address.");
+      setOpenPanels((prev) => new Set(prev).add(4));
       return;
     }
     setServerRunError("");
@@ -2791,7 +2842,19 @@ export default function CatApp() {
       // Stored for this browser so the run opens here without the prompt. The
       // key is returned once, at creation, and never again.
       if (job.access_key) rememberRunKey(job.token, job.access_key);
+      setResultExportConfig(buildResultExportConfig());
+      setRunStartedAt(new Date().toISOString());
+      setRunFinishedAt(null);
+      setValidationReport(null);
       setRightView("run");
+      // The results column is collapsed in "fill" mode, so without this the run
+      // starts correctly and the researcher sees nothing happen.
+      setLayoutMode((m) => (m === "fill" ? "side" : m));
+      // A previous browser run's output would otherwise sit underneath this one.
+      setCodedRows([]);
+      setRunErrors([]);
+      setRunComplete(null);
+      setRunError("");
       // Remembered so reopening CAT offers the run back even if the email never
       // arrives or was never requested.
       try { localStorage.setItem("cat_last_server_run", job.token); } catch {}
@@ -4368,26 +4431,11 @@ ${agreementSection}
                 )}
 
                 {/* Run view */}
-                {rightView === "run" && serverRunToken ? (
+                {rightView === "run" && serverRunToken && !runComplete ? (
+                  <div className="tab-pane">{serverRunHeader}</div>
+                ) : rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0 || serverRunToken) ? (
                   <div className="tab-pane">
-                    <RunProgress token={serverRunToken} />
-                    <p className="job-note">
-                      This run continues on the server even if you close CAT. Its own
-                      link: <a href={`/runs/${serverRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{serverRunToken.slice(0, 8)}…</a>
-                    </p>
-                    {serverRunKey && (
-                      <div className="job-key-callout">
-                        <span>Access key for this run</span>
-                        <code>{serverRunKey}</code>
-                        <span className="job-key-note">
-                          Needed to open the run on another device. We emailed it with the link,
-                          and this browser already has it.
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
-                  <div className="tab-pane">
+                    {serverRunToken && serverRunHeader}
                     {(runProgress || running) && (
                       <div className="enc-progress-wrap">
                         <div className="enc-progress-header">
@@ -4683,6 +4731,7 @@ ${agreementSection}
                 )}
               </div>
               {generateError && <span className="enc-error run-bar-error">{generateError}</span>}
+              {serverRunError && <span className="enc-error run-bar-error">{serverRunError}</span>}
               {setupIssues.length > 0 && (
                 <span className="setup-error-summary" role="alert">
                   Fix {setupIssues.length} setup issue{setupIssues.length === 1 ? "" : "s"} highlighted above.

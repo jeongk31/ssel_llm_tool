@@ -51,6 +51,7 @@ export type JobStatus = {
   elapsed_seconds: number;
   eta_seconds: number | null;
   has_results: boolean;
+  result_path: string;
   email_status: string;
   expires_at: string;
 };

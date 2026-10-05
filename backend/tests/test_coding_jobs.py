@@ -1,5 +1,8 @@
 import asyncio
+import json
 import os
+import shutil
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -107,11 +110,22 @@ class JobPayloadTests(unittest.TestCase):
         self.assertEqual(payload["current"], 10)
         self.assertEqual(payload["total"], 100)
         self.assertIsNotNone(payload["eta_seconds"])
-        # Nothing that could carry participant text.
-        self.assertEqual(
-            set(payload) & {"rows", "coded", "dataset", "api_key", "result_path"},
-            set(),
-        )
+        # Nothing that could carry participant text or credentials.
+        self.assertEqual(set(payload) & {"rows", "coded", "dataset", "api_key"}, set())
+        # The result path is withheld while the run is still going.
+        self.assertEqual(payload["result_path"], "")
+
+    def test_the_result_path_is_released_only_once_the_run_completes(self):
+        path = "/tmp/llm_coding_x/coded_results.csv"
+        running = jobs.job_payload(job_row(status="running", result_path=path))
+        done = jobs.job_payload(job_row(status="completed", result_path=path))
+        failed = jobs.job_payload(job_row(status="failed", result_path=path))
+
+        self.assertEqual(running["result_path"], "")
+        self.assertEqual(failed["result_path"], "")
+        # Needed by the normal results view to export and compute agreement, and
+        # only reachable past the access-key check on the endpoint.
+        self.assertEqual(done["result_path"], path)
 
     def test_finished_runs_report_no_estimate(self):
         payload = jobs.job_payload(job_row(
@@ -127,6 +141,43 @@ class JobPayloadTests(unittest.TestCase):
             status="failed", result_path="/tmp/llm_coding_x/coded_results.csv",
         ))
         self.assertFalse(payload["has_results"])
+
+
+class CodedRowsTests(unittest.TestCase):
+    """The run's page needs the coded rows to show the ordinary results view.
+    They live beside the results on disk, never in the database."""
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp(prefix="llm_coding_")
+        self.result_path = os.path.join(self.directory, "coded_results.csv")
+        self.addCleanup(shutil.rmtree, self.directory, ignore_errors=True)
+
+    def test_rows_survive_a_write_and_read(self):
+        rows = [
+            {"index": 0, "original": {"id": 1, "message": "hello"}, "coded": {"greeting": 1}},
+            {"index": 1, "original": {"id": 2, "message": "bye"}, "coded": {"greeting": 0}},
+        ]
+        jobs._write_rows(self.result_path, rows)
+        self.assertEqual(jobs.read_rows(self.result_path), rows)
+
+    def test_rows_are_stored_beside_the_results_not_in_the_database(self):
+        jobs._write_rows(self.result_path, [{"index": 0, "original": {}, "coded": {}}])
+        self.assertTrue(os.path.isfile(os.path.join(self.directory, "rows.json")))
+
+    def test_a_run_with_no_rows_writes_nothing(self):
+        jobs._write_rows(self.result_path, [])
+        self.assertFalse(os.path.exists(os.path.join(self.directory, "rows.json")))
+
+    def test_missing_or_unreadable_rows_are_not_an_error(self):
+        # The sweeper may have removed the directory; the page still has to load.
+        self.assertEqual(jobs.read_rows(self.result_path), [])
+        self.assertEqual(jobs.read_rows(""), [])
+        with open(os.path.join(self.directory, "rows.json"), "w") as handle:
+            handle.write("{not json")
+        self.assertEqual(jobs.read_rows(self.result_path), [])
+
+    def test_rows_are_capped_so_a_huge_run_cannot_exhaust_memory(self):
+        self.assertLessEqual(jobs._MAX_KEPT_ROWS, 50000)
 
 
 class MailerTests(unittest.TestCase):

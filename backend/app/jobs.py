@@ -23,7 +23,9 @@ Deliberate boundaries:
 
 import asyncio
 import hashlib
+import json
 import logging
+import os
 import secrets
 import time
 from datetime import datetime, timedelta
@@ -43,6 +45,11 @@ _slots: asyncio.Semaphore | None = None
 # Progress is persisted at most this often; a fast model would otherwise write a
 # row per episode and spend the run talking to Postgres.
 _PROGRESS_INTERVAL_SECONDS = 2.0
+# Coded rows are kept next to the results on disk, never in the database, so the
+# run's page can show everything the browser view shows. Bounded so a very large
+# run cannot exhaust memory while it is held.
+_ROWS_FILENAME = "rows.json"
+_MAX_KEPT_ROWS = 20000
 # Episodes to observe before an estimate is worth showing.
 _ETA_MIN_SAMPLES = 5
 _MAX_ERROR_SAMPLES = 10
@@ -147,6 +154,9 @@ def job_payload(job) -> dict:
         "elapsed_seconds": round(elapsed),
         "eta_seconds": remaining,
         "has_results": bool(job.result_path) and job.status == "completed",
+        # Needed by the normal results view to export and to compute agreement.
+        # Only handed out for a finished run, and only past the access-key check.
+        "result_path": job.result_path if job.status == "completed" else "",
         "email_status": job.email_status or "",
         "expires_at": job.expires_at.isoformat() if job.expires_at else "",
     }
@@ -224,6 +234,7 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
     status = "failed"
     current = total = coded = errors = 0
     samples: list[str] = []
+    rows: list[dict] = []
     message = ""
     result_path = ""
     started = datetime.utcnow()
@@ -255,11 +266,19 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
                     errors += 1
                     if len(samples) < _MAX_ERROR_SAMPLES:
                         samples.append(scrub_secrets(str(update_event.get("message", "")))[:300])
+                elif kind == "row":
+                    if len(rows) < _MAX_KEPT_ROWS:
+                        rows.append({
+                            "index": update_event.get("index"),
+                            "original": update_event.get("original"),
+                            "coded": update_event.get("coded"),
+                        })
                 elif kind == "complete":
                     total = int(update_event.get("total_rows") or total)
                     coded = int(update_event.get("coded_rows") or 0)
                     result_path = str(update_event.get("file_path") or "")
                     status = "completed" if (coded > 0 or errors == 0) else "failed"
+                    _write_rows(result_path, rows)
 
                 now = time.monotonic()
                 if now - last_write >= _PROGRESS_INTERVAL_SECONDS:
@@ -310,6 +329,31 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
         logger.info("job %s finish notification: %s", job_id, outcome)
 
     logger.info("job %s finished as %s in %.1fs", job_id, status, time.monotonic() - clock)
+
+
+def _write_rows(result_path: str, rows: list[dict]) -> None:
+    """Store the coded rows beside the results CSV, for the run's own page."""
+    if not result_path or not rows:
+        return
+    try:
+        target = os.path.join(os.path.dirname(result_path), _ROWS_FILENAME)
+        with open(target, "w", encoding="utf-8") as handle:
+            json.dump(rows, handle, default=str)
+    except OSError:
+        logger.warning("could not store coded rows for the run page", exc_info=True)
+
+
+def read_rows(result_path: str) -> list[dict]:
+    """The coded rows for a finished run, or an empty list if they are gone."""
+    if not result_path:
+        return []
+    try:
+        target = os.path.join(os.path.dirname(os.path.realpath(result_path)), _ROWS_FILENAME)
+        with open(target, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
 
 
 async def mark_interrupted_on_boot() -> None:

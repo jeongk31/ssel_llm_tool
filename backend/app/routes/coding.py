@@ -1112,6 +1112,23 @@ async def stop_coding_job(request: Request, token: str, db: AsyncSession = Depen
     return {"ok": True}
 
 
+@router.get("/coding/jobs/{token}/rows")
+@limiter.limit("60/minute")
+async def coding_job_rows(request: Request, token: str, db: AsyncSession = Depends(get_db)):
+    """The coded rows of a finished run, so its page can show the full results view.
+
+    Served from the file written beside the results, never from the database —
+    participant text does not belong there.
+    """
+    job = await jobs.get_job(db, token)
+    if not job:
+        raise HTTPException(404, "This run link is not valid, or it has expired.")
+    _require_run_access(job, request)
+    if job.status != "completed" or not job.result_path:
+        return {"rows": []}
+    return {"rows": jobs.read_rows(job.result_path)}
+
+
 @router.get("/coding/jobs/{token}/download")
 @limiter.limit("60/minute")
 async def download_coding_job(request: Request, token: str, db: AsyncSession = Depends(get_db)):
