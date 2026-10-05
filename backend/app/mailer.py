@@ -1,7 +1,7 @@
 """Outgoing mail for server-side coding runs.
 
-CAT sends one kind of message: a link to a run's own page. It never attaches
-results. Coded communication in an email leaves the server for good — into
+CAT sends two messages per opted-in run — one when it starts, one when it ends —
+and both carry a link to the run's own page. It never attaches results. Coded communication in an email leaves the server for good — into
 mail archives, backups and forwards — where the 48-hour expiry means nothing.
 A link keeps the data on the server and lets it expire.
 
@@ -60,6 +60,38 @@ def _send_sync(message: EmailMessage) -> None:
             client.quit()
         except Exception:
             client.close()
+
+
+async def send_run_started(to_address: str, token: str) -> str:
+    """Hand someone the link as soon as their run is accepted.
+
+    Sent at the start rather than only at the end so the link exists for them
+    immediately: if they close the tab, lose the network, or the run outlives
+    their session, they already have the way back to it.
+    """
+    link = run_link(token)
+    if not settings.mail_configured or not to_address or not link:
+        return "skipped"
+
+    hours = settings.run_link_ttl_hours
+    body = (
+        "Your coding run has started on CAT's server. It will keep going whether or not "
+        "you stay on the page.\n\n"
+        f"Follow its progress and collect the results here:\n{link}\n\n"
+        "We will email you again when it finishes. The page shows how far along the run is "
+        "and roughly how much longer it needs.\n\n"
+        f"The link stays available for {hours} hours from now, after which the results are "
+        "deleted from the server. Anyone with this link can download the results, so treat it "
+        "like the data itself.\n\n"
+        "— CAT, Social Science Experimental Laboratory, NYU Abu Dhabi\n"
+    )
+
+    try:
+        await run_in_threadpool(_send_sync, _build(to_address, "Your CAT coding run has started", body))
+        return "sent"
+    except Exception:
+        logger.warning("could not send run-started notification", exc_info=True)
+        return "failed"
 
 
 async def send_run_finished(to_address: str, token: str, status: str, coded: int, total: int) -> str:

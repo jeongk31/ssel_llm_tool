@@ -105,8 +105,9 @@ export default function PrivacyNotice({ onChangeAnalyticsChoice }: PrivacyNotice
           </p>
           <p>
             If you supply an email address, it is stored with that run so CAT can send you the
-            link when the run finishes, and it is deleted together with the run. The message
-            contains the link only — never the coded results or any dataset content.
+            link — once when the run starts and once when it finishes — and it is deleted together
+            with the run. Those messages contain the link only, never the coded results or any
+            dataset content.
           </p>
 
           <h2>Contact messages and retention</h2>

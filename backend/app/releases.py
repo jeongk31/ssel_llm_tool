@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.1",
+        "date": "2026-10-05",
+        "title": "Email at the start of a run as well as the end",
+        "notes": "A server-side run now emails its link as soon as it starts, not only when it finishes, so the way back to the run exists before anything can go wrong with the connection. Asking to be emailed now requires an address.",
+    },
+    {
         "version": "1.4.0",
         "date": "2026-10-01",
         "title": "Runs that survive a dropped connection",

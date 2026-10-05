@@ -2732,6 +2732,17 @@ export default function CatApp() {
     if (issues.length > 0) return;
     if (!uploadResult || resultDownloadKind || startingServerRun) return;
     setSetupIssues([]);
+    // Asking to be emailed without saying where is the one setup mistake this
+    // option invites, so catch it before the run starts rather than after.
+    const notifyEmail = resultEmail.trim();
+    if (emailNotifications && !notifyEmail) {
+      setServerRunError("Enter the email address we should send the link to.");
+      return;
+    }
+    if (notifyEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifyEmail)) {
+      setServerRunError("That does not look like a valid email address.");
+      return;
+    }
     setServerRunError("");
     setStartingServerRun(true);
     try {
@@ -2758,7 +2769,7 @@ export default function CatApp() {
           source_rows: selectedSourceIndices,
           row_indices: null,
         },
-        email: resultEmail.trim(),
+        email: notifyEmail,
       });
       const response = await fetch("/api/coding/jobs", {
         method: "POST",
@@ -4280,7 +4291,7 @@ ${agreementSection}
                               Coding keeps going even if your connection drops or you close this tab.
                               You get a page showing the progress and the results
                               {emailNotifications
-                                ? ", and we email you the link when the run finishes."
+                                ? ". We email you the link as soon as the run starts, and again when it finishes."
                                 : ". Keep the link — email notifications are not available on this server yet."}
                             </span>
                           </span>
@@ -4289,11 +4300,15 @@ ${agreementSection}
                           <>
                             <input
                               type="email"
-                              className="server-run-email"
+                              required
+                              className={`server-run-email${serverRunError && !resultEmail.trim() ? " field-invalid" : ""}`}
                               placeholder="you@university.edu"
                               value={resultEmail}
-                              onChange={(e) => setResultEmail(e.target.value)}
-                              aria-label="Email address for the results link"
+                              onChange={(e) => {
+                                setResultEmail(e.target.value);
+                                if (serverRunError) setServerRunError("");
+                              }}
+                              aria-label="Email address for the run link"
                             />
                             <p className="server-run-note">
                               Your API key is used for the run and never stored. Results stay on the
