@@ -369,55 +369,67 @@ async def run_coding(
     coded_count = 0
     all_results = []
 
-    for row_idx in range(total):
-        row = df.iloc[row_idx]
-        message = str(row[message_column]) if pd.notna(row[message_column]) else ""
-        original = {col: (None if pd.isna(row[col]) else row[col]) for col in df.columns}
+    # Repeated runs go round-robin: every episode once, then every episode again,
+    # rather than hammering one episode N times before moving on. Asking the same
+    # model the same question back-to-back invites correlated answers, and the
+    # point of repeated runs is independent measurements. It also means a partial
+    # run holds one complete pass over the data rather than a finished prefix.
+    passes = max(1, runs_per_model)
+    work_units = total * passes
+    calls_by_episode: dict[int, list[dict[str, Any]]] = {i: [] for i in range(total)}
+    done = 0
 
-        # Convert numpy types
-        for k, v in original.items():
-            if hasattr(v, 'item'):
-                original[k] = v.item()
-        detail_original = {
-            **original,
-            DETAIL_EPISODE_INDEX_COLUMN: int(episode_indices[row_idx]),
-        }
+    for pass_num in range(1, passes + 1):
+        final_pass = pass_num == passes
+        for row_idx in range(total):
+            row = df.iloc[row_idx]
+            message = str(row[message_column]) if pd.notna(row[message_column]) else ""
+            original = {col: (None if pd.isna(row[col]) else row[col]) for col in df.columns}
 
-        percent = round(((row_idx + 1) / total) * 100, 1)
+            # Convert numpy types
+            for k, v in original.items():
+                if hasattr(v, 'item'):
+                    original[k] = v.item()
+            detail_original = {
+                **original,
+                DETAIL_EPISODE_INDEX_COLUMN: int(episode_indices[row_idx]),
+            }
 
-        if not message.strip():
-            if empty_message_handling == "ignore":
-                yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
-                continue
-            elif empty_message_handling == "code":
-                pass
-            else:
-                coded = {**null_result, "_error": "empty_message"}
-                all_results.append({**detail_original, **coded})
-                yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
-                yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
-                continue
+            done += 1
+            percent = round((done / work_units) * 100, 1)
 
-        # Build context block from this unit's context columns
-        context_block = ""
-        for spec in (context or []):
-            col = spec.get("column")
-            if not col or col not in original:
-                continue
-            val = original.get(col)
-            if val is None or str(val).strip() == "":
-                continue
-            desc = (spec.get("description") or "").strip()
-            context_block += f"- {col}: {val}" + (f"  ({desc})" if desc else "") + "\n"
+            if not message.strip():
+                if empty_message_handling == "ignore":
+                    yield {"type": "progress", "current": done, "total": work_units, "percent": percent}
+                    continue
+                elif empty_message_handling == "code":
+                    pass
+                else:
+                    # Recorded once, on the last pass, not once per pass.
+                    coded = {**null_result, "_error": "empty_message"}
+                    yield {"type": "progress", "current": done, "total": work_units, "percent": percent}
+                    if final_pass:
+                        all_results.append({**detail_original, **coded})
+                        yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
+                    continue
 
-        # Collect results from all models × runs
-        prompt = _build_prompt(message, experiment_instructions, coding_instructions, codebook, participants, context_block)
-        call_results: list[dict[str, Any]] = []
+            # Build context block from this unit's context columns
+            context_block = ""
+            for spec in (context or []):
+                col = spec.get("column")
+                if not col or col not in original:
+                    continue
+                val = original.get(col)
+                if val is None or str(val).strip() == "":
+                    continue
+                desc = (spec.get("description") or "").strip()
+                context_block += f"- {col}: {val}" + (f"  ({desc})" if desc else "") + "\n"
 
-        for p_info in providers:
-            provider_inst = p_info["instance"]
-            for run_num in range(1, runs_per_model + 1):
-                coder_label = f"{p_info['label']}__run{run_num}" if runs_per_model > 1 else p_info["label"]
+            prompt = _build_prompt(message, experiment_instructions, coding_instructions, codebook, participants, context_block)
+
+            for p_info in providers:
+                provider_inst = p_info["instance"]
+                coder_label = f"{p_info['label']}__run{pass_num}" if passes > 1 else p_info["label"]
                 parsed = None
                 slot_params = p_info.get("params", {})
                 for attempt in range(1, max_retries + 1):
@@ -443,29 +455,31 @@ async def run_coding(
                                    "message": f"Row {row_idx + 1} [{coder_label}]: {e}"}
 
                 if parsed:
-                    call_results.append(parsed)
+                    calls_by_episode[row_idx].append(parsed)
                     all_results.append({**detail_original, "coder": coder_label, **parsed})
                 else:
                     all_results.append({**detail_original, "coder": coder_label, **null_result, "_error": "api_failed"})
 
-        # Aggregate for the streamed row (what the UI shows)
-        if call_results:
-            if use_voting:
-                coded = aggregate_results(call_results, codebook, participants, aggregation)
-                coded["_votes"] = len(call_results)
-                coded["_total_calls"] = total_calls
-            else:
-                coded = call_results[0]
-            coded_count += 1
+            yield {"type": "progress", "current": done, "total": work_units, "percent": percent}
 
-            # Add aggregated row to output
-            if use_voting:
-                all_results.append({**detail_original, "coder": "__aggregated (per-variable)", **{k: v for k, v in coded.items() if not k.startswith("_")}})
-        else:
-            coded = {**null_result, "_error": "all_calls_failed"}
+            # An episode is only aggregated once every pass has contributed to it.
+            if final_pass:
+                call_results = calls_by_episode[row_idx]
+                if call_results:
+                    if use_voting:
+                        coded = aggregate_results(call_results, codebook, participants, aggregation)
+                        coded["_votes"] = len(call_results)
+                        coded["_total_calls"] = total_calls
+                    else:
+                        coded = call_results[0]
+                    coded_count += 1
 
-        yield {"type": "progress", "current": row_idx + 1, "total": total, "percent": percent}
-        yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
+                    if use_voting:
+                        all_results.append({**detail_original, "coder": "__aggregated (per-variable)", **{k: v for k, v in coded.items() if not k.startswith("_")}})
+                else:
+                    coded = {**null_result, "_error": "all_calls_failed"}
+
+                yield {"type": "row", "index": row_idx, "original": original, "coded": coded}
 
     # Save results
     # Reorder columns: original cols, coder, codebook labels, then any extra
@@ -473,6 +487,10 @@ async def run_coding(
     ordered_cols = orig_cols + [DETAIL_EPISODE_INDEX_COLUMN, "coder"] + labels
     # Keep headers even when every episode was intentionally skipped. This
     # produces a valid empty CSV instead of a zero-byte artifact.
+    # Rows are produced pass by pass, so sort by episode to keep the artifact laid
+    # out the way it always has been: each episode's calls together, in order.
+    if all_results:
+        all_results.sort(key=lambda r: r.get(DETAIL_EPISODE_INDEX_COLUMN, 0))
     result_df = pd.DataFrame(all_results, columns=ordered_cols if not all_results else None)
     extra_cols = [c for c in result_df.columns if c not in ordered_cols]
     result_df = result_df[[c for c in ordered_cols + extra_cols if c in result_df.columns]]

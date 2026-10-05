@@ -274,7 +274,11 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
                             "coded": update_event.get("coded"),
                         })
                 elif kind == "complete":
-                    total = int(update_event.get("total_rows") or total)
+                    # "total" counts units of work — episodes times repeated runs —
+                    # so leave it alone and simply mark the bar full. total_rows is
+                    # the episode count, which is a different number once a run is
+                    # repeated, and overwriting one with the other read as 15 of 5.
+                    current = total or int(update_event.get("total_rows") or 0)
                     coded = int(update_event.get("coded_rows") or 0)
                     result_path = str(update_event.get("file_path") or "")
                     status = "completed" if (coded > 0 or errors == 0) else "failed"

@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.4",
+        "date": "2026-10-05",
+        "title": "Repeated runs sweep the whole dataset each time",
+        "notes": "With more than one run per model, CAT now codes every episode once, then starts again from the first — rather than coding one episode repeatedly before moving on. Repeated measurements of the same episode are no longer taken back-to-back, and the progress bar counts every pass, so five episodes over three runs reads as fifteen.",
+    },
+    {
         "version": "1.4.3",
         "date": "2026-10-05",
         "title": "Server-side runs show the full results view",
