@@ -30,6 +30,22 @@ def run_link(token: str) -> str:
     return f"{base}/runs/{token}" if base else ""
 
 
+def _key_block(access_key: str) -> str:
+    """The access key, set apart so it is easy to copy out of the message.
+
+    The link alone opens nothing: the key is asked for separately, which is what
+    makes a leaked URL — from a browser history, a screen share, a pasted
+    message — useless on its own.
+    """
+    if not access_key:
+        return ""
+    return (
+        f"Access key: {access_key}\n\n"
+        "The page asks for this key the first time you open it on a device. Keep it with "
+        "the link; together they are what protect your results.\n\n"
+    )
+
+
 def _build(to_address: str, subject: str, body: str) -> EmailMessage:
     message = EmailMessage()
     message["From"] = formataddr((settings.mail_from_name, settings.mail_from))
@@ -62,7 +78,7 @@ def _send_sync(message: EmailMessage) -> None:
             client.close()
 
 
-async def send_run_started(to_address: str, token: str) -> str:
+async def send_run_started(to_address: str, token: str, access_key: str = "") -> str:
     """Hand someone the link as soon as their run is accepted.
 
     Sent at the start rather than only at the end so the link exists for them
@@ -78,11 +94,11 @@ async def send_run_started(to_address: str, token: str) -> str:
         "Your coding run has started on CAT's server. It will keep going whether or not "
         "you stay on the page.\n\n"
         f"Follow its progress and collect the results here:\n{link}\n\n"
+        f"{_key_block(access_key)}"
         "We will email you again when it finishes. The page shows how far along the run is "
         "and roughly how much longer it needs.\n\n"
         f"The link stays available for {hours} hours from now, after which the results are "
-        "deleted from the server. Anyone with this link can download the results, so treat it "
-        "like the data itself.\n\n"
+        "deleted from the server.\n\n"
         "— CAT, Social Science Experimental Laboratory, NYU Abu Dhabi\n"
     )
 
@@ -94,7 +110,9 @@ async def send_run_started(to_address: str, token: str) -> str:
         return "failed"
 
 
-async def send_run_finished(to_address: str, token: str, status: str, coded: int, total: int) -> str:
+async def send_run_finished(
+    to_address: str, token: str, status: str, coded: int, total: int, access_key: str = ""
+) -> str:
     """Tell someone their run is done. Returns "sent", "failed" or "skipped"."""
     link = run_link(token)
     if not settings.mail_configured or not to_address or not link:
@@ -117,10 +135,10 @@ async def send_run_finished(to_address: str, token: str, status: str, coded: int
     body = (
         f"{opening}\n\n"
         f"Open your results:\n{link}\n\n"
+        f"{_key_block(access_key)}"
         f"The page shows the run's progress and lets you download the results. "
         f"It stays available for {hours} hours from when the run started, after which "
         f"the results are deleted from the server.\n\n"
-        "Anyone with this link can download the results, so treat it like the data itself.\n\n"
         "— CAT, Social Science Experimental Laboratory, NYU Abu Dhabi\n"
     )
 

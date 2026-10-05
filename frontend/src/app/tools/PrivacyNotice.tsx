@@ -98,10 +98,13 @@ export default function PrivacyNotice({ onChangeAnalyticsChoice }: PrivacyNotice
             the run and is never written to the database, to disk, or to logs.
           </p>
           <p>
-            The run gets its own unguessable link. Anyone holding that link can see the run&apos;s
-            progress and download its results, so treat the link as you would the data itself. The
-            results and the link stop working 48 hours after the run starts, at which point the
-            results are deleted from the server.
+            The run gets its own unguessable link together with a separate access key. Opening
+            the run requires both: the key is sent with the link by email and entered on the page,
+            and it is never part of the web address, so a link on its own — in a browser history,
+            a shared screen, or a forwarded message — does not expose the results. CAT stores only
+            a one-way hash of the key, never the key itself. The results, the link and the key stop
+            working 48 hours after the run starts, at which point the results are deleted from the
+            server.
           </p>
           <p>
             If you supply an email address, it is stored with that run so CAT can send you the

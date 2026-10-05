@@ -2805,6 +2805,30 @@ textarea.ta-fit{
 .job-expiry{font-size:11px;color:var(--text-3)}
 .job-note{margin:10px 0 0;font-size:11.5px;color:var(--text-2);line-height:1.5}
 .job-note a{color:var(--purple);font-weight:600}
+.job-key-form{
+  border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);padding:16px 18px;max-width:460px;
+}
+.job-key-title{font-size:13px;font-weight:700;color:var(--text)}
+.job-key-hint{margin:6px 0 12px;font-size:11.5px;color:var(--text-2);line-height:1.5}
+.job-key-row{display:flex;gap:8px;flex-wrap:wrap}
+.job-key-input{
+  flex:1;min-width:160px;padding:7px 10px;
+  border:1px solid var(--border);border-radius:var(--radius);
+  font-family:var(--mono,monospace);font-size:13px;letter-spacing:.06em;
+  text-transform:uppercase;background:var(--bg);color:var(--text);
+}
+.job-key-input:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(91,58,142,.14)}
+.job-key-callout{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin-top:10px;padding:9px 12px;
+  border:1px solid var(--purple-lt);border-radius:6px;background:var(--purple-bg);
+  font-size:11.5px;color:var(--text-2);
+}
+.job-key-callout code{
+  font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--purple);
+}
+.job-key-note{flex-basis:100%;font-size:10.5px;color:var(--text-3);line-height:1.45}
 .resume-run-bar{
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:7px 20px;font-size:11.5px;color:var(--text-2);

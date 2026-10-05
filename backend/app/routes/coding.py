@@ -1072,13 +1072,30 @@ async def start_coding_job(request: Request, req: StartJobRequest):
     return await jobs.start(config, file_info, email=email)
 
 
+def _require_run_access(job, request: Request) -> None:
+    """A run opens only with both its link and its access key.
+
+    The key arrives in a header rather than the URL on purpose: a URL ends up in
+    browser history, in referrers, and in anything the researcher shares a screen
+    with, so a token on its own must not be enough to read somebody's results.
+    """
+    supplied = request.headers.get("x-cat-run-key", "")
+    if not jobs.access_key_matches(job, supplied):
+        raise HTTPException(
+            401,
+            "This run needs its access key — the one emailed with the link.",
+            headers={"X-CAT-Key-Required": "1"},
+        )
+
+
 @router.get("/coding/jobs/{token}")
 @limiter.limit("240/minute")
 async def coding_job_status(request: Request, token: str, db: AsyncSession = Depends(get_db)):
-    """Progress for one run. Polled by the run's page; the token is the key."""
+    """Progress for one run. Polled by the run's page."""
     job = await jobs.get_job(db, token)
     if not job:
         raise HTTPException(404, "This run link is not valid, or it has expired.")
+    _require_run_access(job, request)
     return jobs.job_payload(job)
 
 
@@ -1089,6 +1106,7 @@ async def stop_coding_job(request: Request, token: str, db: AsyncSession = Depen
     job = await jobs.get_job(db, token)
     if not job:
         raise HTTPException(404, "This run link is not valid, or it has expired.")
+    _require_run_access(job, request)
     if job.status in ("queued", "running"):
         jobs.request_stop(token)
     return {"ok": True}
@@ -1101,6 +1119,7 @@ async def download_coding_job(request: Request, token: str, db: AsyncSession = D
     job = await jobs.get_job(db, token)
     if not job:
         raise HTTPException(404, "This run link is not valid, or it has expired.")
+    _require_run_access(job, request)
     if job.status != "completed" or not job.result_path:
         raise HTTPException(409, "This run has no results to download.")
     path = _resolve_coding_result_path(job.result_path)

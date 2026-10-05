@@ -13,7 +13,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * It polls rather than streams, deliberately: polling survives the university
  * gateway, needs no connection held open, and cannot wedge the server the way a
  * long-lived stream can.
+ *
+ * Opening a run needs two things: the link and the access key emailed with it.
+ * The key travels in a header, never the URL, so a leaked address — from browser
+ * history, a screen share, a pasted message — opens nothing on its own. Once
+ * entered it is remembered per browser, so the prompt appears only on a new
+ * device.
  */
+
+/** Where a browser remembers the key for one run. */
+function keyStorageName(token: string): string {
+  return `cat_run_key_${token}`;
+}
+
+export function rememberRunKey(token: string, key: string): void {
+  try { localStorage.setItem(keyStorageName(token), key); } catch { /* private window */ }
+}
+
+function recallRunKey(token: string): string {
+  try { return localStorage.getItem(keyStorageName(token)) || ""; } catch { return ""; }
+}
+
+class RunKeyRequired extends Error {}
 
 export type JobStatus = {
   token: string;
@@ -69,14 +90,22 @@ export default function RunProgress({
   const [job, setJob] = useState<JobStatus | null>(null);
   const [error, setError] = useState("");
   const [stopping, setStopping] = useState(false);
+  const [accessKey, setAccessKey] = useState(() => recallRunKey(token));
+  const [keyInput, setKeyInput] = useState("");
+  const [keyNeeded, setKeyNeeded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const notified = useRef(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    const response = await fetch(`/api/coding/jobs/${encodeURIComponent(token)}`, { signal });
+    const response = await fetch(`/api/coding/jobs/${encodeURIComponent(token)}`, {
+      signal,
+      headers: accessKey ? { "X-CAT-Run-Key": accessKey } : undefined,
+    });
     if (response.status === 404) throw new Error("This run link is not valid, or it has expired.");
+    if (response.status === 401) throw new RunKeyRequired();
     if (!response.ok) throw new Error(`Could not load this run (${response.status}).`);
     return (await response.json()) as JobStatus;
-  }, [token]);
+  }, [token, accessKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,6 +118,8 @@ export default function RunProgress({
         if (cancelled) return;
         setJob(next);
         setError("");
+        setKeyNeeded(false);
+        if (accessKey) rememberRunKey(token, accessKey);
         if (isFinished(next.status) && !notified.current) {
           notified.current = true;
           onFinished?.(next);
@@ -98,6 +129,11 @@ export default function RunProgress({
         timer = setTimeout(tick, isFinished(next.status) ? POLL_SETTLED_MS : POLL_ACTIVE_MS);
       } catch (e: unknown) {
         if (cancelled || (e instanceof DOMException && e.name === "AbortError")) return;
+        if (e instanceof RunKeyRequired) {
+          // Wait for the key rather than polling a door we cannot open.
+          setKeyNeeded(true);
+          return;
+        }
         setError(e instanceof Error ? e.message : "Could not load this run.");
         timer = setTimeout(tick, POLL_SETTLED_MS);
       }
@@ -109,15 +145,74 @@ export default function RunProgress({
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [load, onFinished]);
+  }, [load, onFinished, accessKey, token]);
 
   const stop = async () => {
     setStopping(true);
     try {
-      await fetch(`/api/coding/jobs/${encodeURIComponent(token)}/stop`, { method: "POST" });
+      await fetch(`/api/coding/jobs/${encodeURIComponent(token)}/stop`, {
+        method: "POST",
+        headers: accessKey ? { "X-CAT-Run-Key": accessKey } : undefined,
+      });
     } catch { /* the next poll will show whether it stopped */ }
     setStopping(false);
   };
+
+  // Fetched rather than linked: a plain link cannot carry the key header, and
+  // putting the key in the URL would undo the point of having one.
+  const download = async () => {
+    setDownloading(true);
+    try {
+      const response = await fetch(`/api/coding/jobs/${encodeURIComponent(token)}/download`, {
+        headers: accessKey ? { "X-CAT-Run-Key": accessKey } : undefined,
+      });
+      if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = (job?.file_name || "results").replace(/\.[^.]+$/, "") + "_coded.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not download the results.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const submitKey = (event: React.FormEvent) => {
+    event.preventDefault();
+    const entered = keyInput.trim();
+    if (!entered) return;
+    setKeyNeeded(false);
+    setAccessKey(entered);   // triggers a fresh poll through the effect
+  };
+
+  if (keyNeeded) {
+    return (
+      <form className="job-key-form" onSubmit={submitKey}>
+        <div className="job-key-title">This run needs its access key</div>
+        <p className="job-key-hint">
+          Enter the key from the email that carried this link. We remember it in this
+          browser, so you are asked only once per device.
+        </p>
+        <div className="job-key-row">
+          <input
+            className="job-key-input"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            placeholder="ABCDE-FGHIJ"
+            aria-label="Run access key"
+            autoFocus
+          />
+          <button className="btn btn-primary btn-sm" type="submit" disabled={!keyInput.trim()}>Open run</button>
+        </div>
+      </form>
+    );
+  }
 
   if (error && !job) return <div className="job-status job-error" role="alert">{error}</div>;
   if (!job) return <div className="job-status"><span className="spinner" /> Loading this run...</div>;
@@ -180,9 +275,9 @@ export default function RunProgress({
 
       {job.has_results && (
         <div className="job-download">
-          <a className="btn btn-primary btn-sm" href={`/api/coding/jobs/${encodeURIComponent(token)}/download`}>
-            Download results (.csv)
-          </a>
+          <button className="btn btn-primary btn-sm" onClick={download} disabled={downloading}>
+            {downloading ? <><span className="spinner" /> Preparing</> : "Download results (.csv)"}
+          </button>
           {job.expires_at && (
             <span className="job-expiry">
               Available until {new Date(job.expires_at).toLocaleString()}
@@ -190,6 +285,7 @@ export default function RunProgress({
           )}
         </div>
       )}
+      {error && job && <p className="job-note job-meta-bad">{error}</p>}
 
       {job.email_status === "sent" && <p className="job-note">We emailed you a link to this page.</p>}
       {job.email_status === "failed" && (

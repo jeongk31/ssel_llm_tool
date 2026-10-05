@@ -10,7 +10,7 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import MenuBar from "@/app/tools/MenuBar";
-import RunProgress from "@/app/tools/RunProgress";
+import RunProgress, { rememberRunKey } from "@/app/tools/RunProgress";
 import UsageStatistics from "@/app/tools/UsageStatistics";
 import Acknowledgements from "@/app/tools/Acknowledgements";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -1327,6 +1327,7 @@ export default function CatApp() {
   const [runOnServer, setRunOnServer] = useState(false);
   const [resultEmail, setResultEmail] = useState("");
   const [serverRunToken, setServerRunToken] = useState("");
+  const [serverRunKey, setServerRunKey] = useState("");
   const [serverRunError, setServerRunError] = useState("");
   const [startingServerRun, setStartingServerRun] = useState(false);
   // Whether this deployment can actually send mail. Until the relay exists the
@@ -2784,8 +2785,12 @@ export default function CatApp() {
         try { detail = (JSON.parse(raw) as { detail?: string }).detail || detail; } catch {}
         throw new Error(detail);
       }
-      const job = JSON.parse(raw) as { token: string };
+      const job = JSON.parse(raw) as { token: string; access_key?: string };
       setServerRunToken(job.token);
+      setServerRunKey(job.access_key || "");
+      // Stored for this browser so the run opens here without the prompt. The
+      // key is returned once, at creation, and never again.
+      if (job.access_key) rememberRunKey(job.token, job.access_key);
       setRightView("run");
       // Remembered so reopening CAT offers the run back even if the email never
       // arrives or was never requested.
@@ -4370,6 +4375,16 @@ ${agreementSection}
                       This run continues on the server even if you close CAT. Its own
                       link: <a href={`/runs/${serverRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{serverRunToken.slice(0, 8)}…</a>
                     </p>
+                    {serverRunKey && (
+                      <div className="job-key-callout">
+                        <span>Access key for this run</span>
+                        <code>{serverRunKey}</code>
+                        <span className="job-key-note">
+                          Needed to open the run on another device. We emailed it with the link,
+                          and this browser already has it.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ) : rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0) ? (
                   <div className="tab-pane">
