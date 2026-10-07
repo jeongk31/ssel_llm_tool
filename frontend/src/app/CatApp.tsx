@@ -4189,10 +4189,6 @@ ${agreementSection}
                         )}
                       </div>
 
-                      <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>
-                        + Add Variable
-                      </button>
-
                       {/* ── Codebook export ── */}
                       <div className="cb-export-block" id="tour-codebook-download">
                         <div className="cb-export-divider" />
