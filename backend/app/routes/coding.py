@@ -1125,8 +1125,13 @@ async def coding_job_rows(request: Request, token: str, db: AsyncSession = Depen
         raise HTTPException(404, "This run link is not valid, or it has expired.")
     _require_run_access(job, request)
     if job.status != "completed" or not job.result_path:
-        return {"rows": []}
-    return {"rows": jobs.read_rows(job.result_path)}
+        return {"rows": [], "config": {}}
+    return {
+        "rows": jobs.read_rows(job.result_path),
+        # Lets the run's own page render the same results view the app shows,
+        # which needs the codebook and column mapping to validate and export.
+        "config": jobs.read_config(job.result_path),
+    }
 
 
 @router.get("/coding/jobs/{token}/download")

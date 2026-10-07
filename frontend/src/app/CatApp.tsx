@@ -10,7 +10,7 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import MenuBar from "@/app/tools/MenuBar";
-import RunProgress, { rememberRunKey, type JobStatus } from "@/app/tools/RunProgress";
+import RunProgress, { rememberRunKey, formatDuration, type JobStatus } from "@/app/tools/RunProgress";
 import UsageStatistics from "@/app/tools/UsageStatistics";
 import Acknowledgements from "@/app/tools/Acknowledgements";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -592,6 +592,54 @@ interface ResultExportConfig {
   episodeCount: number;
   modelCallCount: number;
   fingerprint: string;
+}
+
+/** The run configuration CAT keeps beside a server-side run's results. */
+interface ServerRunConfig {
+  message_column?: string;
+  identifier_columns?: string[];
+  identity_column?: string | null;
+  order_column?: string | null;
+  order_direction?: string;
+  context?: { column: string; description: string }[];
+  codebook?: CodebookEntry[];
+  participants?: string[];
+  model_slots?: { provider: string; model: string }[];
+  runs_per_model?: number;
+  rows_as_units?: boolean;
+}
+
+/**
+ * Rebuild the export configuration from what the server stored with the run.
+ *
+ * Opened by link, this browser has no setup of its own — the validation,
+ * agreement and export machinery all read this, so without it the run's page
+ * could only offer a download.
+ */
+function exportConfigFromServer(config: ServerRunConfig, episodeCount: number): ResultExportConfig {
+  const models = (config.model_slots ?? []).map((slot) => ({
+    provider: slot.provider,
+    model: slot.model,
+  }));
+  const runsPerModel = config.runs_per_model ?? 1;
+  return {
+    messageColumn: config.message_column ?? "",
+    identifierColumns: config.identifier_columns ?? [],
+    identityColumn: config.identity_column ?? "",
+    orderColumn: config.order_column ?? "",
+    orderDirection: config.order_direction === "desc" ? "desc" : "asc",
+    context: config.context ?? [],
+    codebook: config.codebook ?? [],
+    participants: config.participants ?? [],
+    models,
+    runsPerModel,
+    rowsAsUnits: !!config.rows_as_units,
+    episodeCount,
+    modelCallCount: models.length * runsPerModel,
+    // Only used to notice the setup changing under a finished run, which cannot
+    // happen for one restored from a link.
+    fingerprint: "",
+  };
 }
 
 interface RunProgress {
@@ -2478,6 +2526,7 @@ export default function CatApp() {
   const linkedRunToken = pathname.startsWith("/runs/")
     ? decodeURIComponent(pathname.slice("/runs/".length).split("/")[0])
     : "";
+  const viewingRunLink = activeTool === "run" && !!linkedRunToken;
   const setupIssueByKey = (key: string) => setupIssues.find((issue) => issue.key === key);
   const codebookEditorIssueByKey = (key: string) => visibleCodebookIssues.find((issue) => issue.key === key);
   const codebookEntryIssues = (index: number) => visibleCodebookIssues.filter((issue) => issue.codebookIndex === index);
@@ -2743,10 +2792,17 @@ export default function CatApp() {
         headers: key ? { "X-CAT-Run-Key": key } : undefined,
       });
       if (response.ok) {
-        const data = (await response.json()) as { rows?: CodedRow[] };
+        const data = (await response.json()) as { rows?: CodedRow[]; config?: ServerRunConfig };
         if (Array.isArray(data.rows)) setCodedRows(data.rows);
+        // Opened by link, this browser has no setup of its own to export from.
+        if (data.config && Object.keys(data.config).length > 0) {
+          setResultExportConfig((existing) => existing ?? exportConfigFromServer(data.config!, data.rows?.length ?? 0));
+        }
       }
     } catch { /* the progress panel still shows the outcome and the download */ }
+    // The cards above the results read this; without it a run opened by link
+    // reports 0 processed out of 0.
+    setRunProgress({ current: job.current, total: job.total, percent: 100 });
     setRunComplete({
       total_rows: job.total,
       coded_rows: job.episodes_coded,
@@ -2757,13 +2813,33 @@ export default function CatApp() {
   // Shown while a server-side run is going and kept afterwards, so the link, the
   // access key and the server-side download stay reachable next to the ordinary
   // results view.
-  const serverRunHeader = serverRunToken ? (
+  // Same estimate the server-side run shows, from the rate this run is achieving.
+  // Sequential coding makes the first few episodes predict the rest closely.
+  const browserRunEta = (() => {
+    if (!running || !runStartedAt || !runProgress || runProgress.current < 5) return null;
+    if (runProgress.current >= runProgress.total) return null;
+    const elapsed = (Date.now() - new Date(runStartedAt).getTime()) / 1000;
+    if (elapsed <= 0) return null;
+    return Math.max(0, Math.round((runProgress.total - runProgress.current) * (elapsed / runProgress.current)));
+  })();
+
+  const watchedRunToken = serverRunToken || (viewingRunLink ? linkedRunToken : "");
+  // The results panel defaults to the script view, which is meaningless when the
+  // page *is* a run. Derived rather than set, so opening a link needs no effect.
+  const effectiveRightView = viewingRunLink ? "run" : rightView;
+  // The workspace opens with the config column filling the width, which hides the
+  // results pane entirely. A run link is nothing but results, so treat it as the
+  // side-by-side layout — derived, so opening a link needs no effect.
+  const effectiveLayoutMode = viewingRunLink ? "side" : layoutMode;
+  const serverRunHeader = watchedRunToken ? (
     <>
-      <RunProgress token={serverRunToken} onFinished={adoptServerRunResults} />
-      <p className="job-note">
-        This run continues on the server even if you close CAT. Its own
-        link: <a href={`/runs/${serverRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{serverRunToken.slice(0, 8)}…</a>
-      </p>
+      <RunProgress token={watchedRunToken} onFinished={adoptServerRunResults} />
+      {!viewingRunLink && (
+        <p className="job-note">
+          This run continues on the server even if you close CAT. Its own
+          link: <a href={`/runs/${watchedRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{watchedRunToken.slice(0, 8)}…</a>
+        </p>
+      )}
       {serverRunKey && (
         <div className="job-key-callout">
           <span>Access key for this run</span>
@@ -3767,7 +3843,7 @@ ${agreementSection}
 
       <div className="layout">
         <main className="main">
-          <div className={`tool-page tool-page-fill ${activeTool === "coding" ? "active" : ""}`}>
+          <div className={`tool-page tool-page-fill ${activeTool === "coding" || activeTool === "run" ? "active" : ""}`}>
             {rememberedRun && rememberedRun !== serverRunToken && (
               <div className="resume-run-bar">
                 <span>You have a coding run on the server.</span>
@@ -3781,18 +3857,18 @@ ${agreementSection}
                 >Dismiss</button>
               </div>
             )}
-            <div className="tool-header tool-header-slim">
+            {!viewingRunLink && <div className="tool-header tool-header-slim">
               <p className="tool-citation-note">
                 <strong>Please cite:</strong> Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a>
               </p>
-            </div>
+            </div>}
 
             <div className={`pipeline-layout split layout-${layoutMode}`} style={{ display: "flex", gap: 0 }}>
               {/* ── Left: Config Column ── */}
               <div
                 className="config-col"
                 style={{
-                  width: tourOpen && layoutMode !== "hidden" ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
+                  width: viewingRunLink ? 0 : tourOpen && layoutMode !== "hidden" ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
                   minWidth: 0,
                   borderRight: layoutMode === "hidden" && !tourOpen ? "none" : undefined,
                 }}
@@ -4418,8 +4494,8 @@ ${agreementSection}
 
               {/* ── Right: Results Column ── */}
               <div className="results-col" id="tour-results-panel" style={{ flex: 1, minWidth: 0 }}>
-                {layoutMode !== "fill" && (<>
-                {(result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
+                {effectiveLayoutMode !== "fill" && (<>
+                {!viewingRunLink && (result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
                   <div className="tab-strip tab-strip-gap">
                     <button className={`tab ${rightView === "run" ? "active" : ""}`} onClick={() => setRightView("run")}>
                       Live Coding {running && <span className="enc-pulse" />}
@@ -4431,16 +4507,18 @@ ${agreementSection}
                 )}
 
                 {/* Run view */}
-                {rightView === "run" && serverRunToken && !runComplete ? (
+                {effectiveRightView === "run" && watchedRunToken && !runComplete ? (
                   <div className="tab-pane">{serverRunHeader}</div>
-                ) : rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0 || serverRunToken) ? (
+                ) : effectiveRightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0 || watchedRunToken) ? (
                   <div className="tab-pane">
-                    {serverRunToken && serverRunHeader}
-                    {(runProgress || running) && (
+                    {watchedRunToken && serverRunHeader}
+                    {/* The server-run panel above already shows this run's progress. */}
+                    {!watchedRunToken && (runProgress || running) && (
                       <div className="enc-progress-wrap">
                         <div className="enc-progress-header">
                           <span className="enc-progress-label">
                             {runComplete ? "Coding complete" : running ? `Coding episode ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...` : "Ready"}
+                            {browserRunEta != null && <span className="enc-progress-eta">About {formatDuration(browserRunEta)} remaining</span>}
                           </span>
                           <span className="enc-progress-pct">{runProgress?.percent ?? 0}%</span>
                         </div>
@@ -4668,7 +4746,7 @@ ${agreementSection}
                       </div>
                     )}
                   </div>
-                ) : rightView === "run" ? (
+                ) : effectiveRightView === "run" ? (
                   <div className="results-empty">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
@@ -4680,7 +4758,7 @@ ${agreementSection}
                 ) : null}
 
                 {/* Script view */}
-                {rightView === "script" && result ? (
+                {effectiveRightView === "script" && result ? (
                   <div className="tab-pane">
                     <div className="res-head">
                       <h2>Generated Script</h2>
@@ -4701,7 +4779,7 @@ ${agreementSection}
                       </div>
                     </div>
                   </div>
-                ) : rightView === "script" && !result ? (
+                ) : effectiveRightView === "script" && !result ? (
                   <div className="results-empty">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -4716,7 +4794,7 @@ ${agreementSection}
             </div>
 
             {/* Run bar */}
-            <div id="coding-run-bar" className="run-bar">
+            {!viewingRunLink && <div id="coding-run-bar" className="run-bar">
               <div className="run-bar-summary">
                 {datasetLoaded && (
                   <span className="run-bar-scope">
@@ -4761,23 +4839,10 @@ ${agreementSection}
                   )}
                 </button>
               )}
-            </div>
+            </div>}
           </div>
 
           {activeTool === "instructions" && <Instructions />}
-          {activeTool === "run" && (
-            <div className="tool-page active">
-              <div className="tool-header">
-                <div>
-                  <h1>Coding run</h1>
-                  <p className="tool-desc">This run is being carried out on CAT&apos;s server. You can close this page and come back to it.</p>
-                </div>
-              </div>
-              <div className="tool-body usage-body">
-                <RunProgress token={linkedRunToken} />
-              </div>
-            </div>
-          )}
           {activeTool === "usage" && <UsageStatistics />}
           {activeTool === "acknowledgements" && <Acknowledgements />}
 
