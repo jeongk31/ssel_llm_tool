@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.5",
+        "date": "2026-10-07",
+        "title": "A run link shows the full results view",
+        "notes": "Opening a server-side run's link now shows the same results view as the app — live results, validation, coder agreement, downloads and the run summary — instead of progress and a download button. The browser run also shows an estimate of the time remaining, which only the server-side run had.",
+    },
+    {
         "version": "1.4.4",
         "date": "2026-10-05",
         "title": "Repeated runs sweep the whole dataset each time",
